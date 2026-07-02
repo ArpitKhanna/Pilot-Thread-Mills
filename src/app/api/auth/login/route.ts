@@ -37,13 +37,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_active, account_type, auth_method")
       .eq("id", data.user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile?.is_active) {
+    if (profileError || !profile) {
+      await supabase.auth.signOut();
+      return NextResponse.json(
+        { error: "Account profile not found. Contact your admin." },
+        { status: 403 },
+      );
+    }
+
+    if (!profile.is_active) {
       await supabase.auth.signOut();
       return NextResponse.json(
         { error: "This account has been deactivated" },
