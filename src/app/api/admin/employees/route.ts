@@ -4,7 +4,13 @@ import type { EmployeeRole } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-const VALID_ROLES: EmployeeRole[] = ["admin", "manager", "operator"];
+const VALID_ROLES: EmployeeRole[] = [
+  "admin",
+  "accountant",
+  "picker",
+  "delivery",
+  "dyeing_user",
+];
 
 export async function POST(request: Request) {
   const supabase = await createClient();

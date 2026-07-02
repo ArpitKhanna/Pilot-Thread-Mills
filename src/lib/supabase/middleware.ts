@@ -32,7 +32,16 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith("/login");
   const isProtectedRoute =
-    pathname.startsWith("/dashboard") || pathname.startsWith("/api/admin");
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/entities") ||
+    pathname.startsWith("/orders") ||
+    pathname.startsWith("/payments") ||
+    pathname.startsWith("/expenses") ||
+    pathname.startsWith("/inventory") ||
+    pathname.startsWith("/picker-queue") ||
+    pathname.startsWith("/dyeing-jobs") ||
+    pathname.startsWith("/api/admin") ||
+    pathname.startsWith("/api/price-list");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();

@@ -1,6 +1,14 @@
 export type AccountType = "employee" | "customer";
 export type AuthMethod = "pin" | "otp_whatsapp";
-export type EmployeeRole = "admin" | "manager" | "operator";
+export type EmployeeRole =
+  | "admin"
+  | "accountant"
+  | "picker"
+  | "delivery"
+  | "dyeing_user";
+
+export type ItemType = "dibbi" | "box" | "cone" | "zip" | "elastic";
+export type PriceItemStatus = "approved" | "pending_approval" | "rejected";
 
 export type Profile = {
   id: string;
@@ -11,4 +19,61 @@ export type Profile = {
   role: EmployeeRole | null;
   is_active: boolean;
   created_at: string;
+};
+
+export type AppModule = {
+  id: string;
+  name: string;
+  section: "overview" | "orders" | "entities";
+  href: string;
+  sort_order: number;
+};
+
+export type PriceListItem = {
+  id: string;
+  item_name: string;
+  item_type: ItemType;
+  count_label: string | null;
+  salesmen_price: number;
+  customer_price: number;
+  status: PriceItemStatus;
+  created_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const ITEM_TYPES: ItemType[] = [
+  "dibbi",
+  "box",
+  "cone",
+  "zip",
+  "elastic",
+];
+
+export const COUNT_OPTIONS = [
+  "1/16",
+  "1/8",
+  "3/32",
+  "1/4",
+  "3/16",
+  "3/58",
+  "3/64",
+] as const;
+
+export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
+  dibbi: "Dibbi",
+  box: "Box",
+  cone: "Cone",
+  zip: "Zip",
+  elastic: "Elastic",
+};
+
+export const ROLE_LABELS: Record<EmployeeRole, string> = {
+  admin: "Admin",
+  accountant: "Accountant",
+  picker: "Picker",
+  delivery: "Delivery",
+  dyeing_user: "Dyeing User",
 };

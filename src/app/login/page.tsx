@@ -42,16 +42,19 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:px-8">
+    <div className="flex min-h-[100dvh] flex-col justify-center bg-background px-4 py-8 sm:px-6">
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-8 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-sky-700">
-            Pilot Thread Mills
+          <p className="font-logo-serif text-4xl tracking-tight text-foreground">
+            Pilot
           </p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+          <p className="mt-1 font-mono text-[10px] font-medium tracking-[0.35em] text-muted uppercase">
+            Thread Mills
+          </p>
+          <h1 className="mt-6 text-xl font-medium tracking-tight text-foreground">
             Employee sign in
           </h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-muted">
             Use your mobile number and PIN. No OTP required.
           </p>
         </div>
@@ -74,7 +77,7 @@ function LoginForm() {
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm outline-none ring-sky-600 placeholder:text-slate-400 focus:border-sky-600 focus:ring-2"
+              className="mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground shadow-sm outline-none placeholder:text-muted focus:border-foreground"
             />
           </div>
 
@@ -97,7 +100,7 @@ function LoginForm() {
               maxLength={6}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm outline-none ring-sky-600 placeholder:text-slate-400 focus:border-sky-600 focus:ring-2"
+              className="mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground shadow-sm outline-none placeholder:text-muted focus:border-foreground"
             />
           </div>
 
@@ -110,7 +113,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full justify-center rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full justify-center rounded-lg bg-foreground px-4 py-3 text-sm font-semibold text-surface shadow-sm transition hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60 sm:py-2.5"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
@@ -122,7 +125,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="min-h-full bg-background">
       <Suspense>
         <LoginForm />
       </Suspense>
