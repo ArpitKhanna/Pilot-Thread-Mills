@@ -21,6 +21,8 @@ type InvoiceLineEntryProps = {
   disabled?: boolean;
 };
 
+const MIN_ROWS = 5;
+
 function emptyLine(): DraftLine {
   return {
     key: `line-${crypto.randomUUID()}`,
@@ -34,6 +36,33 @@ function emptyLine(): DraftLine {
 
 export function createEmptyDraftLine(): DraftLine {
   return emptyLine();
+}
+
+/** Start with enough blank rows for Tally-style entry */
+export function createInitialDraftLines(count = MIN_ROWS): DraftLine[] {
+  return Array.from({ length: count }, () => emptyLine());
+}
+
+function isBlank(line: DraftLine): boolean {
+  return (
+    !line.name.trim() && !line.qty && line.priceListItemId === null
+  );
+}
+
+/** Keep at least MIN_ROWS total, with one trailing blank after filled rows */
+function normalizeLines(lines: DraftLine[]): DraftLine[] {
+  const meaningful = lines.filter((l) => !isBlank(l));
+  const existingBlanks = lines.filter(isBlank);
+  const target = Math.max(MIN_ROWS, meaningful.length + 1);
+  const blanksNeeded = target - meaningful.length;
+  const blanks = [
+    ...existingBlanks.slice(0, blanksNeeded),
+    ...Array.from(
+      { length: Math.max(0, blanksNeeded - existingBlanks.length) },
+      () => emptyLine(),
+    ),
+  ];
+  return [...meaningful, ...blanks];
 }
 
 export function InvoiceLineEntry({
@@ -51,37 +80,14 @@ export function InvoiceLineEntry({
       const merged = { ...line, ...patch };
       const qtyNum = Number(merged.qty);
       const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
-      merged.amount =
-        Math.round(qty * merged.unitPrice * 100) / 100;
+      merged.amount = Math.round(qty * merged.unitPrice * 100) / 100;
       return merged;
     });
-
-    const last = next[next.length - 1];
-    const needsBlank =
-      last &&
-      (last.name.trim() !== "" ||
-        last.qty !== "" ||
-        last.priceListItemId !== null);
-    onChange(needsBlank ? [...next, emptyLine()] : next);
+    onChange(normalizeLines(next));
   }
 
   function removeLine(key: string) {
-    if (lines.length <= 1) {
-      onChange([emptyLine()]);
-      return;
-    }
-    const filtered = lines.filter((l) => l.key !== key);
-    const last = filtered[filtered.length - 1];
-    if (
-      last &&
-      (last.name.trim() !== "" ||
-        last.qty !== "" ||
-        last.priceListItemId !== null)
-    ) {
-      onChange([...filtered, emptyLine()]);
-    } else {
-      onChange(filtered.length ? filtered : [emptyLine()]);
-    }
+    onChange(normalizeLines(lines.filter((l) => l.key !== key)));
   }
 
   function focusQty(key: string) {
@@ -114,124 +120,111 @@ export function InvoiceLineEntry({
     }
 
     const blank = emptyLine();
-    onChange([...lines, blank]);
+    onChange(normalizeLines([...lines, blank]));
     requestAnimationFrame(() => {
       itemRefs.current.get(blank.key)?.focus();
     });
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[36rem] text-sm">
-        <thead>
-          <tr className="border-b border-border bg-table-header text-left text-xs text-muted">
-            <th className="w-10 px-2 py-2 font-medium">#</th>
-            <th className="px-2 py-2 font-medium">Item</th>
-            <th className="w-24 px-2 py-2 font-medium text-right">Qty</th>
-            <th className="w-28 px-2 py-2 font-medium text-right">Rate</th>
-            <th className="w-28 px-2 py-2 font-medium text-right">Amount</th>
-            <th className="w-10 px-1 py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((line, index) => {
-            const isBlankTrailing =
-              index === lines.length - 1 &&
-              !line.name &&
-              !line.qty &&
-              !line.priceListItemId;
-            const filledCount = lines.filter(
-              (l) => l.priceListItemId && Number(l.qty) > 0,
-            ).length;
-            const rowNumber = isBlankTrailing ? filledCount + 1 : index + 1;
+    <div className="overflow-visible rounded-xl border border-border bg-surface shadow-sm">
+      {/* Header */}
+      <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.5rem_4.5rem_4.5rem_1.5rem] gap-1 border-b border-border bg-table-header px-2 py-2 text-[11px] font-medium tracking-wide text-muted uppercase sm:grid-cols-[2rem_minmax(0,1fr)_4rem_5.5rem_5.5rem_1.75rem] sm:gap-2 sm:px-3">
+        <span>#</span>
+        <span>Item</span>
+        <span className="text-right">Qty</span>
+        <span className="text-right">Rate</span>
+        <span className="text-right">Amt</span>
+        <span />
+      </div>
 
-            return (
-              <tr
-                key={line.key}
-                className="border-b border-border last:border-0"
-              >
-                <td className="px-2 py-1.5 tabular-nums text-muted">
-                  {rowNumber}
-                </td>
-                <td className="px-2 py-1.5">
-                  <ItemNameCombobox
-                    items={priceList}
-                    value={line.name}
+      <div className="divide-y divide-border">
+        {lines.map((line, index) => {
+          const blank = isBlank(line);
+          const canRemove = !blank || lines.filter((l) => !isBlank(l)).length > 0;
+
+          return (
+            <div
+              key={line.key}
+              className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.5rem_4.5rem_4.5rem_1.5rem] items-center gap-1 px-2 py-1.5 sm:grid-cols-[2rem_minmax(0,1fr)_4rem_5.5rem_5.5rem_1.75rem] sm:gap-2 sm:px-3 sm:py-2"
+            >
+              <span className="text-xs tabular-nums text-muted">
+                {index + 1}
+              </span>
+              <div className="min-w-0">
+                <ItemNameCombobox
+                  items={priceList}
+                  value={line.name}
+                  disabled={disabled}
+                  inputRef={(el) => {
+                    if (el) itemRefs.current.set(line.key, el);
+                    else itemRefs.current.delete(line.key);
+                  }}
+                  onChange={(name) =>
+                    updateLine(line.key, {
+                      name,
+                      priceListItemId: null,
+                      unitPrice: 0,
+                    })
+                  }
+                  onSelect={(item) =>
+                    updateLine(line.key, {
+                      name: item.item_name,
+                      priceListItemId: item.id,
+                      unitPrice: item.salesmen_price,
+                    })
+                  }
+                  onTabToQty={() => focusQty(line.key)}
+                />
+              </div>
+              <input
+                ref={(el) => {
+                  if (el) qtyRefs.current.set(line.key, el);
+                  else qtyRefs.current.delete(line.key);
+                }}
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                disabled={disabled}
+                value={line.qty}
+                placeholder="0"
+                className="w-full rounded-md border border-border bg-surface px-1.5 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50 sm:px-2"
+                onChange={(e) => updateLine(line.key, { qty: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitQtyAndAdvance(line.key);
+                  }
+                  if (e.key === "Tab" && !e.shiftKey) {
+                    e.preventDefault();
+                    commitQtyAndAdvance(line.key);
+                  }
+                }}
+              />
+              <span className="truncate text-right text-xs tabular-nums text-muted sm:text-sm">
+                {line.unitPrice > 0 ? formatINR(line.unitPrice) : "—"}
+              </span>
+              <span className="truncate text-right text-xs font-medium tabular-nums sm:text-sm">
+                {line.amount > 0 ? formatINR(line.amount) : "—"}
+              </span>
+              <div className="flex justify-center">
+                {canRemove && !blank ? (
+                  <button
+                    type="button"
                     disabled={disabled}
-                    inputRef={(el) => {
-                      if (el) itemRefs.current.set(line.key, el);
-                      else itemRefs.current.delete(line.key);
-                    }}
-                    onChange={(name) =>
-                      updateLine(line.key, {
-                        name,
-                        priceListItemId: null,
-                        unitPrice: 0,
-                      })
-                    }
-                    onSelect={(item) =>
-                      updateLine(line.key, {
-                        name: item.item_name,
-                        priceListItemId: item.id,
-                        unitPrice: item.salesmen_price,
-                      })
-                    }
-                    onTabToQty={() => focusQty(line.key)}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    ref={(el) => {
-                      if (el) qtyRefs.current.set(line.key, el);
-                      else qtyRefs.current.delete(line.key);
-                    }}
-                    type="number"
-                    min={0}
-                    step="any"
-                    inputMode="decimal"
-                    disabled={disabled}
-                    value={line.qty}
-                    placeholder="0"
-                    className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-                    onChange={(e) =>
-                      updateLine(line.key, { qty: e.target.value })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitQtyAndAdvance(line.key);
-                      }
-                      if (e.key === "Tab" && !e.shiftKey) {
-                        e.preventDefault();
-                        commitQtyAndAdvance(line.key);
-                      }
-                    }}
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-muted">
-                  {line.unitPrice > 0 ? formatINR(line.unitPrice) : "—"}
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                  {line.amount > 0 ? formatINR(line.amount) : "—"}
-                </td>
-                <td className="px-1 py-1.5">
-                  {!isBlankTrailing && (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => removeLine(line.key)}
-                      className="rounded p-1 text-muted hover:bg-sidebar hover:text-foreground disabled:opacity-50"
-                      aria-label="Remove line"
-                    >
-                      <RemoveIcon />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    onClick={() => removeLine(line.key)}
+                    className="rounded p-0.5 text-muted hover:bg-sidebar hover:text-foreground disabled:opacity-50"
+                    aria-label="Remove line"
+                  >
+                    <RemoveIcon />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

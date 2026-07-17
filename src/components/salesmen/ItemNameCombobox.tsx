@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PriceListItem } from "@/lib/auth/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
 
@@ -15,6 +16,8 @@ type ItemNameComboboxProps = {
   placeholder?: string;
 };
 
+type MenuPos = { top: number; left: number; width: number };
+
 export function ItemNameCombobox({
   items,
   value,
@@ -28,7 +31,10 @@ export function ItemNameCombobox({
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputElRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const query = value.trim().toLowerCase();
   const filtered = items.filter((item) =>
@@ -36,15 +42,57 @@ export function ItemNameCombobox({
   );
   const visible = filtered.slice(0, 12);
 
+  function setInputRef(el: HTMLInputElement | null) {
+    inputElRef.current = el;
+    inputRef?.(el);
+  }
+
+  function updatePosition() {
+    const el = inputElRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(rect.width, 240);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+    setPos({
+      top: openUp ? rect.top - 4 : rect.bottom + 4,
+      left: Math.min(rect.left, window.innerWidth - width - 8),
+      width,
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    updatePosition();
+  }, [open, value, visible.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onScrollOrResize() {
+      updatePosition();
+    }
+    window.addEventListener("resize", onScrollOrResize);
+    // capture scroll from any scrollable ancestor
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     setHighlight(0);
   }, [value]);
 
   useEffect(() => {
     function onPointerDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
@@ -98,14 +146,71 @@ export function ItemNameCombobox({
           return;
         }
       }
+      setOpen(false);
       onTabToQty();
     }
   }
 
+  const menu =
+    open &&
+    pos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={menuRef}
+        id={listId}
+        role="listbox"
+        style={{
+          position: "fixed",
+          top: pos.top,
+          left: pos.left,
+          width: pos.width,
+          transform:
+            pos.top < (inputElRef.current?.getBoundingClientRect().top ?? 0)
+              ? "translateY(-100%)"
+              : undefined,
+          zIndex: 80,
+        }}
+        className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
+      >
+        {visible.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-muted">No matching items</div>
+        ) : (
+          visible.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              role="option"
+              aria-selected={index === highlight}
+              className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                index === highlight ? "bg-sidebar" : "hover:bg-sidebar"
+              }`}
+              onMouseEnter={() => setHighlight(index)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(item);
+              }}
+            >
+              <span className="min-w-0 truncate">
+                {item.item_name}
+                {item.count_label ? (
+                  <span className="text-muted"> · {item.count_label}</span>
+                ) : null}
+              </span>
+              <span className="shrink-0 tabular-nums text-muted">
+                {formatINR(item.salesmen_price)}
+              </span>
+            </button>
+          ))
+        )}
+      </div>,
+      document.body,
+    );
+
   return (
     <div ref={rootRef} className="relative min-w-0">
       <input
-        ref={inputRef}
+        ref={setInputRef}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -115,52 +220,17 @@ export function ItemNameCombobox({
         value={value}
         placeholder={placeholder}
         autoComplete="off"
-        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-        onFocus={() => setOpen(true)}
+        className="w-full rounded-md border border-border bg-surface px-2.5 py-2 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+        onFocus={() => {
+          if (!disabled) setOpen(true);
+        }}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
         }}
         onKeyDown={onKeyDown}
       />
-      {open && visible.length > 0 && (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-56 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-md"
-        >
-          {visible.map((item, index) => (
-            <li key={item.id} role="option" aria-selected={index === highlight}>
-              <button
-                type="button"
-                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                  index === highlight ? "bg-sidebar" : "hover:bg-sidebar"
-                }`}
-                onMouseEnter={() => setHighlight(index)}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pick(item);
-                }}
-              >
-                <span className="min-w-0 truncate">
-                  {item.item_name}
-                  {item.count_label ? (
-                    <span className="text-muted"> · {item.count_label}</span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 tabular-nums text-muted">
-                  {formatINR(item.salesmen_price)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {open && query && visible.length === 0 && (
-        <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted shadow-md">
-          No matching items
-        </div>
-      )}
+      {menu}
     </div>
   );
 }

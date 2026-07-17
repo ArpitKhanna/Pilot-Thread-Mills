@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   formatINR,
   formatShortDate,
@@ -84,6 +84,49 @@ function paginateLineItems(items: InvoiceLineItem[]): InvoicePage[] {
   return pages;
 }
 
+function renderPageContent(
+  page: InvoicePage,
+  index: number,
+  pages: InvoicePage[],
+  invoice: Invoice,
+  salesman: Salesman,
+  previousBalance: number | undefined,
+  closingBalance: number,
+) {
+  return (
+    <>
+      {page.showHeader ? (
+        <PageHeader invoice={invoice} salesman={salesman} />
+      ) : (
+        <ContinuationHeader
+          invoice={invoice}
+          pageNumber={index + 1}
+          totalPages={pages.length}
+        />
+      )}
+
+      <LineItemsTable
+        items={page.items}
+        empty={invoice.lineItems.length === 0}
+      />
+
+      {page.showTotals && (
+        <PageTotals
+          invoice={invoice}
+          previousBalance={previousBalance}
+          closingBalance={closingBalance}
+        />
+      )}
+
+      {!page.showTotals && (
+        <p className="mt-auto pt-4 text-[10px] text-muted">
+          Continued on next page…
+        </p>
+      )}
+    </>
+  );
+}
+
 export function InvoicePreview({
   invoice,
   salesman,
@@ -96,6 +139,8 @@ export function InvoicePreview({
   hideToolbar = false,
   previousBalance,
 }: InvoicePreviewProps) {
+  const [pageIndex, setPageIndex] = useState(0);
+
   useEffect(() => {
     if (!asOverlay) return;
     function onKey(e: KeyboardEvent) {
@@ -120,49 +165,47 @@ export function InvoicePreview({
     [invoice.lineItems],
   );
 
+  useEffect(() => {
+    setPageIndex(0);
+  }, [invoice.id]);
+
+  useEffect(() => {
+    if (pageIndex > pages.length - 1) {
+      setPageIndex(Math.max(0, pages.length - 1));
+    }
+  }, [pageIndex, pages.length]);
+
   const showToolbar = !hideToolbar && !forPrint;
+  const currentPage = pages[pageIndex] ?? pages[0];
+  const hasMultiplePages = pages.length > 1;
 
-  const documentPages = (
-    <div
-      id={forPrint ? "invoice-print-root" : undefined}
-      className="mx-auto flex w-full max-w-[210mm] flex-col gap-4 print:max-w-none print:gap-0"
-    >
-      {pages.map((page, index) => (
-        <A4Page
-          key={`${invoice.id}-page-${index}`}
-          pageNumber={index + 1}
-          totalPages={pages.length}
-          forPrint={forPrint}
-        >
-          {page.showHeader ? (
-            <PageHeader invoice={invoice} salesman={salesman} />
-          ) : (
-            <ContinuationHeader
-              invoice={invoice}
-              pageNumber={index + 1}
-              totalPages={pages.length}
-            />
-          )}
-
-          <LineItemsTable items={page.items} empty={invoice.lineItems.length === 0} />
-
-          {page.showTotals && (
-            <PageTotals
-              invoice={invoice}
-              previousBalance={previousBalance}
-              closingBalance={closingBalance}
-            />
-          )}
-
-          {!page.showTotals && (
-            <p className="mt-auto pt-4 text-[10px] text-muted">
-              Continued on next page…
-            </p>
-          )}
-        </A4Page>
-      ))}
-    </div>
-  );
+  if (forPrint) {
+    return (
+      <div
+        id="invoice-print-root"
+        className="mx-auto flex w-full max-w-[210mm] flex-col gap-4 print:max-w-none print:gap-0"
+      >
+        {pages.map((page, index) => (
+          <A4Page
+            key={`${invoice.id}-page-${index}`}
+            pageNumber={index + 1}
+            totalPages={pages.length}
+            forPrint
+          >
+            {renderPageContent(
+              page,
+              index,
+              pages,
+              invoice,
+              salesman,
+              previousBalance,
+              closingBalance,
+            )}
+          </A4Page>
+        ))}
+      </div>
+    );
+  }
 
   const content = (
     <div className="flex h-full min-h-0 flex-col">
@@ -189,7 +232,7 @@ export function InvoicePreview({
               </button>
             )}
             <p className="text-sm font-medium">{invoice.number}</p>
-            {pages.length > 1 && (
+            {hasMultiplePages && (
               <span className="text-xs text-muted">
                 {pages.length} pages
               </span>
@@ -206,18 +249,58 @@ export function InvoicePreview({
       )}
 
       <div
-        className={`flex-1 overflow-y-auto p-4 sm:p-5 print:bg-white print:p-0 ${
+        className={`flex min-h-0 flex-1 flex-col p-4 sm:p-5 ${
           hideToolbar ? "bg-transparent" : "bg-[#f0efeb]"
         }`}
       >
-        {documentPages}
+        <div className="mx-auto flex min-h-0 w-full max-w-[210mm] flex-1 flex-col">
+          {currentPage && (
+            <A4Page
+              pageNumber={pageIndex + 1}
+              totalPages={pages.length}
+              forPrint={false}
+            >
+              {renderPageContent(
+                currentPage,
+                pageIndex,
+                pages,
+                invoice,
+                salesman,
+                previousBalance,
+                closingBalance,
+              )}
+            </A4Page>
+          )}
+        </div>
+
+        {hasMultiplePages && (
+          <div className="mt-3 flex shrink-0 items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
+              disabled={pageIndex === 0}
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-sidebar disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="min-w-[5.5rem] text-center text-xs text-muted tabular-nums">
+              Page {pageIndex + 1} of {pages.length}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setPageIndex((i) => Math.min(pages.length - 1, i + 1))
+              }
+              disabled={pageIndex >= pages.length - 1}
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-sidebar disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
-
-  if (forPrint) {
-    return documentPages;
-  }
 
   if (asOverlay) {
     return (
@@ -398,9 +481,31 @@ function PageTotals({
   previousBalance?: number;
   closingBalance: number;
 }) {
+  const grossSubtotal = invoice.lineItems.reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
+  const returnsTotal =
+    invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
+  const discountAmount = invoice.discountAmount ?? 0;
+
   return (
     <div className="mt-auto flex flex-col gap-4 pt-5 sm:flex-row sm:justify-between">
       <div className="text-xs text-muted">
+        {(invoice.returnItems?.length ?? 0) > 0 && (
+          <div className="mb-3">
+            <p className="font-mono text-[10px] tracking-wider uppercase">
+              Returns
+            </p>
+            <ul className="mt-1 space-y-0.5 text-foreground">
+              {invoice.returnItems!.map((item) => (
+                <li key={item.id}>
+                  {item.name} × {item.qty} (−{formatINR(item.amount)})
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {invoice.notes ? (
           <>
             <p className="font-mono text-[10px] tracking-wider uppercase">
@@ -413,7 +518,16 @@ function PageTotals({
         ) : null}
       </div>
       <div className="min-w-[10rem] space-y-1.5 text-sm">
-        <Row label="Subtotal" value={formatINR(invoice.totalAmount)} />
+        <Row label="Subtotal" value={formatINR(grossSubtotal)} />
+        {returnsTotal > 0 && (
+          <Row label="Returns" value={`−${formatINR(returnsTotal)}`} />
+        )}
+        {discountAmount > 0 && (
+          <Row label="Discount" value={`−${formatINR(discountAmount)}`} />
+        )}
+        {(returnsTotal > 0 || discountAmount > 0) && (
+          <Row label="Invoice total" value={formatINR(invoice.totalAmount)} />
+        )}
         {previousBalance !== undefined && (
           <Row label="Prev. balance" value={formatINR(previousBalance)} />
         )}

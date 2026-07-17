@@ -1,5 +1,17 @@
 export type SalesmanCategory = "Salesmen";
 
+/** Per-unit discount applied on matching purchase lines */
+export type SalesmanDiscountRule = {
+  /** Match price list `item_type` (e.g. dibbi) */
+  itemType: "dibbi" | "box" | "cone" | "zip" | "elastic";
+  /** Optional case-insensitive name filter (e.g. "poly", "needle") */
+  itemNameIncludes?: string;
+  /** Rupees subtracted per matching unit purchased */
+  amountPerUnit: number;
+  /** Human-readable rule, e.g. "₹1 per Needle Poly Dibbi" */
+  description: string;
+};
+
 export type Salesman = {
   id: string;
   name: string;
@@ -8,6 +20,8 @@ export type Salesman = {
   isActive: boolean;
   pendingBalance: number;
   lastInvoiceAt: string | null;
+  /** Optional purchase discount rule used when creating invoices */
+  discountRule?: SalesmanDiscountRule | null;
 };
 
 export type InvoiceLineItem = {
@@ -30,6 +44,8 @@ export type Invoice = {
   amountPaid: number;
   lineItems: InvoiceLineItem[];
   notes?: string;
+  discountAmount?: number;
+  returnItems?: InvoiceLineItem[];
 };
 
 export type TimeRangePreset =

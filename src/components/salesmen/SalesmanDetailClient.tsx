@@ -16,8 +16,10 @@ import {
 import type {
   Invoice,
   Salesman,
+  SalesmanDiscountRule,
   TimeRangePreset,
 } from "@/lib/salesmen/types";
+import { ITEM_TYPES, ITEM_TYPE_LABELS, type ItemType } from "@/lib/auth/types";
 
 type DetailTab = "invoices" | "payments" | "requests" | "details";
 
@@ -55,7 +57,7 @@ export function SalesmanDetailClient({
   context,
   initialSalesman,
 }: SalesmanDetailClientProps) {
-  const salesman = initialSalesman;
+  const [salesman, setSalesman] = useState(initialSalesman);
   const invoices = useMemo(
     () => getInvoicesForSalesman(salesman.id),
     [salesman.id],
@@ -209,7 +211,7 @@ export function SalesmanDetailClient({
               Purchase &amp; Payments
             </p>
 
-            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-0.5">
                 {RANGE_OPTIONS.map((opt) => (
                   <button
@@ -289,81 +291,87 @@ export function SalesmanDetailClient({
         </section>
 
         {tab === "invoices" ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div className="min-w-0">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-lg font-medium tracking-tight">
-                  Invoices ({filteredInvoices.length})
-                </h2>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <select
-                    value={filterMonth}
-                    onChange={(e) => setFilterMonth(e.target.value)}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-                    aria-label="Filter by month"
-                  >
-                    <option value="all">All months</option>
-                    {MONTH_OPTIONS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-                    aria-label="Filter by year"
-                  >
-                    <option value="all">All years</option>
-                    {availableYears.map((year) => (
-                      <option key={year} value={String(year)}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setAddInvoiceOpen(true)}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
-                  >
-                    <span className="text-base leading-none">+</span>
-                    Add Invoice
-                  </button>
-                </div>
+          <div>
+            <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-col gap-3 bg-background px-4 py-3 sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:-mx-8 lg:px-8">
+              <h2 className="text-lg font-medium tracking-tight">
+                Invoices ({filteredInvoices.length})
+              </h2>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="rounded-lg border border-border bg-surface py-2 pr-9 pl-3 text-sm"
+                  aria-label="Filter by month"
+                >
+                  <option value="all">All months</option>
+                  {MONTH_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="rounded-lg border border-border bg-surface py-2 pr-9 pl-3 text-sm"
+                  aria-label="Filter by year"
+                >
+                  <option value="all">All years</option>
+                  {availableYears.map((year) => (
+                    <option key={year} value={String(year)}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setAddInvoiceOpen(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
+                >
+                  <span className="text-base leading-none">+</span>
+                  Add Invoice
+                </button>
               </div>
+            </div>
 
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
               <InvoiceList
                 invoices={filteredInvoices}
                 selectedId={selectedInvoice?.id ?? null}
                 onSelect={handleSelect}
               />
-            </div>
 
-            {selectedInvoice ? (
-              <div className="hidden print:hidden lg:block">
-                <div className="sticky top-4 flex max-h-[calc(100dvh-6rem)] flex-col">
-                  <InvoicePreview
-                    invoice={selectedInvoice}
-                    salesman={salesman}
-                    onClose={() => setSelectedInvoice(null)}
-                    onEdit={handleEdit}
-                    onPrint={() => handlePrint(selectedInvoice)}
-                    onWhatsApp={() => handleWhatsApp(selectedInvoice)}
-                  />
+              {selectedInvoice ? (
+                <div className="hidden print:hidden lg:block">
+                  <div className="sticky top-4 flex max-h-[calc(100dvh-6rem)] flex-col">
+                    <InvoicePreview
+                      invoice={selectedInvoice}
+                      salesman={salesman}
+                      onClose={() => setSelectedInvoice(null)}
+                      onEdit={handleEdit}
+                      onPrint={() => handlePrint(selectedInvoice)}
+                      onWhatsApp={() => handleWhatsApp(selectedInvoice)}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="hidden items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-16 text-sm text-muted lg:flex">
-                Select an invoice to preview
-              </div>
-            )}
+              ) : (
+                <div className="hidden items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-16 text-sm text-muted lg:flex">
+                  Select an invoice to preview
+                </div>
+              )}
+            </div>
           </div>
+        ) : tab === "details" ? (
+          <DiscountRuleEditor
+            salesman={salesman}
+            onChange={(rule) =>
+              setSalesman((prev) => ({ ...prev, discountRule: rule }))
+            }
+          />
         ) : (
           <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
             {tab === "payments" && "Payments tab coming soon"}
             {tab === "requests" && "Item requests coming soon"}
-            {tab === "details" && "Personal details coming soon"}
           </div>
         )}
         </main>
@@ -488,5 +496,144 @@ function TabButton({
     >
       {label}
     </button>
+  );
+}
+
+function DiscountRuleEditor({
+  salesman,
+  onChange,
+}: {
+  salesman: Salesman;
+  onChange: (rule: SalesmanDiscountRule | null) => void;
+}) {
+  const rule = salesman.discountRule ?? null;
+  const [enabled, setEnabled] = useState(Boolean(rule));
+  const [itemType, setItemType] = useState<ItemType>(rule?.itemType ?? "dibbi");
+  const [nameIncludes, setNameIncludes] = useState(
+    rule?.itemNameIncludes ?? "",
+  );
+  const [amountPerUnit, setAmountPerUnit] = useState(
+    rule ? String(rule.amountPerUnit) : "1",
+  );
+
+  function buildDescription(
+    type: ItemType,
+    name: string,
+    amount: number,
+  ): string {
+    const typeLabel = ITEM_TYPE_LABELS[type];
+    const namePart = name.trim() ? ` ${name.trim()}` : "";
+    return `₹${amount} per${namePart} ${typeLabel}`;
+  }
+
+  function save() {
+    if (!enabled) {
+      onChange(null);
+      return;
+    }
+    const amount = Number(amountPerUnit);
+    if (!Number.isFinite(amount) || amount < 0) return;
+    const next: SalesmanDiscountRule = {
+      itemType,
+      itemNameIncludes: nameIncludes.trim() || undefined,
+      amountPerUnit: amount,
+      description: buildDescription(itemType, nameIncludes, amount),
+    };
+    onChange(next);
+  }
+
+  return (
+    <div className="mx-auto max-w-lg space-y-5 rounded-xl border border-border bg-surface p-4 sm:p-6">
+      <div>
+        <h2 className="text-base font-medium">Personal details</h2>
+        <p className="mt-1 text-sm text-muted">
+          Phone +{salesman.phone} · Discount rules apply on salesmen invoices
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          className="rounded border-border"
+        />
+        Enable per-unit purchase discount
+      </label>
+
+      {enabled && (
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Item type
+            </span>
+            <select
+              value={itemType}
+              onChange={(e) => setItemType(e.target.value as ItemType)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+            >
+              {ITEM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {ITEM_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Name contains (optional)
+            </span>
+            <input
+              type="text"
+              value={nameIncludes}
+              placeholder='e.g. "poly" or "needle"'
+              onChange={(e) => setNameIncludes(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Discount per unit (₹)
+            </span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={amountPerUnit}
+              onChange={(e) => setAmountPerUnit(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40"
+            />
+          </label>
+
+          <p className="text-xs text-muted">
+            Preview:{" "}
+            {buildDescription(
+              itemType,
+              nameIncludes,
+              Number(amountPerUnit) || 0,
+            )}
+          </p>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={save}
+        className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
+      >
+        Save discount rule
+      </button>
+
+      {salesman.discountRule && (
+        <p className="text-sm text-muted">
+          Current:{" "}
+          <span className="text-foreground">
+            {salesman.discountRule.description}
+          </span>
+        </p>
+      )}
+    </div>
   );
 }

@@ -15,6 +15,12 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: true,
     pendingBalance: 30000,
     lastInvoiceAt: "2026-07-15T14:30:00.000Z",
+    discountRule: {
+      itemType: "dibbi",
+      itemNameIncludes: "poly",
+      amountPerUnit: 1,
+      description: "₹1 per Needle Poly Dibbi",
+    },
   },
   {
     id: "sm-ramesh",
@@ -24,6 +30,12 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: true,
     pendingBalance: 12500,
     lastInvoiceAt: "2026-07-12T10:15:00.000Z",
+    discountRule: {
+      itemType: "dibbi",
+      itemNameIncludes: "poly",
+      amountPerUnit: 1,
+      description: "₹1 per Needle Poly Dibbi",
+    },
   },
   {
     id: "sm-suresh",
@@ -33,6 +45,7 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: true,
     pendingBalance: 0,
     lastInvoiceAt: "2026-07-08T16:45:00.000Z",
+    discountRule: null,
   },
   {
     id: "sm-anil",
@@ -42,6 +55,7 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: false,
     pendingBalance: 8500,
     lastInvoiceAt: "2026-03-20T11:00:00.000Z",
+    discountRule: null,
   },
   {
     id: "sm-vijay",
@@ -51,6 +65,11 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: true,
     pendingBalance: 45200,
     lastInvoiceAt: "2026-07-16T09:20:00.000Z",
+    discountRule: {
+      itemType: "dibbi",
+      amountPerUnit: 1,
+      description: "₹1 per Dibbi",
+    },
   },
   {
     id: "sm-prakash",
@@ -60,6 +79,7 @@ export const MOCK_SALESMEN: Salesman[] = [
     isActive: false,
     pendingBalance: 0,
     lastInvoiceAt: "2025-11-04T13:30:00.000Z",
+    discountRule: null,
   },
 ];
 
@@ -344,6 +364,36 @@ export function formatINR(value: number): string {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
+/** Sum matching purchase units × rule.amountPerUnit */
+export function calculateSalesmanDiscount(
+  lines: Array<{
+    priceListItemId: string | null | undefined;
+    qty: number;
+  }>,
+  priceList: Array<{
+    id: string;
+    item_name: string;
+    item_type: string;
+  }>,
+  rule: Salesman["discountRule"],
+): number {
+  if (!rule || rule.amountPerUnit <= 0) return 0;
+
+  let units = 0;
+  const needle = rule.itemNameIncludes?.trim().toLowerCase();
+
+  for (const line of lines) {
+    if (!line.priceListItemId || !(line.qty > 0)) continue;
+    const item = priceList.find((p) => p.id === line.priceListItemId);
+    if (!item) continue;
+    if (item.item_type !== rule.itemType) continue;
+    if (needle && !item.item_name.toLowerCase().includes(needle)) continue;
+    units += line.qty;
+  }
+
+  return Math.round(units * rule.amountPerUnit * 100) / 100;
+}
+
 export function formatInvoiceDate(iso: string): {
   weekday: string;
   day: string;
@@ -359,9 +409,9 @@ export function formatInvoiceDate(iso: string): {
       year: "numeric",
     }),
     time: d.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
-      hour12: false,
+      hour12: true,
     }),
   };
 }

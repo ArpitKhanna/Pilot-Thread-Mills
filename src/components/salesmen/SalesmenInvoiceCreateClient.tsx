@@ -1,19 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import {
   createEmptyDraftLine,
+  createInitialDraftLines,
   InvoiceLineEntry,
   type DraftLine,
 } from "@/components/salesmen/InvoiceLineEntry";
+import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   buildWhatsAppShareUrl,
+  calculateSalesmanDiscount,
   formatINR,
 } from "@/lib/salesmen/mock-data";
 import type { Invoice, InvoiceLineItem, Salesman } from "@/lib/salesmen/types";
@@ -36,9 +38,16 @@ export function SalesmenInvoiceCreateClient({
   const [salesmanId, setSalesmanId] = useState("");
   const [salesmanQuery, setSalesmanQuery] = useState("");
   const [salesmanOpen, setSalesmanOpen] = useState(false);
-  const [lines, setLines] = useState<DraftLine[]>([createEmptyDraftLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    createInitialDraftLines(5),
+  );
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnLine, setReturnLine] = useState<DraftLine>(() =>
+    createEmptyDraftLine(),
+  );
+  const [discount, setDiscount] = useState("");
+  const [discountManual, setDiscountManual] = useState(false);
   const [amountPaid, setAmountPaid] = useState("");
-  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
 
@@ -69,6 +78,41 @@ export function SalesmenInvoiceCreateClient({
     [filledLines],
   );
 
+  const filledReturn =
+    returnOpen &&
+    returnLine.priceListItemId &&
+    returnLine.name.trim() &&
+    Number(returnLine.qty) > 0 &&
+    returnLine.unitPrice > 0
+      ? returnLine
+      : null;
+
+  const returnAmount = filledReturn?.amount ?? 0;
+
+  const suggestedDiscount = useMemo(
+    () =>
+      calculateSalesmanDiscount(
+        filledLines.map((l) => ({
+          priceListItemId: l.priceListItemId,
+          qty: Number(l.qty),
+        })),
+        priceList,
+        salesman?.discountRule,
+      ),
+    [filledLines, priceList, salesman?.discountRule],
+  );
+
+  useEffect(() => {
+    if (discountManual) return;
+    setDiscount(suggestedDiscount > 0 ? String(suggestedDiscount) : "");
+  }, [suggestedDiscount, discountManual]);
+
+  const discountNum = Number(discount);
+  const discountAmount =
+    Number.isFinite(discountNum) && discountNum > 0 ? discountNum : 0;
+
+  const invoiceTotal = Math.max(0, subtotal - returnAmount - discountAmount);
+
   const previousBalance = salesman?.pendingBalance ?? 0;
   const paidNum = Number(amountPaid);
   const paid = Number.isFinite(paidNum) && paidNum > 0 ? paidNum : 0;
@@ -83,26 +127,41 @@ export function SalesmenInvoiceCreateClient({
       priceListItemId: l.priceListItemId ?? undefined,
     }));
 
+    const returnItems: InvoiceLineItem[] | undefined = filledReturn
+      ? [
+          {
+            id: filledReturn.key,
+            name: filledReturn.name,
+            qty: Number(filledReturn.qty),
+            unitPrice: filledReturn.unitPrice,
+            amount: filledReturn.amount,
+            priceListItemId: filledReturn.priceListItemId ?? undefined,
+          },
+        ]
+      : undefined;
+
     return {
       id: draftId,
       number: draftNumber,
       salesmanId: salesman?.id ?? "",
       issuedAt,
       itemCount: lineItems.length,
-      totalAmount: subtotal,
+      totalAmount: invoiceTotal,
       amountPaid: paid,
       lineItems,
-      notes: notes.trim() || undefined,
+      discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      returnItems,
     };
   }, [
     draftId,
     draftNumber,
     issuedAt,
     filledLines,
+    filledReturn,
     salesman?.id,
-    subtotal,
+    invoiceTotal,
     paid,
-    notes,
+    discountAmount,
   ]);
 
   const previewSalesman: Salesman = salesman ?? {
@@ -120,6 +179,22 @@ export function SalesmenInvoiceCreateClient({
     setSalesmanQuery(s.name);
     setSalesmanOpen(false);
     setError(null);
+    setDiscountManual(false);
+  }
+
+  function updateReturn(patch: Partial<DraftLine>) {
+    setReturnLine((prev) => {
+      const merged = { ...prev, ...patch };
+      const qtyNum = Number(merged.qty);
+      const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
+      merged.amount = Math.round(qty * merged.unitPrice * 100) / 100;
+      return merged;
+    });
+  }
+
+  function clearReturn() {
+    setReturnOpen(false);
+    setReturnLine(createEmptyDraftLine());
   }
 
   function validateForGenerate(): boolean {
@@ -175,13 +250,7 @@ export function SalesmenInvoiceCreateClient({
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden print:hidden">
         <div className="flex shrink-0 flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div className="min-w-0">
-            <Link
-              href="/dashboard"
-              className="text-xs text-muted hover:text-foreground"
-            >
-              ← Back to home
-            </Link>
-            <h1 className="mt-1 text-xl font-medium tracking-tight sm:text-2xl">
+            <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               Create New Invoice
             </h1>
           </div>
@@ -197,9 +266,8 @@ export function SalesmenInvoiceCreateClient({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-2">
-          {/* Left: builder */}
           <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r lg:px-8">
-            <div className="mx-auto max-w-xl space-y-6">
+            <div className="mx-auto max-w-2xl space-y-6">
               <section className="space-y-4">
                 <h2 className="text-sm font-medium">Invoice Details</h2>
 
@@ -263,32 +331,10 @@ export function SalesmenInvoiceCreateClient({
                     <span className="mb-1.5 block text-xs font-medium text-muted">
                       Last balance
                     </span>
-                    <div className="rounded-lg border border-border bg-sidebar px-3 py-2.5 text-sm tabular-nums">
+                    <p className="py-2.5 text-sm tabular-nums text-foreground">
                       {salesman ? formatINR(previousBalance) : "—"}
-                    </div>
+                    </p>
                   </div>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Amount paid
-                    </span>
-                    <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
-                      <span className="flex items-center border-r border-border bg-sidebar px-2.5 text-xs text-muted">
-                        ₹
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        inputMode="decimal"
-                        value={amountPaid}
-                        placeholder="0"
-                        disabled={!salesman}
-                        className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
-                        onChange={(e) => setAmountPaid(e.target.value)}
-                      />
-                    </div>
-                  </label>
                 </div>
 
                 {salesman && (
@@ -296,12 +342,25 @@ export function SalesmenInvoiceCreateClient({
                     {salesman.phone ? `+${salesman.phone}` : null}
                     {salesman.phone ? " · " : null}
                     {salesman.category}
+                    {salesman.discountRule ? (
+                      <>
+                        {" · "}
+                        <span className="text-foreground">
+                          {salesman.discountRule.description}
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 )}
               </section>
 
               <section className="space-y-3">
-                <h2 className="text-sm font-medium">Items Details</h2>
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-base font-medium">Items Details</h2>
+                  <p className="text-xs text-muted">
+                    Tab through item → qty · Enter for next row
+                  </p>
+                </div>
                 <InvoiceLineEntry
                   priceList={priceList}
                   lines={lines}
@@ -318,49 +377,171 @@ export function SalesmenInvoiceCreateClient({
                     No approved price list items available.
                   </p>
                 )}
-              </section>
 
-              <section className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Subtotal
-                    </span>
-                    <div className="rounded-lg border border-border bg-sidebar px-3 py-2.5 text-sm tabular-nums">
-                      {formatINR(subtotal)}
+                {!returnOpen ? (
+                  <button
+                    type="button"
+                    disabled={!salesman}
+                    onClick={() => setReturnOpen(true)}
+                    className="text-sm text-muted underline-offset-2 hover:text-foreground hover:underline disabled:opacity-40"
+                  >
+                    + Add return
+                  </button>
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-dashed border-border bg-sidebar/40 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Return item</p>
+                      <button
+                        type="button"
+                        onClick={clearReturn}
+                        className="text-xs text-muted hover:text-foreground"
+                      >
+                        Remove
+                      </button>
                     </div>
+                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2">
+                      <ItemNameCombobox
+                        items={priceList}
+                        value={returnLine.name}
+                        disabled={!salesman}
+                        placeholder="Returning item…"
+                        onChange={(name) =>
+                          updateReturn({
+                            name,
+                            priceListItemId: null,
+                            unitPrice: 0,
+                          })
+                        }
+                        onSelect={(item) =>
+                          updateReturn({
+                            name: item.item_name,
+                            priceListItemId: item.id,
+                            unitPrice: item.salesmen_price,
+                          })
+                        }
+                        onTabToQty={() => undefined}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        inputMode="decimal"
+                        disabled={!salesman}
+                        value={returnLine.qty}
+                        placeholder="Qty"
+                        className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+                        onChange={(e) =>
+                          updateReturn({ qty: e.target.value })
+                        }
+                      />
+                      <span className="text-right text-sm tabular-nums text-[#c45c26]">
+                        {returnAmount > 0
+                          ? `−${formatINR(returnAmount)}`
+                          : "—"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted">
+                      Return amount is subtracted from the invoice total.
+                    </p>
                   </div>
-                  <div>
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Prev. balance
+                )}
+
+                <div>
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    Subtotal
+                  </span>
+                  <div className="flex overflow-hidden rounded-lg border border-border bg-sidebar">
+                    <span className="flex items-center border-r border-border px-3 text-sm text-muted">
+                      ₹
                     </span>
-                    <div className="rounded-lg border border-border bg-sidebar px-3 py-2.5 text-sm tabular-nums">
-                      {formatINR(previousBalance)}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Closing
-                    </span>
-                    <div className="rounded-lg border border-border bg-sidebar px-3 py-2.5 text-sm font-medium tabular-nums">
-                      {formatINR(previousBalance + subtotal - paid)}
-                    </div>
+                    <p className="min-w-0 flex-1 px-3 py-2.5 text-sm tabular-nums">
+                      {subtotal.toLocaleString("en-IN", {
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
                   </div>
                 </div>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-muted">
-                    Notes to salesman
+                  <span className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2 text-xs font-medium text-muted">
+                    <span>Discount</span>
+                    {salesman?.discountRule && suggestedDiscount > 0 && (
+                      <span className="font-normal">
+                        Auto: {formatINR(suggestedDiscount)}
+                        {discountManual ? (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              className="underline-offset-2 hover:underline"
+                              onClick={() => {
+                                setDiscountManual(false);
+                                setDiscount(String(suggestedDiscount));
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </>
+                        ) : null}
+                      </span>
+                    )}
                   </span>
-                  <textarea
-                    value={notes}
-                    rows={3}
-                    disabled={!salesman}
-                    placeholder="Optional message or payment notes"
-                    className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
+                  <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                    <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      inputMode="decimal"
+                      value={discount}
+                      placeholder="0"
+                      disabled={!salesman}
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
+                      onChange={(e) => {
+                        setDiscountManual(true);
+                        setDiscount(e.target.value);
+                      }}
+                    />
+                  </div>
+                  {salesman?.discountRule && (
+                    <p className="mt-1 text-xs text-muted">
+                      Rule: {salesman.discountRule.description}
+                    </p>
+                  )}
                 </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    Amount paid
+                  </span>
+                  <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                    <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      inputMode="decimal"
+                      value={amountPaid}
+                      placeholder="0"
+                      disabled={!salesman}
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
+                      onChange={(e) => setAmountPaid(e.target.value)}
+                    />
+                  </div>
+                </label>
+
+                {(returnAmount > 0 || discountAmount > 0) && (
+                  <p className="text-sm tabular-nums text-muted">
+                    Invoice total:{" "}
+                    <span className="font-medium text-foreground">
+                      {formatINR(invoiceTotal)}
+                    </span>
+                  </p>
+                )}
               </section>
 
               {error && (
@@ -381,7 +562,6 @@ export function SalesmenInvoiceCreateClient({
             </div>
           </div>
 
-          {/* Right: live preview */}
           <div className="hidden min-h-0 overflow-y-auto bg-[#f0efeb] px-4 py-5 sm:px-6 lg:block lg:px-8">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-medium">Preview</h2>
@@ -397,7 +577,6 @@ export function SalesmenInvoiceCreateClient({
         </div>
       </main>
 
-      {/* Print copy */}
       <div className="hidden print:block">
         <InvoicePreview
           invoice={liveInvoice}
