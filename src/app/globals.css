@@ -33,3 +33,23 @@ body {
 .font-logo-serif {
   font-family: Georgia, "Times New Roman", serif;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #invoice-print-root,
+  #invoice-print-root * {
+    visibility: visible;
+  }
+
+  #invoice-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
