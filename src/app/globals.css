@@ -52,4 +52,20 @@ body {
     box-shadow: none !important;
     border: none !important;
   }
+
+  .invoice-a4-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    max-width: none !important;
+    aspect-ratio: auto !important;
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .invoice-a4-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
 }

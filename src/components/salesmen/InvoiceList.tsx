@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
   formatINR,
   formatInvoiceDate,
@@ -35,7 +34,7 @@ export function InvoiceList({
   if (invoices.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-        No invoices yet
+        No invoices match these filters
       </div>
     );
   }
@@ -49,26 +48,22 @@ export function InvoiceList({
           <h3 className="mb-2 px-1 text-xs font-medium tracking-wide text-muted uppercase">
             {group.label}
           </h3>
-          <ul className="overflow-hidden rounded-xl border border-border bg-surface">
-            {group.items.map((invoice, index) => {
+          {/* p-1 + no overflow-hidden so selection ring is not clipped */}
+          <ul className="space-y-1 rounded-xl border border-border bg-surface p-1">
+            {group.items.map((invoice) => {
               const date = formatInvoiceDate(invoice.issuedAt);
               const selected = selectedId === invoice.id;
               const balance = invoice.totalAmount - invoice.amountPaid;
 
               return (
-                <li
-                  key={invoice.id}
-                  className={
-                    index > 0 ? "border-t border-border" : undefined
-                  }
-                >
+                <li key={invoice.id}>
                   <button
                     type="button"
                     onClick={() => onSelect(invoice)}
-                    className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors sm:gap-4 sm:px-4 ${
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
                       selected
-                        ? "bg-[#fff7f0] ring-2 ring-inset ring-[#e86f2a]"
-                        : "hover:bg-sidebar/50"
+                        ? "bg-[#fff7f0] ring-2 ring-[#e86f2a]"
+                        : "hover:bg-sidebar/60"
                     }`}
                   >
                     <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">

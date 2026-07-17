@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
@@ -36,6 +36,21 @@ const RANGE_OPTIONS: { id: TimeRangePreset; label: string }[] = [
   { id: "custom", label: "Custom" },
 ];
 
+const MONTH_OPTIONS = [
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+] as const;
+
 export function SalesmanDetailClient({
   context,
   initialSalesman,
@@ -50,12 +65,47 @@ export function SalesmanDetailClient({
   const [rangePreset, setRangePreset] = useState<TimeRangePreset>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [filterMonth, setFilterMonth] = useState<string>("all");
+  const [filterYear, setFilterYear] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
     () => invoices[0] ?? null,
   );
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [editNoticeOpen, setEditNoticeOpen] = useState(false);
   const [addInvoiceOpen, setAddInvoiceOpen] = useState(false);
+
+  const availableYears = useMemo(() => {
+    const years = new Set(
+      invoices.map((inv) => new Date(inv.issuedAt).getFullYear()),
+    );
+    return Array.from(years).sort((a, b) => b - a);
+  }, [invoices]);
+
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((inv) => {
+      const d = new Date(inv.issuedAt);
+      if (filterYear !== "all" && d.getFullYear() !== Number(filterYear)) {
+        return false;
+      }
+      if (filterMonth !== "all" && d.getMonth() !== Number(filterMonth)) {
+        return false;
+      }
+      return true;
+    });
+  }, [invoices, filterMonth, filterYear]);
+
+  useEffect(() => {
+    if (filteredInvoices.length === 0) {
+      setSelectedInvoice(null);
+      return;
+    }
+    setSelectedInvoice((current) => {
+      if (current && filteredInvoices.some((inv) => inv.id === current.id)) {
+        return current;
+      }
+      return filteredInvoices[0] ?? null;
+    });
+  }, [filteredInvoices]);
 
   const summary = useMemo(() => {
     const range = resolveDateRange(rangePreset, customFrom, customTo);
@@ -240,15 +290,59 @@ export function SalesmanDetailClient({
 
         {tab === "invoices" ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <InvoiceList
-              invoices={invoices}
-              selectedId={selectedInvoice?.id ?? null}
-              onSelect={handleSelect}
-            />
+            <div className="min-w-0">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-lg font-medium tracking-tight">
+                  Invoices ({filteredInvoices.length})
+                </h2>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <select
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                    aria-label="Filter by month"
+                  >
+                    <option value="all">All months</option>
+                    {MONTH_OPTIONS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value)}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                    aria-label="Filter by year"
+                  >
+                    <option value="all">All years</option>
+                    {availableYears.map((year) => (
+                      <option key={year} value={String(year)}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAddInvoiceOpen(true)}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    Add Invoice
+                  </button>
+                </div>
+              </div>
+
+              <InvoiceList
+                invoices={filteredInvoices}
+                selectedId={selectedInvoice?.id ?? null}
+                onSelect={handleSelect}
+              />
+            </div>
 
             {selectedInvoice ? (
               <div className="hidden print:hidden lg:block">
-                <div className="sticky top-4">
+                <div className="sticky top-4 flex max-h-[calc(100dvh-6rem)] flex-col">
                   <InvoicePreview
                     invoice={selectedInvoice}
                     salesman={salesman}
@@ -273,17 +367,6 @@ export function SalesmanDetailClient({
           </div>
         )}
         </main>
-
-        <div className="shrink-0 border-t border-border bg-background px-4 py-3 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => setAddInvoiceOpen(true)}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-surface hover:bg-foreground/90 sm:ml-auto sm:w-auto sm:min-w-[12rem]"
-          >
-            <span className="text-lg leading-none">+</span>
-            Add Invoice
-          </button>
-        </div>
       </div>
 
       {/* Mobile preview overlay — only after explicit select */}
