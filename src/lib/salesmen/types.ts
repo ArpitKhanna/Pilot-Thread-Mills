@@ -16,6 +16,8 @@ export type InvoiceLineItem = {
   qty: number;
   unitPrice: number;
   amount: number;
+  /** Linked catalog item when created from the price list */
+  priceListItemId?: string;
 };
 
 export type Invoice = {
