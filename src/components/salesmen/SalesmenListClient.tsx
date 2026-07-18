@@ -13,6 +13,20 @@ type SalesmenListClientProps = {
   initialSalesmen: Salesman[];
 };
 
+type FormState = {
+  name: string;
+  phone: string;
+  alternatePhone: string;
+  lastBalance: string;
+};
+
+const emptyForm: FormState = {
+  name: "",
+  phone: "",
+  alternatePhone: "",
+  lastBalance: "",
+};
+
 export function SalesmenListClient({
   context,
   initialSalesmen,
@@ -20,13 +34,12 @@ export function SalesmenListClient({
   const [salesmen, setSalesmen] = useState<Salesman[]>(initialSalesmen);
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [search, setSearch] = useState("");
-  const [addOpen, setAddOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [alternatePhone, setAlternatePhone] = useState("");
-  const [lastBalance, setLastBalance] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Salesman | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   const displayed = useMemo(() => {
     return salesmen
@@ -50,64 +63,88 @@ export function SalesmenListClient({
   const activeCount = salesmen.filter((s) => s.isActive).length;
   const inactiveCount = salesmen.filter((s) => !s.isActive).length;
 
-  function resetForm() {
-    setName("");
-    setPhone("");
-    setAlternatePhone("");
-    setLastBalance("");
-    setError(null);
+  function openAddModal() {
+    setEditing(null);
+    setForm(emptyForm);
+    setError("");
+    setModalOpen(true);
   }
 
-  function closeAdd() {
-    if (saving) return;
-    setAddOpen(false);
-    resetForm();
+  function openEditModal(salesman: Salesman) {
+    setEditing(salesman);
+    setForm({
+      name: salesman.name,
+      phone: salesman.phone,
+      alternatePhone: salesman.alternatePhone,
+      lastBalance:
+        salesman.pendingBalance > 0 ? String(salesman.pendingBalance) : "",
+    });
+    setError("");
+    setModalOpen(true);
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const trimmedName = name.trim();
-    const trimmedPhone = phone.trim();
-    if (!trimmedName) {
-      setError("Salesman name is required");
-      return;
-    }
-    if (!trimmedPhone) {
-      setError("Phone number is required");
-      return;
-    }
-
+  async function handleSave() {
     setSaving(true);
+    setError("");
     try {
-      const res = await fetch("/api/salesmen", {
-        method: "POST",
+      const trimmedName = form.name.trim();
+      const trimmedPhone = form.phone.trim();
+      if (!trimmedName) throw new Error("Salesman Name is required");
+      if (!trimmedPhone) throw new Error("Phone Number is required");
+
+      const payload = {
+        name: trimmedName,
+        phone: trimmedPhone,
+        alternatePhone: form.alternatePhone.trim(),
+        pendingBalance:
+          form.lastBalance.trim() === ""
+            ? 0
+            : Number(form.lastBalance),
+      };
+
+      const url = editing
+        ? `/api/salesmen/${encodeURIComponent(editing.id)}`
+        : "/api/salesmen";
+      const res = await fetch(url, {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: trimmedName,
-          phone: trimmedPhone,
-          alternatePhone: alternatePhone.trim() || undefined,
-          pendingBalance:
-            lastBalance.trim() === "" ? undefined : Number(lastBalance),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = (await res.json()) as {
         salesman?: Salesman;
         error?: string;
       };
       if (!res.ok || !data.salesman) {
-        setError(data.error ?? "Failed to create salesman");
-        return;
+        throw new Error(data.error ?? "Failed to save");
       }
-      setSalesmen((prev) => [data.salesman!, ...prev]);
-      setTab("active");
-      setAddOpen(false);
-      resetForm();
-    } catch {
-      setError("Failed to create salesman");
+
+      if (editing) {
+        setSalesmen((prev) =>
+          prev.map((s) => (s.id === editing.id ? data.salesman! : s)),
+        );
+      } else {
+        setSalesmen((prev) => [data.salesman!, ...prev]);
+        setTab("active");
+      }
+      setModalOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this salesman?")) return;
+    const res = await fetch(`/api/salesmen/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      alert(data.error ?? "Failed to delete salesman");
+      return;
+    }
+    setSalesmen((prev) => prev.filter((s) => s.id !== id));
   }
 
   return (
@@ -130,17 +167,34 @@ export function SalesmenListClient({
               Track purchases, payments, and pending balances
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              setAddOpen(true);
-            }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 sm:w-auto"
-          >
-            <span className="text-lg leading-none">+</span>
-            Add New
-          </button>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setEditMode((e) => !e)}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+                editMode
+                  ? "border-foreground bg-foreground text-surface"
+                  : "border-border bg-surface hover:bg-sidebar"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                />
+              </svg>
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
+            >
+              <span className="text-lg leading-none">+</span>
+              Add New
+            </button>
+          </div>
         </div>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -198,148 +252,164 @@ export function SalesmenListClient({
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {displayed.map((salesman) => (
-              <Link
+              <article
                 key={salesman.id}
-                href={`/entities/salesmen/${salesman.id}`}
                 className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-foreground/20 hover:bg-sidebar/40"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="truncate text-base font-medium">
-                    {salesman.name}
-                  </h2>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      salesman.isActive
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-sidebar text-muted"
-                    }`}
-                  >
-                    {salesman.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
-                  <div>
-                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                      Pending
-                    </p>
-                    <p
-                      className={`mt-0.5 font-medium ${
-                        salesman.pendingBalance > 0
-                          ? "text-[#c45c26]"
-                          : "text-foreground"
+                <Link
+                  href={`/entities/salesmen/${salesman.id}`}
+                  className="block"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="truncate text-base font-medium">
+                      {salesman.name}
+                    </h2>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        salesman.isActive
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-sidebar text-muted"
                       }`}
                     >
-                      {formatINR(salesman.pendingBalance)}
-                    </p>
+                      {salesman.isActive ? "Active" : "Inactive"}
+                    </span>
                   </div>
-                  <div>
-                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                      Last Invoice
-                    </p>
-                    <p className="mt-0.5 text-sm font-medium">
-                      {formatShortDate(salesman.lastInvoiceAt)}
-                    </p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
+                    <div>
+                      <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+                        Pending
+                      </p>
+                      <p
+                        className={`mt-0.5 font-medium ${
+                          salesman.pendingBalance > 0
+                            ? "text-[#c45c26]"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {formatINR(salesman.pendingBalance)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+                        Last Invoice
+                      </p>
+                      <p className="mt-0.5 text-sm font-medium">
+                        {formatShortDate(salesman.lastInvoiceAt)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
+
+                {editMode && (
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(salesman)}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(salesman.id)}
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </article>
             ))}
           </div>
         )}
       </main>
 
       <Modal
-        open={addOpen}
-        onClose={closeAdd}
-        title="Add New Salesman"
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? "Edit Salesman" : "Add New Salesman"}
         footer={
-          <div className="flex w-full flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeAdd}
-              disabled={saving}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="add-salesman-form"
-              disabled={saving}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Create salesman"}
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
+          >
+            {saving ? "Saving…" : editing ? "Save Salesman" : "Save Salesman"}
+          </button>
         }
       >
-        <form id="add-salesman-form" onSubmit={handleCreate} className="space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Salesman name
-            </span>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Salesman Name<span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-              placeholder="Full name"
+              value={form.name}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, name: e.target.value }))
+              }
+              placeholder="Salesman Name"
+              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Phone number
-            </span>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Phone Number<span className="text-red-500">*</span>
+            </label>
             <input
               type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-              placeholder="919876543210"
+              value={form.phone}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, phone: e.target.value }))
+              }
+              placeholder="Phone Number"
+              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Alternate phone number
-            </span>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Alternate Phone Number
+            </label>
             <input
               type="tel"
-              value={alternatePhone}
-              onChange={(e) => setAlternatePhone(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-              placeholder="Optional"
+              value={form.alternatePhone}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, alternatePhone: e.target.value }))
+              }
+              placeholder="Alternate Phone Number"
+              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Last balance
-            </span>
-            <div className="flex overflow-hidden rounded-lg border border-border bg-background focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
-              <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
-                ₹
-              </span>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Last Balance
+            </label>
+            <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
+              <span className="mr-2 text-muted">₹</span>
               <input
                 type="number"
-                min={0}
-                step="any"
-                value={lastBalance}
-                onChange={(e) => setLastBalance(e.target.value)}
-                className="w-full min-w-0 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none"
-                placeholder="Optional"
+                min="0"
+                value={form.lastBalance}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, lastBalance: e.target.value }))
+                }
+                placeholder="Last Balance"
+                className="w-full bg-transparent text-sm outline-none"
               />
             </div>
-          </label>
+          </div>
 
           {error && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </p>
           )}
-        </form>
+        </div>
       </Modal>
     </>
   );

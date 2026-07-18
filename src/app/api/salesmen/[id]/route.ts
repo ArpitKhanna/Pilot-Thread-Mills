@@ -76,18 +76,18 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const name = String(body.name ?? "").trim();
+  const name = String(body.name ?? existing.name).trim();
   if (!name) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  const entityTypeRaw = String(body.entityType ?? "salesman");
+  const entityTypeRaw = String(body.entityType ?? existing.entityType);
   if (entityTypeRaw !== "salesman" && entityTypeRaw !== "customer") {
     return NextResponse.json({ error: "Invalid entity type" }, { status: 400 });
   }
   const entityType = entityTypeRaw as SalesmanEntityType;
 
-  const phone = String(body.phone ?? "").trim();
+  const phone = String(body.phone ?? existing.phone).trim();
   if (!phone) {
     return NextResponse.json(
       { error: "Phone number is required" },
@@ -95,22 +95,45 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const alternatePhone = String(body.alternatePhone ?? "").trim();
-  const parsedRules = parseDiscountRules(body.discountRules ?? []);
-  if ("error" in parsedRules) {
-    return NextResponse.json({ error: parsedRules.error }, { status: 400 });
+  const alternatePhone =
+    body.alternatePhone !== undefined
+      ? String(body.alternatePhone ?? "").trim()
+      : existing.alternatePhone;
+
+  const updates: Record<string, unknown> = {
+    name,
+    phone,
+    alternate_phone: alternatePhone,
+    entity_type: entityType,
+    category: entityType === "customer" ? "Customer" : "Salesmen",
+  };
+
+  if (body.discountRules !== undefined) {
+    const parsedRules = parseDiscountRules(body.discountRules);
+    if ("error" in parsedRules) {
+      return NextResponse.json({ error: parsedRules.error }, { status: 400 });
+    }
+    updates.discount_rules = parsedRules;
+  }
+
+  if (typeof body.isActive === "boolean") {
+    updates.is_active = body.isActive;
+  }
+
+  if (body.pendingBalance !== undefined) {
+    const pendingBalance = Number(body.pendingBalance);
+    if (!Number.isFinite(pendingBalance) || pendingBalance < 0) {
+      return NextResponse.json(
+        { error: "Last balance must be a valid non-negative amount" },
+        { status: 400 },
+      );
+    }
+    updates.pending_balance = Math.round(pendingBalance * 100) / 100;
   }
 
   const { error: updateError } = await supabase
     .from("salesmen")
-    .update({
-      name,
-      phone,
-      alternate_phone: alternatePhone,
-      entity_type: entityType,
-      category: entityType === "customer" ? "Customer" : "Salesmen",
-      discount_rules: parsedRules,
-    })
+    .update(updates)
     .eq("id", id);
 
   if (updateError) {
@@ -123,4 +146,58 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const salesman = await getSalesman(supabase, id);
   return NextResponse.json({ salesman });
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await getAuthedProfile();
+  if ("error" in auth && auth.error) return auth.error;
+  const { supabase, profile } = auth;
+
+  if (!(await hasEntitySalesmenAccess(supabase, profile.role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await context.params;
+  const existing = await getSalesman(supabase, id);
+  if (!existing) {
+    return NextResponse.json({ error: "Salesman not found" }, { status: 404 });
+  }
+
+  const { count, error: countError } = await supabase
+    .from("salesmen_invoices")
+    .select("id", { count: "exact", head: true })
+    .eq("salesman_id", id);
+
+  if (countError) {
+    console.error(countError);
+    return NextResponse.json(
+      { error: "Failed to check salesman invoices" },
+      { status: 500 },
+    );
+  }
+
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This salesman has invoices and cannot be deleted. Mark them inactive instead.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("salesmen")
+    .delete()
+    .eq("id", id);
+
+  if (deleteError) {
+    console.error(deleteError);
+    return NextResponse.json(
+      { error: deleteError.message || "Failed to delete salesman" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }

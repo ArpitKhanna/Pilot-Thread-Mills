@@ -52,6 +52,7 @@ function syncFromSalesman(salesman: Salesman) {
     entityType: salesman.entityType,
     phone: salesman.phone,
     alternatePhone: salesman.alternatePhone,
+    isActive: salesman.isActive,
     rules: rulesToDraft(salesman.discountRules),
   };
 }
@@ -70,6 +71,7 @@ export function PersonalDetailsForm({
   const [alternatePhone, setAlternatePhone] = useState(
     salesman.alternatePhone,
   );
+  const [isActive, setIsActive] = useState(salesman.isActive);
   const [rules, setRules] = useState<DraftRule[]>(() =>
     rulesToDraft(salesman.discountRules),
   );
@@ -84,6 +86,7 @@ export function PersonalDetailsForm({
     setEntityType(next.entityType);
     setPhone(next.phone);
     setAlternatePhone(next.alternatePhone);
+    setIsActive(next.isActive);
     setRules(next.rules);
   }, [salesman, editing]);
 
@@ -93,6 +96,7 @@ export function PersonalDetailsForm({
     setEntityType(next.entityType);
     setPhone(next.phone);
     setAlternatePhone(next.alternatePhone);
+    setIsActive(next.isActive);
     setRules(next.rules);
     setError(null);
     setEditing(true);
@@ -104,6 +108,7 @@ export function PersonalDetailsForm({
     setEntityType(next.entityType);
     setPhone(next.phone);
     setAlternatePhone(next.alternatePhone);
+    setIsActive(next.isActive);
     setRules(next.rules);
     setError(null);
     setEditing(false);
@@ -191,6 +196,7 @@ export function PersonalDetailsForm({
           entityType,
           phone: trimmedPhone,
           alternatePhone: alternatePhone.trim(),
+          isActive,
           discountRules,
         }),
       });
@@ -276,7 +282,20 @@ export function PersonalDetailsForm({
             </select>
           </label>
 
-          <div className="hidden sm:block" aria-hidden />
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Status
+            </span>
+            <select
+              value={isActive ? "active" : "inactive"}
+              onChange={(e) => setIsActive(e.target.value === "active")}
+              disabled={!editing}
+              className={`${inputClass} py-2.5 pr-9 pl-3`}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">
