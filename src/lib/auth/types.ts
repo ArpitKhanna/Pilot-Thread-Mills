@@ -63,13 +63,21 @@ export const ITEM_TYPES: ItemType[] = [
 export const COUNT_ITEM_TYPES: ItemType[] = ["dibbi", "box", "cone"];
 
 export const COUNT_OPTIONS = [
-  "1/16",
-  "1/8",
-  "3/32",
-  "1/4",
-  "3/16",
   "3/58",
   "3/64",
+  "2/50",
+  "2/20",
+  "3/42",
+  "2/40",
+  "2/30",
+  "3/57",
+  "3/30",
+  "3/20",
+  "15/S",
+  "303",
+  "2/60",
+  "2/42",
+  "4/12",
 ] as const;
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {

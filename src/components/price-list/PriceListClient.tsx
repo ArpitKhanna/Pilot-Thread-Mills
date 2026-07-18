@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
+import { CountCombobox } from "@/components/ui/CountCombobox";
 import type { AppContext } from "@/app/(app)/layout";
 import {
   COUNT_ITEM_TYPES,
@@ -539,20 +540,14 @@ export function PriceListClient({
           {showCountField && (
             <div>
               <label className="mb-1.5 block text-sm font-medium">Count</label>
-              <select
+              <CountCombobox
+                options={COUNT_OPTIONS}
                 value={form.count_label}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, count_label: e.target.value }))
+                onChange={(count_label) =>
+                  setForm((f) => ({ ...f, count_label }))
                 }
-                className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
-              >
-                <option value="">Count Type</option>
-                {COUNT_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                placeholder="Count Type"
+              />
             </div>
           )}
 
