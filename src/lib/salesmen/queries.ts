@@ -34,6 +34,65 @@ export async function getSalesman(
   return mapSalesmanRow(data as DbSalesmanRow);
 }
 
+function slugifyName(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug || "salesman";
+}
+
+async function allocateSalesmanId(
+  supabase: SupabaseClient,
+  name: string,
+): Promise<string> {
+  const base = `sm-${slugifyName(name)}`;
+  const existing = await getSalesman(supabase, base);
+  if (!existing) return base;
+
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${base}-${i}`;
+    const taken = await getSalesman(supabase, candidate);
+    if (!taken) return candidate;
+  }
+
+  return `sm-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+export type CreateSalesmanInput = {
+  name: string;
+  phone: string;
+  alternatePhone?: string;
+  pendingBalance?: number;
+};
+
+export async function createSalesman(
+  supabase: SupabaseClient,
+  input: CreateSalesmanInput,
+): Promise<Salesman> {
+  const id = await allocateSalesmanId(supabase, input.name);
+  const { data, error } = await supabase
+    .from("salesmen")
+    .insert({
+      id,
+      name: input.name,
+      phone: input.phone,
+      alternate_phone: input.alternatePhone ?? "",
+      entity_type: "salesman",
+      category: "Salesmen",
+      is_active: true,
+      pending_balance: input.pendingBalance ?? 0,
+      last_invoice_at: null,
+      discount_rules: [],
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapSalesmanRow(data as DbSalesmanRow);
+}
+
 async function attachInvoiceChildren(
   supabase: SupabaseClient,
   invoices: DbInvoiceRow[],

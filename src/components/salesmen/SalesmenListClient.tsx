@@ -17,10 +17,16 @@ export function SalesmenListClient({
   context,
   initialSalesmen,
 }: SalesmenListClientProps) {
-  const [salesmen] = useState<Salesman[]>(initialSalesmen);
+  const [salesmen, setSalesmen] = useState<Salesman[]>(initialSalesmen);
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [alternatePhone, setAlternatePhone] = useState("");
+  const [lastBalance, setLastBalance] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const displayed = useMemo(() => {
     return salesmen
@@ -44,6 +50,66 @@ export function SalesmenListClient({
   const activeCount = salesmen.filter((s) => s.isActive).length;
   const inactiveCount = salesmen.filter((s) => !s.isActive).length;
 
+  function resetForm() {
+    setName("");
+    setPhone("");
+    setAlternatePhone("");
+    setLastBalance("");
+    setError(null);
+  }
+
+  function closeAdd() {
+    if (saving) return;
+    setAddOpen(false);
+    resetForm();
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+    if (!trimmedName) {
+      setError("Salesman name is required");
+      return;
+    }
+    if (!trimmedPhone) {
+      setError("Phone number is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/salesmen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          phone: trimmedPhone,
+          alternatePhone: alternatePhone.trim() || undefined,
+          pendingBalance:
+            lastBalance.trim() === "" ? undefined : Number(lastBalance),
+        }),
+      });
+      const data = (await res.json()) as {
+        salesman?: Salesman;
+        error?: string;
+      };
+      if (!res.ok || !data.salesman) {
+        setError(data.error ?? "Failed to create salesman");
+        return;
+      }
+      setSalesmen((prev) => [data.salesman!, ...prev]);
+      setTab("active");
+      setAddOpen(false);
+      resetForm();
+    } catch {
+      setError("Failed to create salesman");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <TopBar
@@ -66,7 +132,10 @@ export function SalesmenListClient({
           </div>
           <button
             type="button"
-            onClick={() => setAddOpen(true)}
+            onClick={() => {
+              resetForm();
+              setAddOpen(true);
+            }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 sm:w-auto"
           >
             <span className="text-lg leading-none">+</span>
@@ -180,22 +249,97 @@ export function SalesmenListClient({
 
       <Modal
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={closeAdd}
         title="Add New Salesman"
         footer={
-          <button
-            type="button"
-            onClick={() => setAddOpen(false)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
-          >
-            Close
-          </button>
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeAdd}
+              disabled={saving}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-salesman-form"
+              disabled={saving}
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Create salesman"}
+            </button>
+          </div>
         }
       >
-        <p className="text-sm text-muted">
-          Salesman creation is coming soon. You&apos;ll be able to add contact
-          details and category here.
-        </p>
+        <form id="add-salesman-form" onSubmit={handleCreate} className="space-y-4">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Salesman name
+            </span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+              placeholder="Full name"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Phone number
+            </span>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+              placeholder="919876543210"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Alternate phone number
+            </span>
+            <input
+              type="tel"
+              value={alternatePhone}
+              onChange={(e) => setAlternatePhone(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Last balance
+            </span>
+            <div className="flex overflow-hidden rounded-lg border border-border bg-background focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+              <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                ₹
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                value={lastBalance}
+                onChange={(e) => setLastBalance(e.target.value)}
+                className="w-full min-w-0 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none"
+                placeholder="Optional"
+              />
+            </div>
+          </label>
+
+          {error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </p>
+          )}
+        </form>
       </Modal>
     </>
   );
