@@ -1,12 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ItemRequest, ItemRequestStatus } from "./types";
+import type {
+  ItemRequest,
+  ItemRequestStatus,
+  ItemRequestUrgency,
+} from "./types";
 
 export type DbItemRequestRow = {
   id: string;
   salesman_id: string;
   item_name: string;
+  item_type: string | null;
   price_list_item_id: string | null;
   qty: number | string;
+  urgency: ItemRequestUrgency;
   requested_at: string;
   notes: string | null;
   status: ItemRequestStatus;
@@ -17,13 +23,20 @@ function num(value: number | string): number {
   return typeof value === "number" ? value : Number(value);
 }
 
+function parseUrgency(value: string | null | undefined): ItemRequestUrgency {
+  if (value === "high" || value === "low" || value === "medium") return value;
+  return "medium";
+}
+
 export function mapItemRequestRow(row: DbItemRequestRow): ItemRequest {
   return {
     id: row.id,
     salesmanId: row.salesman_id,
     itemName: row.item_name,
+    itemType: row.item_type ?? undefined,
     priceListItemId: row.price_list_item_id ?? undefined,
     qty: num(row.qty),
+    urgency: parseUrgency(row.urgency),
     requestedAt: row.requested_at,
     notes: row.notes ?? undefined,
     status: row.status,
@@ -46,8 +59,10 @@ export async function listItemRequestsForSalesman(
 
 export type CreateItemRequestInput = {
   itemName: string;
+  itemType?: string;
   priceListItemId?: string;
   qty: number;
+  urgency: ItemRequestUrgency;
   requestedAt: string;
   notes?: string;
 };
@@ -62,8 +77,10 @@ export async function createItemRequest(
     .insert({
       salesman_id: salesmanId,
       item_name: input.itemName,
+      item_type: input.itemType ?? null,
       price_list_item_id: input.priceListItemId ?? null,
       qty: input.qty,
+      urgency: input.urgency,
       requested_at: input.requestedAt,
       notes: input.notes ?? null,
       status: "open",
@@ -94,4 +111,19 @@ export async function fulfillItemRequest(
   if (error) throw error;
   if (!data) return null;
   return mapItemRequestRow(data as DbItemRequestRow);
+}
+
+/** Calendar days from request to fulfillment (0 = same day). */
+export function daysToFulfill(
+  requestedAt: string,
+  fulfilledAt: string,
+): number {
+  const start = new Date(requestedAt);
+  const end = new Date(fulfilledAt);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.max(
+    0,
+    Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)),
+  );
 }

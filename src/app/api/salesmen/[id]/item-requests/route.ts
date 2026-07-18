@@ -98,12 +98,23 @@ export async function POST(request: Request, context: RouteContext) {
   const priceListItemId = body.priceListItemId
     ? String(body.priceListItemId)
     : undefined;
+  const itemType = String(body.itemType ?? "").trim() || undefined;
+  const urgencyRaw = String(body.urgency ?? "medium");
+  if (
+    urgencyRaw !== "high" &&
+    urgencyRaw !== "medium" &&
+    urgencyRaw !== "low"
+  ) {
+    return NextResponse.json({ error: "Invalid urgency" }, { status: 400 });
+  }
 
   try {
     const created = await createItemRequest(supabase, id, {
       itemName,
+      itemType,
       priceListItemId,
       qty,
+      urgency: urgencyRaw,
       requestedAt,
       notes: notes || undefined,
     });

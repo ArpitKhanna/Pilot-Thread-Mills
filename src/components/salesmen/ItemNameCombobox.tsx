@@ -14,6 +14,8 @@ type ItemNameComboboxProps = {
   inputRef?: (el: HTMLInputElement | null) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** When false, dropdown shows name (+ count) only — no price. Default true. */
+  showPrice?: boolean;
 };
 
 type MenuPos = { top: number; left: number; width: number };
@@ -27,6 +29,7 @@ export function ItemNameCombobox({
   inputRef,
   disabled = false,
   placeholder = "Item name",
+  showPrice = true,
 }: ItemNameComboboxProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -197,9 +200,11 @@ export function ItemNameCombobox({
                   <span className="text-muted"> · {item.count_label}</span>
                 ) : null}
               </span>
-              <span className="shrink-0 tabular-nums text-muted">
-                {formatINR(item.salesmen_price)}
-              </span>
+              {showPrice ? (
+                <span className="shrink-0 tabular-nums text-muted">
+                  {formatINR(item.salesmen_price)}
+                </span>
+              ) : null}
             </button>
           ))
         )}

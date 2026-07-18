@@ -2,12 +2,18 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
-import type { PriceListItem } from "@/lib/auth/types";
+import { Modal } from "@/components/ui/Modal";
+import type { ItemType, PriceListItem } from "@/lib/auth/types";
+import { ITEM_TYPE_LABELS } from "@/lib/auth/types";
+import {
+  daysToFulfill,
+} from "@/lib/salesmen/item-requests";
 import {
   formatInvoiceDate,
   formatShortDate,
 } from "@/lib/salesmen/mock-data";
-import type { ItemRequest } from "@/lib/salesmen/types";
+import type { ItemRequest, ItemRequestUrgency } from "@/lib/salesmen/types";
+import { ITEM_REQUEST_URGENCY_LABELS } from "@/lib/salesmen/types";
 
 type ItemRequestsListProps = {
   salesmanId: string;
@@ -35,6 +41,20 @@ function groupByMonth(requests: ItemRequest[]) {
   return groups;
 }
 
+function formatItemType(itemType: string | undefined): string | null {
+  if (!itemType) return null;
+  if (itemType in ITEM_TYPE_LABELS) {
+    return ITEM_TYPE_LABELS[itemType as ItemType];
+  }
+  return itemType;
+}
+
+function urgencyClass(urgency: ItemRequestUrgency): string {
+  if (urgency === "high") return "text-[#c45c26]";
+  if (urgency === "low") return "text-muted";
+  return "text-foreground";
+}
+
 export function ItemRequestsList({
   salesmanId,
   priceList,
@@ -42,11 +62,13 @@ export function ItemRequestsList({
   onRequestsChange,
 }: ItemRequestsListProps) {
   const [itemName, setItemName] = useState("");
+  const [itemType, setItemType] = useState("");
   const [priceListItemId, setPriceListItemId] = useState<string | undefined>();
   const [qty, setQty] = useState("1");
+  const [urgency, setUrgency] = useState<ItemRequestUrgency>("medium");
   const [requestedAt, setRequestedAt] = useState(todayInputValue);
   const [notes, setNotes] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fulfillingId, setFulfillingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +95,28 @@ export function ItemRequestsList({
     sorted.filter((r) => r.status === "fulfilled"),
   );
 
+  function resetForm() {
+    setItemName("");
+    setItemType("");
+    setPriceListItemId(undefined);
+    setQty("1");
+    setUrgency("medium");
+    setRequestedAt(todayInputValue());
+    setNotes("");
+    setError(null);
+  }
+
+  function openModal() {
+    resetForm();
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setError(null);
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -95,8 +139,10 @@ export function ItemRequestsList({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             itemName: itemName.trim(),
+            itemType: itemType.trim() || undefined,
             priceListItemId,
             qty: qtyNum,
+            urgency,
             requestedAt: new Date(`${requestedAt}T12:00:00`).toISOString(),
             notes: notes.trim() || undefined,
           }),
@@ -111,12 +157,8 @@ export function ItemRequestsList({
         return;
       }
       onRequestsChange([data.request!, ...requests]);
-      setItemName("");
-      setPriceListItemId(undefined);
-      setQty("1");
-      setRequestedAt(todayInputValue());
-      setNotes("");
-      setFormOpen(false);
+      setModalOpen(false);
+      resetForm();
     } catch {
       setError("Failed to create request");
     } finally {
@@ -167,7 +209,7 @@ export function ItemRequestsList({
         </div>
         <button
           type="button"
-          onClick={() => setFormOpen((v) => !v)}
+          onClick={openModal}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
         >
           <span className="text-base leading-none">+</span>
@@ -175,89 +217,7 @@ export function ItemRequestsList({
         </button>
       </div>
 
-      {formOpen && (
-        <form
-          onSubmit={handleCreate}
-          className="rounded-xl border border-border bg-surface p-4 sm:p-5"
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs text-muted">
-                Item name
-              </label>
-              <ItemNameCombobox
-                items={priceList}
-                value={itemName}
-                onChange={(value) => {
-                  setItemName(value);
-                  setPriceListItemId(undefined);
-                }}
-                onSelect={(item) => {
-                  setItemName(item.item_name);
-                  setPriceListItemId(item.id);
-                }}
-                onTabToQty={() => qtyRef.current?.focus()}
-                placeholder="Type or pick from price list"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs text-muted">Quantity</label>
-              <input
-                ref={qtyRef}
-                type="number"
-                min="0.01"
-                step="any"
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs text-muted">
-                Request date
-              </label>
-              <input
-                type="date"
-                value={requestedAt}
-                onChange={(e) => setRequestedAt(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                required
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs text-muted">
-                Note (optional)
-              </label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                placeholder="Urgency, shade, size…"
-              />
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save request"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormOpen(false)}
-              className="rounded-lg border border-border bg-background px-4 py-2 text-sm hover:bg-sidebar"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {error && (
+      {error && !modalOpen && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
         </p>
@@ -287,6 +247,128 @@ export function ItemRequestsList({
           )}
         </div>
       )}
+
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title="Add item request"
+        footer={
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeModal}
+              disabled={saving}
+              className="rounded-lg border border-border bg-background px-4 py-2 text-sm hover:bg-sidebar disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="item-request-form"
+              disabled={saving}
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save request"}
+            </button>
+          </div>
+        }
+      >
+        <form id="item-request-form" onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs text-muted">Item name</label>
+            <ItemNameCombobox
+              items={priceList}
+              value={itemName}
+              showPrice={false}
+              onChange={(value) => {
+                setItemName(value);
+                setPriceListItemId(undefined);
+                setItemType("");
+              }}
+              onSelect={(item) => {
+                setItemName(item.item_name);
+                setPriceListItemId(item.id);
+                setItemType(item.item_type);
+              }}
+              onTabToQty={() => qtyRef.current?.focus()}
+              placeholder="Type or pick from price list"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs text-muted">Item type</label>
+            <input
+              type="text"
+              value={formatItemType(itemType) ?? ""}
+              readOnly
+              placeholder="Select an item to auto-fill"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted"
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">Quantity</label>
+              <input
+                ref={qtyRef}
+                type="number"
+                min="0.01"
+                step="any"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">Urgency</label>
+              <select
+                value={urgency}
+                onChange={(e) =>
+                  setUrgency(e.target.value as ItemRequestUrgency)
+                }
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs text-muted">
+              Request date
+            </label>
+            <input
+              type="date"
+              value={requestedAt}
+              onChange={(e) => setRequestedAt(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs text-muted">
+              Notes (shade, size…)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Shade, size, or other details"
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </p>
+          )}
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -314,6 +396,12 @@ function RequestSection({
             <ul className="space-y-1 rounded-xl border border-border bg-surface p-1">
               {group.items.map((req) => {
                 const date = formatInvoiceDate(req.requestedAt);
+                const typeLabel = formatItemType(req.itemType);
+                const days =
+                  req.status === "fulfilled" && req.fulfilledAt
+                    ? daysToFulfill(req.requestedAt, req.fulfilledAt)
+                    : null;
+
                 return (
                   <li
                     key={req.id}
@@ -333,19 +421,36 @@ function RequestSection({
                       </p>
                       <p className="mt-0.5 truncate text-xs text-muted">
                         Qty {req.qty}
+                        {typeLabel ? (
+                          <>
+                            <span className="mx-1.5 text-border">·</span>
+                            {typeLabel}
+                          </>
+                        ) : null}
+                        <span className="mx-1.5 text-border">·</span>
+                        <span className={urgencyClass(req.urgency)}>
+                          {ITEM_REQUEST_URGENCY_LABELS[req.urgency]}
+                        </span>
                         {req.notes ? (
                           <>
                             <span className="mx-1.5 text-border">·</span>
                             {req.notes}
                           </>
                         ) : null}
-                        {req.status === "fulfilled" && req.fulfilledAt ? (
-                          <>
-                            <span className="mx-1.5 text-border">·</span>
-                            Fulfilled {formatShortDate(req.fulfilledAt)}
-                          </>
-                        ) : null}
                       </p>
+                      {req.status === "fulfilled" && req.fulfilledAt ? (
+                        <p className="mt-0.5 text-xs text-muted">
+                          Fulfilled {formatShortDate(req.fulfilledAt)}
+                          {days !== null ? (
+                            <>
+                              <span className="mx-1.5 text-border">·</span>
+                              {days === 0
+                                ? "Same day"
+                                : `${days} day${days === 1 ? "" : "s"}`}
+                            </>
+                          ) : null}
+                        </p>
+                      ) : null}
                     </div>
                     {req.status === "open" ? (
                       <button

@@ -96,14 +96,24 @@ export type PurchasePaymentsSummary = {
 
 export type ItemRequestStatus = "open" | "fulfilled";
 
+export type ItemRequestUrgency = "high" | "medium" | "low";
+
 export type ItemRequest = {
   id: string;
   salesmanId: string;
   itemName: string;
+  itemType?: string;
   priceListItemId?: string;
   qty: number;
+  urgency: ItemRequestUrgency;
   requestedAt: string;
   notes?: string;
   status: ItemRequestStatus;
   fulfilledAt: string | null;
+};
+
+export const ITEM_REQUEST_URGENCY_LABELS: Record<ItemRequestUrgency, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
 };
