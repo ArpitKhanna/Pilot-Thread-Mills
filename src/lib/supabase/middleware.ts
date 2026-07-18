@@ -41,7 +41,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/picker-queue") ||
     pathname.startsWith("/dyeing-jobs") ||
     pathname.startsWith("/api/admin") ||
-    pathname.startsWith("/api/price-list");
+    pathname.startsWith("/api/price-list") ||
+    pathname.startsWith("/api/bank-accounts");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();

@@ -507,94 +507,90 @@ export function PriceListClient({
             />
           </div>
 
-          <div
-            className={`grid grid-cols-1 gap-4 ${showCountField ? "sm:grid-cols-2" : ""}`}
-          >
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Item Type<span className="text-red-500">*</span>
+            </label>
+            <select
+              value={form.item_type}
+              onChange={(e) => {
+                const item_type = e.target.value as ItemType | "";
+                setForm((f) => ({
+                  ...f,
+                  item_type,
+                  count_label:
+                    item_type &&
+                    COUNT_ITEM_TYPES.includes(item_type as ItemType)
+                      ? f.count_label
+                      : "",
+                }));
+              }}
+              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
+            >
+              <option value="">Select type</option>
+              {ITEM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {ITEM_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {showCountField && (
             <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                Item Type<span className="text-red-500">*</span>
-              </label>
+              <label className="mb-1.5 block text-sm font-medium">Count</label>
               <select
-                value={form.item_type}
-                onChange={(e) => {
-                  const item_type = e.target.value as ItemType | "";
-                  setForm((f) => ({
-                    ...f,
-                    item_type,
-                    count_label:
-                      item_type &&
-                      COUNT_ITEM_TYPES.includes(item_type as ItemType)
-                        ? f.count_label
-                        : "",
-                  }));
-                }}
+                value={form.count_label}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, count_label: e.target.value }))
+                }
                 className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
               >
-                <option value="">Select type</option>
-                {ITEM_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {ITEM_TYPE_LABELS[t]}
+                <option value="">Count Type</option>
+                {COUNT_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
                   </option>
                 ))}
               </select>
             </div>
-            {showCountField && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Count</label>
-                <select
-                  value={form.count_label}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, count_label: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                >
-                  <option value="">Count Type</option>
-                  {COUNT_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          )}
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Salesmen Price<span className="text-red-500">*</span>
+            </label>
+            <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
+              <span className="mr-2 text-muted">₹</span>
+              <input
+                type="number"
+                min="0"
+                value={form.salesmen_price}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, salesmen_price: e.target.value }))
+                }
+                placeholder="Salesmen Price"
+                className="w-full bg-transparent text-sm outline-none"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                Salesmen Price<span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center rounded-lg border border-border px-3 py-2.5">
-                <span className="mr-2 text-muted">₹</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.salesmen_price}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, salesmen_price: e.target.value }))
-                  }
-                  placeholder="Salesmen Price"
-                  className="w-full bg-transparent text-sm outline-none"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                Customer Price<span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center rounded-lg border border-border px-3 py-2.5">
-                <span className="mr-2 text-muted">₹</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.customer_price}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, customer_price: e.target.value }))
-                  }
-                  placeholder="Customer Price"
-                  className="w-full bg-transparent text-sm outline-none"
-                />
-              </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Customer Price<span className="text-red-500">*</span>
+            </label>
+            <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
+              <span className="mr-2 text-muted">₹</span>
+              <input
+                type="number"
+                min="0"
+                value={form.customer_price}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, customer_price: e.target.value }))
+                }
+                placeholder="Customer Price"
+                className="w-full bg-transparent text-sm outline-none"
+              />
             </div>
           </div>
 

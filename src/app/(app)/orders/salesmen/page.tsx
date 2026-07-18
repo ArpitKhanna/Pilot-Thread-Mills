@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAppContext } from "@/app/(app)/layout";
 import { SalesmenInvoiceCreateClient } from "@/components/salesmen/SalesmenInvoiceCreateClient";
 import type { PriceListItem } from "@/lib/auth/types";
+import { listActiveBankAccounts } from "@/lib/bank-accounts/queries";
 import { listSalesmen } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,13 +22,14 @@ export default async function SalesmenOrdersPage({
   const { salesmanId } = await searchParams;
 
   const supabase = await createClient();
-  const [priceListResult, salesmen] = await Promise.all([
+  const [priceListResult, salesmen, bankAccounts] = await Promise.all([
     supabase
       .from("price_list_items")
       .select("*")
       .eq("status", "approved")
       .order("item_name"),
     listSalesmen(supabase),
+    listActiveBankAccounts(supabase),
   ]);
 
   const salesmenForForm = salesmen.filter(
@@ -39,6 +41,7 @@ export default async function SalesmenOrdersPage({
       context={context}
       salesmen={salesmenForForm}
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
+      bankAccounts={bankAccounts}
       initialSalesmanId={salesmanId}
       mode="create"
     />

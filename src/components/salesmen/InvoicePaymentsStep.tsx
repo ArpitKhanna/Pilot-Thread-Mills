@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  formatBankAccountLabel,
-  getActiveBankAccounts,
-} from "@/lib/bank-accounts/mock-data";
+import { formatBankAccountLabel } from "@/lib/bank-accounts/mappers";
+import type { BankAccount } from "@/lib/bank-accounts/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { InvoicePaymentEntry, InvoicePaymentMethod } from "@/lib/salesmen/types";
 
@@ -11,6 +9,7 @@ type InvoicePaymentsStepProps = {
   payments: InvoicePaymentEntry[];
   onChange: (payments: InvoicePaymentEntry[]) => void;
   invoiceTotal: number;
+  bankAccounts: BankAccount[];
   disabled?: boolean;
 };
 
@@ -21,14 +20,16 @@ const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
   imps: "IMPS",
 };
 
-function emptyPayment(method: InvoicePaymentMethod): InvoicePaymentEntry {
+function emptyPayment(
+  method: InvoicePaymentMethod,
+  defaultAccountId?: string,
+): InvoicePaymentEntry {
   return {
     id: `pay-${crypto.randomUUID()}`,
     method,
     amount: 0,
     chequeNumber: method === "cheque" ? "" : undefined,
-    depositAccountId:
-      method === "cash" ? undefined : getActiveBankAccounts()[0]?.id,
+    depositAccountId: method === "cash" ? undefined : defaultAccountId,
     senderName: method === "upi" || method === "imps" ? "" : undefined,
   };
 }
@@ -37,14 +38,16 @@ export function InvoicePaymentsStep({
   payments,
   onChange,
   invoiceTotal,
+  bankAccounts,
   disabled = false,
 }: InvoicePaymentsStepProps) {
-  const accounts = getActiveBankAccounts();
+  const accounts = bankAccounts.filter((a) => a.isActive);
+  const defaultAccountId = accounts[0]?.id;
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   const balanceDue = Math.max(0, invoiceTotal - totalPaid);
 
   function addPayment(method: InvoicePaymentMethod) {
-    onChange([...payments, emptyPayment(method)]);
+    onChange([...payments, emptyPayment(method, defaultAccountId)]);
   }
 
   function updatePayment(id: string, patch: Partial<InvoicePaymentEntry>) {
@@ -242,7 +245,7 @@ function AccountSelect({
 }: {
   value: string;
   onChange: (id: string) => void;
-  accounts: ReturnType<typeof getActiveBankAccounts>;
+  accounts: BankAccount[];
   label: string;
   disabled?: boolean;
 }) {

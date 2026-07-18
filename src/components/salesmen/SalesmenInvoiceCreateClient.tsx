@@ -15,6 +15,7 @@ import {
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
+import type { BankAccount } from "@/lib/bank-accounts/types";
 import { calculateSalesmanDiscount, formatINR } from "@/lib/salesmen/mock-data";
 import type {
   Invoice,
@@ -28,6 +29,7 @@ type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
   salesmen: Salesman[];
   priceList: PriceListItem[];
+  bankAccounts: BankAccount[];
   initialSalesmanId?: string;
   mode?: "create" | "edit";
   initialInvoice?: Invoice;
@@ -54,6 +56,7 @@ export function SalesmenInvoiceCreateClient({
   context,
   salesmen,
   priceList,
+  bankAccounts,
   initialSalesmanId,
   mode = "create",
   initialInvoice,
@@ -697,6 +700,7 @@ export function SalesmenInvoiceCreateClient({
                     payments={payments}
                     onChange={setPayments}
                     invoiceTotal={invoiceTotal}
+                    bankAccounts={bankAccounts}
                     disabled={!salesman}
                   />
 
