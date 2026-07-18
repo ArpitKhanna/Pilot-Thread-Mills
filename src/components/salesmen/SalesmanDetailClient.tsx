@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -11,7 +12,6 @@ import {
   buildWhatsAppShareUrl,
   canEditInvoice,
   formatINR,
-  getInvoicesForSalesman,
   resolveDateRange,
   summarizePurchasesAndPayments,
 } from "@/lib/salesmen/mock-data";
@@ -28,6 +28,7 @@ type DetailTab = "invoices" | "payments" | "requests" | "details";
 type SalesmanDetailClientProps = {
   context: AppContext;
   initialSalesman: Salesman;
+  initialInvoices: Invoice[];
 };
 
 const RANGE_OPTIONS: { id: TimeRangePreset; label: string }[] = [
@@ -58,11 +59,11 @@ const MONTH_OPTIONS = [
 export function SalesmanDetailClient({
   context,
   initialSalesman,
+  initialInvoices,
 }: SalesmanDetailClientProps) {
+  const router = useRouter();
   const [salesman, setSalesman] = useState(initialSalesman);
-  const [invoices, setInvoices] = useState<Invoice[]>(() =>
-    getInvoicesForSalesman(salesman.id),
-  );
+  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
 
   const [tab, setTab] = useState<DetailTab>("invoices");
   const [rangePreset, setRangePreset] = useState<TimeRangePreset>("month");
@@ -71,15 +72,15 @@ export function SalesmanDetailClient({
   const [filterMonth, setFilterMonth] = useState<string>("all");
   const [filterYear, setFilterYear] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
-    () => invoices[0] ?? null,
+    () => initialInvoices[0] ?? null,
   );
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
-  const [editNoticeOpen, setEditNoticeOpen] = useState(false);
   const [editLockedOpen, setEditLockedOpen] = useState(false);
 
   useEffect(() => {
-    setInvoices(getInvoicesForSalesman(salesman.id));
-  }, [salesman.id]);
+    setSalesman(initialSalesman);
+    setInvoices(initialInvoices);
+  }, [initialSalesman, initialInvoices]);
 
   const availableYears = useMemo(() => {
     const years = new Set(
@@ -134,7 +135,7 @@ export function SalesmanDetailClient({
       setEditLockedOpen(true);
       return;
     }
-    setEditNoticeOpen(true);
+    router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
   }
 
   function handlePrint(invoice: Invoice) {
@@ -413,27 +414,6 @@ export function SalesmanDetailClient({
           />
         </div>
       )}
-
-      <Modal
-        open={editNoticeOpen}
-        onClose={() => setEditNoticeOpen(false)}
-        title="Edit Invoice"
-        footer={
-          <button
-            type="button"
-            onClick={() => setEditNoticeOpen(false)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
-          >
-            Close
-          </button>
-        }
-      >
-        <p className="text-sm text-muted">
-          Invoice editing is coming soon. You&apos;ll be able to update line
-          items and payments here. Edits are only allowed within 5 minutes of
-          generation.
-        </p>
-      </Modal>
 
       <Modal
         open={editLockedOpen}

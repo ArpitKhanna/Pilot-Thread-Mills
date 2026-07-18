@@ -7,7 +7,13 @@ export type EmployeeRole =
   | "delivery"
   | "dyeing_user";
 
-export type ItemType = "dibbi" | "box" | "cone" | "zip" | "elastic";
+export type ItemType =
+  | "dibbi"
+  | "box"
+  | "cone"
+  | "zip"
+  | "elastic"
+  | "saree_fall";
 export type PriceItemStatus = "approved" | "pending_approval" | "rejected";
 
 export type Profile = {
@@ -50,7 +56,11 @@ export const ITEM_TYPES: ItemType[] = [
   "cone",
   "zip",
   "elastic",
+  "saree_fall",
 ];
+
+/** Item types that use the thread count dropdown */
+export const COUNT_ITEM_TYPES: ItemType[] = ["dibbi", "box", "cone"];
 
 export const COUNT_OPTIONS = [
   "1/16",
@@ -68,6 +78,7 @@ export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   cone: "Cone",
   zip: "Zip",
   elastic: "Elastic",
+  saree_fall: "Saree Fall",
 };
 
 export const ROLE_LABELS: Record<EmployeeRole, string> = {

@@ -5,6 +5,7 @@ import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import {
+  COUNT_ITEM_TYPES,
   COUNT_OPTIONS,
   ITEM_TYPE_LABELS,
   ITEM_TYPES,
@@ -107,7 +108,11 @@ export function PriceListClient({
       const payload = {
         item_name: form.item_name,
         item_type: form.item_type,
-        count_label: form.count_label || null,
+        count_label:
+          form.item_type &&
+          COUNT_ITEM_TYPES.includes(form.item_type as ItemType)
+            ? form.count_label || null
+            : null,
         salesmen_price: Number(form.salesmen_price),
         customer_price: Number(form.customer_price),
       };
@@ -163,6 +168,10 @@ export function PriceListClient({
   const pendingTabCount = items.filter(
     (i) => i.status === "pending_approval",
   ).length;
+
+  const showCountField =
+    form.item_type !== "" &&
+    COUNT_ITEM_TYPES.includes(form.item_type as ItemType);
 
   return (
     <>
@@ -493,24 +502,32 @@ export function PriceListClient({
               onChange={(e) =>
                 setForm((f) => ({ ...f, item_name: e.target.value }))
               }
-              placeholder="Property Name"
+              placeholder="Item Name"
               className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div
+            className={`grid grid-cols-1 gap-4 ${showCountField ? "sm:grid-cols-2" : ""}`}
+          >
             <div>
               <label className="mb-1.5 block text-sm font-medium">
                 Item Type<span className="text-red-500">*</span>
               </label>
               <select
                 value={form.item_type}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const item_type = e.target.value as ItemType | "";
                   setForm((f) => ({
                     ...f,
-                    item_type: e.target.value as ItemType,
-                  }))
-                }
+                    item_type,
+                    count_label:
+                      item_type &&
+                      COUNT_ITEM_TYPES.includes(item_type as ItemType)
+                        ? f.count_label
+                        : "",
+                  }));
+                }}
                 className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
               >
                 <option value="">Select type</option>
@@ -521,23 +538,25 @@ export function PriceListClient({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Count</label>
-              <select
-                value={form.count_label}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, count_label: e.target.value }))
-                }
-                className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
-              >
-                <option value="">Count Type</option>
-                {COUNT_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {showCountField && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Count</label>
+                <select
+                  value={form.count_label}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, count_label: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
+                >
+                  <option value="">Count Type</option>
+                  {COUNT_OPTIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

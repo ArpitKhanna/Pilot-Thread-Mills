@@ -3,7 +3,7 @@ export type SalesmanCategory = "Salesmen";
 /** Per-unit discount applied on matching purchase lines */
 export type SalesmanDiscountRule = {
   /** Match price list `item_type` (e.g. dibbi) */
-  itemType: "dibbi" | "box" | "cone" | "zip" | "elastic";
+  itemType: "dibbi" | "box" | "cone" | "zip" | "elastic" | "saree_fall";
   /** Optional case-insensitive name filter (e.g. "poly", "needle") */
   itemNameIncludes?: string;
   /** Rupees subtracted per matching unit purchased */

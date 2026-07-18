@@ -1,26 +1,32 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAppContext } from "@/app/(app)/layout";
 import { SalesmenInvoiceCreateClient } from "@/components/salesmen/SalesmenInvoiceCreateClient";
 import type { PriceListItem } from "@/lib/auth/types";
-import { listSalesmen } from "@/lib/salesmen/queries";
+import { canEditInvoice } from "@/lib/salesmen/invoice-api";
+import { getInvoiceById, listSalesmen } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
-type SalesmenOrdersPageProps = {
-  searchParams: Promise<{ salesmanId?: string }>;
+type PageProps = {
+  params: Promise<{ id: string }>;
 };
 
-export default async function SalesmenOrdersPage({
-  searchParams,
-}: SalesmenOrdersPageProps) {
+export default async function EditSalesmenInvoicePage({ params }: PageProps) {
   const context = await getAppContext();
   if (!context) redirect("/login");
 
   const hasAccess = context.modules.some((m) => m.id === "order-salesmen");
   if (!hasAccess) redirect("/dashboard");
 
-  const { salesmanId } = await searchParams;
-
+  const { id } = await params;
   const supabase = await createClient();
+
+  const invoice = await getInvoiceById(supabase, id);
+  if (!invoice) notFound();
+
+  if (!canEditInvoice(invoice)) {
+    redirect(`/entities/salesmen/${invoice.salesmanId}?tab=invoices`);
+  }
+
   const [priceListResult, salesmen] = await Promise.all([
     supabase
       .from("price_list_items")
@@ -31,7 +37,7 @@ export default async function SalesmenOrdersPage({
   ]);
 
   const salesmenForForm = salesmen.filter(
-    (s) => s.isActive || (salesmanId != null && s.id === salesmanId),
+    (s) => s.isActive || s.id === invoice.salesmanId,
   );
 
   return (
@@ -39,8 +45,9 @@ export default async function SalesmenOrdersPage({
       context={context}
       salesmen={salesmenForForm}
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
-      initialSalesmanId={salesmanId}
-      mode="create"
+      mode="edit"
+      initialInvoice={invoice}
+      initialSalesmanId={invoice.salesmanId}
     />
   );
 }

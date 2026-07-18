@@ -5,19 +5,19 @@ import { useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
-import {
-  formatINR,
-  formatShortDate,
-  MOCK_SALESMEN,
-} from "@/lib/salesmen/mock-data";
+import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
 import type { Salesman } from "@/lib/salesmen/types";
 
 type SalesmenListClientProps = {
   context: AppContext;
+  initialSalesmen: Salesman[];
 };
 
-export function SalesmenListClient({ context }: SalesmenListClientProps) {
-  const [salesmen] = useState<Salesman[]>(MOCK_SALESMEN);
+export function SalesmenListClient({
+  context,
+  initialSalesmen,
+}: SalesmenListClientProps) {
+  const [salesmen] = useState<Salesman[]>(initialSalesmen);
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);

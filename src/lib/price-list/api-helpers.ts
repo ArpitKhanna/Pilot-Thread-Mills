@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import type { ItemType, Profile } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 
-const VALID_TYPES: ItemType[] = ["dibbi", "box", "cone", "zip", "elastic"];
+const VALID_TYPES: ItemType[] = [
+  "dibbi",
+  "box",
+  "cone",
+  "zip",
+  "elastic",
+  "saree_fall",
+];
 
 export async function getAuthedProfile() {
   const supabase = await createClient();

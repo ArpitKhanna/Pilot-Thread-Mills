@@ -15,11 +15,7 @@ import {
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
-import {
-  addInvoice,
-  calculateSalesmanDiscount,
-  formatINR,
-} from "@/lib/salesmen/mock-data";
+import { calculateSalesmanDiscount, formatINR } from "@/lib/salesmen/mock-data";
 import type {
   Invoice,
   InvoiceLineItem,
@@ -32,45 +28,120 @@ type SalesmenInvoiceCreateClientProps = {
   salesmen: Salesman[];
   priceList: PriceListItem[];
   initialSalesmanId?: string;
+  mode?: "create" | "edit";
+  initialInvoice?: Invoice;
 };
 
 type BuilderStep = 1 | 2;
+
+function draftLinesFromInvoice(invoice: Invoice): DraftLine[] {
+  const filled = invoice.lineItems.map((item) => ({
+    key: item.id || `line-${crypto.randomUUID()}`,
+    priceListItemId: item.priceListItemId ?? null,
+    name: item.name,
+    qty: String(item.qty),
+    unitPrice: item.unitPrice,
+    amount: item.amount,
+  }));
+  const blanks = createInitialDraftLines(
+    Math.max(1, 5 - filled.length),
+  ).slice(0, Math.max(1, 5 - filled.length));
+  return [...filled, ...blanks];
+}
 
 export function SalesmenInvoiceCreateClient({
   context,
   salesmen,
   priceList,
   initialSalesmanId,
+  mode = "create",
+  initialInvoice,
 }: SalesmenInvoiceCreateClientProps) {
   const router = useRouter();
-  const [draftId] = useState(() => `inv-draft-${Date.now()}`);
-  const [draftNumber] = useState(() => `INV-SM-${Date.now()}`);
-  const [issuedAt] = useState(() => new Date().toISOString());
+  const isEdit = mode === "edit" && Boolean(initialInvoice);
+
+  const [draftId] = useState(
+    () => initialInvoice?.id ?? `inv-draft-${Date.now()}`,
+  );
+  const [draftNumber] = useState(
+    () => initialInvoice?.number ?? `INV-SM-${Date.now()}`,
+  );
+  const [issuedAt] = useState(
+    () => initialInvoice?.issuedAt ?? new Date().toISOString(),
+  );
 
   const [step, setStep] = useState<BuilderStep>(1);
-  const [salesmanId, setSalesmanId] = useState("");
+  const [salesmanId, setSalesmanId] = useState(
+    () => initialInvoice?.salesmanId ?? "",
+  );
   const [salesmanQuery, setSalesmanQuery] = useState("");
   const [salesmanOpen, setSalesmanOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>(() =>
-    createInitialDraftLines(5),
+    initialInvoice
+      ? draftLinesFromInvoice(initialInvoice)
+      : createInitialDraftLines(5),
   );
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [returnLine, setReturnLine] = useState<DraftLine>(() =>
-    createEmptyDraftLine(),
+  const [returnOpen, setReturnOpen] = useState(
+    () => Boolean(initialInvoice?.returnItems?.length),
   );
+  const [returnLine, setReturnLine] = useState<DraftLine>(() => {
+    const first = initialInvoice?.returnItems?.[0];
+    if (!first) return createEmptyDraftLine();
+    return {
+      key: first.id || `ret-${crypto.randomUUID()}`,
+      priceListItemId: first.priceListItemId ?? null,
+      name: first.name,
+      qty: String(first.qty),
+      unitPrice: first.unitPrice,
+      amount: first.amount,
+    };
+  });
   const [additionalDiscount, setAdditionalDiscount] = useState("");
-  const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
+  const [payments, setPayments] = useState<InvoicePaymentEntry[]>(
+    () => initialInvoice?.paymentEntries ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [hydratedDiscount, setHydratedDiscount] = useState(!isEdit);
 
   useEffect(() => {
-    if (!initialSalesmanId) return;
-    const match = salesmen.find((s) => s.id === initialSalesmanId);
+    const id = initialInvoice?.salesmanId ?? initialSalesmanId;
+    if (!id) return;
+    const match = salesmen.find((s) => s.id === id);
     if (!match) return;
     setSalesmanId(match.id);
     setSalesmanQuery(match.name);
-  }, [initialSalesmanId, salesmen]);
+  }, [initialSalesmanId, initialInvoice?.salesmanId, salesmen]);
+
+  // After salesman + lines known in edit mode, split stored discount into rule vs additional
+  useEffect(() => {
+    if (!isEdit || !initialInvoice || hydratedDiscount) return;
+    const salesman = salesmen.find((s) => s.id === salesmanId);
+    if (!salesmanId) return;
+    const rule = calculateSalesmanDiscount(
+      lines
+        .filter((l) => l.priceListItemId && Number(l.qty) > 0)
+        .map((l) => ({
+          priceListItemId: l.priceListItemId,
+          qty: Number(l.qty),
+        })),
+      priceList,
+      salesman?.discountRule,
+    );
+    const stored = initialInvoice.discountAmount ?? 0;
+    const additional = Math.max(0, Math.round((stored - rule) * 100) / 100);
+    setAdditionalDiscount(additional > 0 ? String(additional) : "");
+    setHydratedDiscount(true);
+  }, [
+    isEdit,
+    initialInvoice,
+    hydratedDiscount,
+    salesmanId,
+    salesmen,
+    lines,
+    priceList,
+  ]);
 
   const salesman = salesmen.find((s) => s.id === salesmanId) ?? null;
 
@@ -135,7 +206,13 @@ export function SalesmenInvoiceCreateClient({
     [payments],
   );
 
-  const previousBalance = salesman?.pendingBalance ?? 0;
+  const previousBalance = Math.max(
+    0,
+    (salesman?.pendingBalance ?? 0) -
+      (isEdit && initialInvoice
+        ? Math.max(0, initialInvoice.totalAmount - initialInvoice.amountPaid)
+        : 0),
+  );
 
   const liveInvoice: Invoice = useMemo(() => {
     const lineItems: InvoiceLineItem[] = filledLines.map((l) => ({
@@ -279,16 +356,47 @@ export function SalesmenInvoiceCreateClient({
     setConfirmOpen(true);
   }
 
-  function confirmGenerate() {
+  async function confirmSave() {
     if (!salesman || saving) return;
     setSaving(true);
-    const saved = addInvoice({
-      ...liveInvoice,
-      issuedAt: new Date().toISOString(),
-    });
-    setConfirmOpen(false);
-    router.push(`/entities/salesmen/${saved.salesmanId}`);
-    router.refresh();
+    setError(null);
+    try {
+      const payload = {
+        salesmanId: salesman.id,
+        number: draftNumber,
+        issuedAt: isEdit ? issuedAt : new Date().toISOString(),
+        lineItems: liveInvoice.lineItems,
+        returnItems: liveInvoice.returnItems ?? [],
+        discountAmount: liveInvoice.discountAmount ?? 0,
+        paymentEntries: liveInvoice.paymentEntries ?? [],
+        totalAmount: liveInvoice.totalAmount,
+        amountPaid: liveInvoice.amountPaid,
+        notes: liveInvoice.notes ?? null,
+      };
+
+      const res = await fetch(
+        isEdit
+          ? `/api/salesmen-invoices/${draftId}`
+          : "/api/salesmen-invoices",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Could not save invoice.");
+      }
+
+      setConfirmOpen(false);
+      router.push(`/entities/salesmen/${salesman.id}?tab=invoices`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save invoice.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -298,7 +406,7 @@ export function SalesmenInvoiceCreateClient({
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Orders" },
-          { label: "Create invoice" },
+          { label: isEdit ? "Edit invoice" : "Create invoice" },
         ]}
       />
 
@@ -306,7 +414,7 @@ export function SalesmenInvoiceCreateClient({
         <div className="flex shrink-0 flex-col gap-3 border-b border-border px-4 py-4 sm:px-6 lg:px-8">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
-              Create New Invoice
+              {isEdit ? "Edit Invoice" : "Create New Invoice"}
             </h1>
           </div>
         </div>
@@ -345,9 +453,13 @@ export function SalesmenInvoiceCreateClient({
                             value={salesmanQuery}
                             placeholder="Search salesman…"
                             autoComplete="off"
-                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-                            onFocus={() => setSalesmanOpen(true)}
+                            disabled={isEdit}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-70"
+                            onFocus={() => {
+                              if (!isEdit) setSalesmanOpen(true);
+                            }}
                             onChange={(e) => {
+                              if (isEdit) return;
                               setSalesmanQuery(e.target.value);
                               setSalesmanId("");
                               setSalesmanOpen(true);
@@ -359,6 +471,7 @@ export function SalesmenInvoiceCreateClient({
                               );
                             }}
                             onKeyDown={(e) => {
+                              if (isEdit) return;
                               if (e.key === "Escape") setSalesmanOpen(false);
                               if (e.key === "Enter" && filteredSalesmen[0]) {
                                 e.preventDefault();
@@ -366,7 +479,9 @@ export function SalesmenInvoiceCreateClient({
                               }
                             }}
                           />
-                          {salesmanOpen && filteredSalesmen.length > 0 && (
+                          {!isEdit &&
+                            salesmanOpen &&
+                            filteredSalesmen.length > 0 && (
                             <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-md">
                               {filteredSalesmen.map((s) => (
                                 <li key={s.id}>
@@ -601,7 +716,7 @@ export function SalesmenInvoiceCreateClient({
                       onClick={handleGenerateClick}
                       className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
                     >
-                      Generate Invoice
+                      {isEdit ? "Save Changes" : "Generate Invoice"}
                     </button>
                   </div>
                 </>
@@ -638,7 +753,7 @@ export function SalesmenInvoiceCreateClient({
         onClose={() => {
           if (!saving) setConfirmOpen(false);
         }}
-        title="Generate this invoice?"
+        title={isEdit ? "Save these changes?" : "Generate this invoice?"}
         footer={
           <div className="flex w-full flex-wrap justify-end gap-2">
             <button
@@ -652,16 +767,20 @@ export function SalesmenInvoiceCreateClient({
             <button
               type="button"
               disabled={saving}
-              onClick={confirmGenerate}
+              onClick={confirmSave}
               className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Yes, generate"}
+              {saving
+                ? "Saving…"
+                : isEdit
+                  ? "Yes, save changes"
+                  : "Yes, generate"}
             </button>
           </div>
         }
       >
         <p className="text-sm text-muted">
-          Create invoice{" "}
+          {isEdit ? "Update" : "Create"} invoice{" "}
           <span className="font-medium text-foreground">
             {liveInvoice.number}
           </span>{" "}
@@ -694,8 +813,15 @@ export function SalesmenInvoiceCreateClient({
           )}
         </dl>
         <p className="mt-4 text-xs text-muted">
-          This will add the invoice to {salesman?.name}&apos;s invoice list.
+          {isEdit
+            ? "Changes will replace the current invoice details."
+            : `This will add the invoice to ${salesman?.name}'s invoice list.`}
         </p>
+        {error && (
+          <p className="mt-3 text-sm text-[#c45c26]" role="alert">
+            {error}
+          </p>
+        )}
       </Modal>
     </>
   );
