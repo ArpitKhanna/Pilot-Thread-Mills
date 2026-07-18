@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { SalesmanDetailClient } from "@/components/salesmen/SalesmanDetailClient";
 import { getAppContext } from "@/app/(app)/layout";
+import type { PriceListItem } from "@/lib/auth/types";
 import {
   getSalesman,
   listInvoicesForSalesman,
@@ -23,13 +24,21 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
 
-  const invoices = await listInvoicesForSalesman(supabase, id);
+  const [{ data: items }, invoices] = await Promise.all([
+    supabase
+      .from("price_list_items")
+      .select("*")
+      .eq("status", "approved")
+      .order("item_name"),
+    listInvoicesForSalesman(supabase, id),
+  ]);
 
   return (
     <SalesmanDetailClient
       context={context}
       initialSalesman={salesman}
       initialInvoices={invoices}
+      priceList={(items ?? []) as PriceListItem[]}
     />
   );
 }

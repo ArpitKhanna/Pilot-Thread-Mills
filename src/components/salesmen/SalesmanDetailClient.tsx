@@ -8,6 +8,8 @@ import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { PersonalDetailsForm } from "@/components/salesmen/PersonalDetailsForm";
+import type { PriceListItem } from "@/lib/auth/types";
 import {
   buildWhatsAppShareUrl,
   canEditInvoice,
@@ -15,13 +17,8 @@ import {
   resolveDateRange,
   summarizePurchasesAndPayments,
 } from "@/lib/salesmen/mock-data";
-import type {
-  Invoice,
-  Salesman,
-  SalesmanDiscountRule,
-  TimeRangePreset,
-} from "@/lib/salesmen/types";
-import { ITEM_TYPES, ITEM_TYPE_LABELS, type ItemType } from "@/lib/auth/types";
+import type { Invoice, Salesman, TimeRangePreset } from "@/lib/salesmen/types";
+import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
 type DetailTab = "invoices" | "payments" | "requests" | "details";
 
@@ -29,6 +26,7 @@ type SalesmanDetailClientProps = {
   context: AppContext;
   initialSalesman: Salesman;
   initialInvoices: Invoice[];
+  priceList: PriceListItem[];
 };
 
 const RANGE_OPTIONS: { id: TimeRangePreset; label: string }[] = [
@@ -60,6 +58,7 @@ export function SalesmanDetailClient({
   context,
   initialSalesman,
   initialInvoices,
+  priceList,
 }: SalesmanDetailClientProps) {
   const router = useRouter();
   const [salesman, setSalesman] = useState(initialSalesman);
@@ -186,7 +185,9 @@ export function SalesmanDetailClient({
               <span className="text-border" aria-hidden>
                 |
               </span>
-              <span className="text-muted">{salesman.category}</span>
+              <span className="text-muted">
+                {ENTITY_TYPE_LABELS[salesman.entityType]}
+              </span>
             </p>
           </div>
 
@@ -371,11 +372,11 @@ export function SalesmanDetailClient({
             </div>
           </div>
         ) : tab === "details" ? (
-          <DiscountRuleEditor
+          <PersonalDetailsForm
+            key={`${salesman.id}-${salesman.phone}-${salesman.discountRules.length}`}
             salesman={salesman}
-            onChange={(rule) =>
-              setSalesman((prev) => ({ ...prev, discountRule: rule }))
-            }
+            priceList={priceList}
+            onSaved={setSalesman}
           />
         ) : (
           <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
@@ -486,144 +487,5 @@ function TabButton({
     >
       {label}
     </button>
-  );
-}
-
-function DiscountRuleEditor({
-  salesman,
-  onChange,
-}: {
-  salesman: Salesman;
-  onChange: (rule: SalesmanDiscountRule | null) => void;
-}) {
-  const rule = salesman.discountRule ?? null;
-  const [enabled, setEnabled] = useState(Boolean(rule));
-  const [itemType, setItemType] = useState<ItemType>(rule?.itemType ?? "dibbi");
-  const [nameIncludes, setNameIncludes] = useState(
-    rule?.itemNameIncludes ?? "",
-  );
-  const [amountPerUnit, setAmountPerUnit] = useState(
-    rule ? String(rule.amountPerUnit) : "1",
-  );
-
-  function buildDescription(
-    type: ItemType,
-    name: string,
-    amount: number,
-  ): string {
-    const typeLabel = ITEM_TYPE_LABELS[type];
-    const namePart = name.trim() ? ` ${name.trim()}` : "";
-    return `₹${amount} per${namePart} ${typeLabel}`;
-  }
-
-  function save() {
-    if (!enabled) {
-      onChange(null);
-      return;
-    }
-    const amount = Number(amountPerUnit);
-    if (!Number.isFinite(amount) || amount < 0) return;
-    const next: SalesmanDiscountRule = {
-      itemType,
-      itemNameIncludes: nameIncludes.trim() || undefined,
-      amountPerUnit: amount,
-      description: buildDescription(itemType, nameIncludes, amount),
-    };
-    onChange(next);
-  }
-
-  return (
-    <div className="mx-auto max-w-lg space-y-5 rounded-xl border border-border bg-surface p-4 sm:p-6">
-      <div>
-        <h2 className="text-base font-medium">Personal details</h2>
-        <p className="mt-1 text-sm text-muted">
-          Phone +{salesman.phone} · Discount rules apply on salesmen invoices
-        </p>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="rounded border-border"
-        />
-        Enable per-unit purchase discount
-      </label>
-
-      {enabled && (
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Item type
-            </span>
-            <select
-              value={itemType}
-              onChange={(e) => setItemType(e.target.value as ItemType)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
-            >
-              {ITEM_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {ITEM_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Name contains (optional)
-            </span>
-            <input
-              type="text"
-              value={nameIncludes}
-              placeholder='e.g. "poly" or "needle"'
-              onChange={(e) => setNameIncludes(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Discount per unit (₹)
-            </span>
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={amountPerUnit}
-              onChange={(e) => setAmountPerUnit(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm tabular-nums outline-none focus:border-foreground/40"
-            />
-          </label>
-
-          <p className="text-xs text-muted">
-            Preview:{" "}
-            {buildDescription(
-              itemType,
-              nameIncludes,
-              Number(amountPerUnit) || 0,
-            )}
-          </p>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={save}
-        className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-      >
-        Save discount rule
-      </button>
-
-      {salesman.discountRule && (
-        <p className="text-sm text-muted">
-          Current:{" "}
-          <span className="text-foreground">
-            {salesman.discountRule.description}
-          </span>
-        </p>
-      )}
-    </div>
   );
 }

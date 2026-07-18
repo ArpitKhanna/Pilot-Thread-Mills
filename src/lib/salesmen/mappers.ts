@@ -5,17 +5,20 @@ import type {
   InvoicePaymentMethod,
   Salesman,
   SalesmanDiscountRule,
+  SalesmanEntityType,
 } from "./types";
 
 export type DbSalesmanRow = {
   id: string;
   name: string;
   phone: string;
+  alternate_phone: string | null;
+  entity_type: string | null;
   category: string;
   is_active: boolean;
   pending_balance: number | string;
   last_invoice_at: string | null;
-  discount_rule: SalesmanDiscountRule | null;
+  discount_rules: unknown;
 };
 
 export type DbInvoiceRow = {
@@ -57,16 +60,52 @@ function num(value: number | string): number {
   return typeof value === "number" ? value : Number(value);
 }
 
+function parseEntityType(value: string | null | undefined): SalesmanEntityType {
+  return value === "customer" ? "customer" : "salesman";
+}
+
+function parseDiscountRules(raw: unknown): SalesmanDiscountRule[] {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const rules: SalesmanDiscountRule[] = [];
+
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const itemName = String(
+      row.itemName ?? row.itemNameIncludes ?? "",
+    ).trim();
+    const amountPerUnit = Number(row.amountPerUnit);
+    if (!itemName || !Number.isFinite(amountPerUnit) || amountPerUnit < 0) {
+      continue;
+    }
+    rules.push({
+      id: String(row.id ?? crypto.randomUUID()),
+      itemName,
+      priceListItemId: row.priceListItemId
+        ? String(row.priceListItemId)
+        : undefined,
+      amountPerUnit,
+      description:
+        String(row.description ?? "").trim() ||
+        `₹${amountPerUnit} per ${itemName}`,
+    });
+  }
+
+  return rules;
+}
+
 export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
   return {
     id: row.id,
     name: row.name,
     phone: row.phone,
-    category: "Salesmen",
+    alternatePhone: row.alternate_phone ?? "",
+    entityType: parseEntityType(row.entity_type),
     isActive: row.is_active,
     pendingBalance: num(row.pending_balance),
     lastInvoiceAt: row.last_invoice_at,
-    discountRule: row.discount_rule ?? null,
+    discountRules: parseDiscountRules(row.discount_rules),
   };
 }
 

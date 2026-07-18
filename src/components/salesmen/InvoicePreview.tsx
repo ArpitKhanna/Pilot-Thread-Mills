@@ -8,7 +8,12 @@ import {
   formatShortDate,
   getInvoiceEditRemainingMs,
 } from "@/lib/salesmen/mock-data";
-import type { Invoice, InvoiceLineItem, Salesman } from "@/lib/salesmen/types";
+import {
+  ENTITY_TYPE_LABELS,
+  type Invoice,
+  type InvoiceLineItem,
+  type Salesman,
+} from "@/lib/salesmen/types";
 
 type InvoicePreviewProps = {
   invoice: Invoice;
@@ -418,7 +423,9 @@ function PageHeader({
             Billed to
           </p>
           <p className="mt-1 text-sm font-medium">{salesman.name}</p>
-          <p className="mt-0.5 text-xs text-muted">{salesman.category}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {ENTITY_TYPE_LABELS[salesman.entityType]}
+          </p>
           <p className="mt-0.5 text-xs text-muted">+{salesman.phone}</p>
         </div>
       </div>

@@ -22,6 +22,7 @@ import type {
   InvoicePaymentEntry,
   Salesman,
 } from "@/lib/salesmen/types";
+import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
 type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
@@ -124,10 +125,11 @@ export function SalesmenInvoiceCreateClient({
         .filter((l) => l.priceListItemId && Number(l.qty) > 0)
         .map((l) => ({
           priceListItemId: l.priceListItemId,
+          name: l.name,
           qty: Number(l.qty),
         })),
       priceList,
-      salesman?.discountRule,
+      salesman?.discountRules,
     );
     const stored = initialInvoice.discountAmount ?? 0;
     const additional = Math.max(0, Math.round((stored - rule) * 100) / 100);
@@ -186,12 +188,13 @@ export function SalesmenInvoiceCreateClient({
       calculateSalesmanDiscount(
         filledLines.map((l) => ({
           priceListItemId: l.priceListItemId,
+          name: l.name,
           qty: Number(l.qty),
         })),
         priceList,
-        salesman?.discountRule,
+        salesman?.discountRules,
       ),
-    [filledLines, priceList, salesman?.discountRule],
+    [filledLines, priceList, salesman?.discountRules],
   );
 
   const additionalNum = Number(additionalDiscount);
@@ -267,10 +270,12 @@ export function SalesmenInvoiceCreateClient({
     id: "preview-placeholder",
     name: "Select a salesman",
     phone: "",
-    category: "Salesmen",
+    alternatePhone: "",
+    entityType: "salesman",
     isActive: true,
     pendingBalance: 0,
     lastInvoiceAt: null,
+    discountRules: [],
   };
 
   function selectSalesman(s: Salesman) {
@@ -519,7 +524,7 @@ export function SalesmenInvoiceCreateClient({
                       <p className="text-xs text-muted">
                         {salesman.phone ? `+${salesman.phone}` : null}
                         {salesman.phone ? " · " : null}
-                        {salesman.category}
+                        {ENTITY_TYPE_LABELS[salesman.entityType]}
                       </p>
                     )}
                   </section>
@@ -622,16 +627,17 @@ export function SalesmenInvoiceCreateClient({
                           ? formatINR(ruleDiscount)
                           : "—"}
                       </p>
-                      {salesman?.discountRule && (
+                      {salesman && salesman.discountRules.length > 0 ? (
+                        <ul className="mt-1 space-y-0.5 text-xs text-muted">
+                          {salesman.discountRules.map((rule) => (
+                            <li key={rule.id}>{rule.description}</li>
+                          ))}
+                        </ul>
+                      ) : salesman ? (
                         <p className="text-xs text-muted">
-                          {salesman.discountRule.description}
+                          No discount rules on this salesman
                         </p>
-                      )}
-                      {salesman && !salesman.discountRule && (
-                        <p className="text-xs text-muted">
-                          No discount rule on this salesman
-                        </p>
-                      )}
+                      ) : null}
                     </div>
 
                     <label className="block">

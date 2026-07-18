@@ -1,11 +1,12 @@
-export type SalesmanCategory = "Salesmen";
+export type SalesmanEntityType = "salesman" | "customer";
 
-/** Per-unit discount applied on matching purchase lines */
+/** Per-unit discount: for every matching item name purchased, award ₹amount */
 export type SalesmanDiscountRule = {
-  /** Match price list `item_type` (e.g. dibbi) */
-  itemType: "dibbi" | "box" | "cone" | "zip" | "elastic" | "saree_fall";
-  /** Optional case-insensitive name filter (e.g. "poly", "needle") */
-  itemNameIncludes?: string;
+  id: string;
+  /** Item name matched against purchase lines / price list */
+  itemName: string;
+  /** Optional link to a catalog item when picked from price list */
+  priceListItemId?: string;
   /** Rupees subtracted per matching unit purchased */
   amountPerUnit: number;
   /** Human-readable rule, e.g. "₹1 per Needle Poly Dibbi" */
@@ -16,12 +17,18 @@ export type Salesman = {
   id: string;
   name: string;
   phone: string;
-  category: SalesmanCategory;
+  alternatePhone: string;
+  entityType: SalesmanEntityType;
   isActive: boolean;
   pendingBalance: number;
   lastInvoiceAt: string | null;
-  /** Optional purchase discount rule used when creating invoices */
-  discountRule?: SalesmanDiscountRule | null;
+  /** Purchase discount rules used when creating invoices */
+  discountRules: SalesmanDiscountRule[];
+};
+
+export const ENTITY_TYPE_LABELS: Record<SalesmanEntityType, string> = {
+  salesman: "Salesmen",
+  customer: "Customer",
 };
 
 export type InvoiceLineItem = {

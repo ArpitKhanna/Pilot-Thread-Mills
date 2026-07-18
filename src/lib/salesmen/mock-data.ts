@@ -92,10 +92,11 @@ export function formatINR(value: number): string {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
-/** Sum matching purchase units × rule.amountPerUnit */
+/** Sum matching purchase units × rule.amountPerUnit across all rules */
 export function calculateSalesmanDiscount(
   lines: Array<{
     priceListItemId: string | null | undefined;
+    name?: string;
     qty: number;
   }>,
   priceList: Array<{
@@ -103,23 +104,42 @@ export function calculateSalesmanDiscount(
     item_name: string;
     item_type: string;
   }>,
-  rule: Salesman["discountRule"],
+  rules: Salesman["discountRules"] | null | undefined,
 ): number {
-  if (!rule || rule.amountPerUnit <= 0) return 0;
+  if (!rules || rules.length === 0) return 0;
 
-  let units = 0;
-  const needle = rule.itemNameIncludes?.trim().toLowerCase();
+  let total = 0;
 
-  for (const line of lines) {
-    if (!line.priceListItemId || !(line.qty > 0)) continue;
-    const item = priceList.find((p) => p.id === line.priceListItemId);
-    if (!item) continue;
-    if (item.item_type !== rule.itemType) continue;
-    if (needle && !item.item_name.toLowerCase().includes(needle)) continue;
-    units += line.qty;
+  for (const rule of rules) {
+    if (!(rule.amountPerUnit > 0) || !rule.itemName.trim()) continue;
+    const needle = rule.itemName.trim().toLowerCase();
+    let units = 0;
+
+    for (const line of lines) {
+      if (!(line.qty > 0)) continue;
+
+      if (
+        rule.priceListItemId &&
+        line.priceListItemId &&
+        rule.priceListItemId === line.priceListItemId
+      ) {
+        units += line.qty;
+        continue;
+      }
+
+      const catalog = line.priceListItemId
+        ? priceList.find((p) => p.id === line.priceListItemId)
+        : undefined;
+      const lineName = (line.name ?? catalog?.item_name ?? "").toLowerCase();
+      if (lineName.includes(needle) || (catalog?.item_name.toLowerCase().includes(needle) ?? false)) {
+        units += line.qty;
+      }
+    }
+
+    total += units * rule.amountPerUnit;
   }
 
-  return Math.round(units * rule.amountPerUnit * 100) / 100;
+  return Math.round(total * 100) / 100;
 }
 
 export function formatInvoiceDate(iso: string): {
