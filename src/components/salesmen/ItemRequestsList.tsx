@@ -5,9 +5,7 @@ import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { ItemType, PriceListItem } from "@/lib/auth/types";
 import { ITEM_TYPE_LABELS } from "@/lib/auth/types";
-import {
-  daysToFulfill,
-} from "@/lib/salesmen/item-requests";
+import { daysToFulfill } from "@/lib/salesmen/item-requests";
 import {
   formatInvoiceDate,
   formatShortDate,
@@ -24,6 +22,14 @@ type ItemRequestsListProps = {
 
 function todayInputValue(): string {
   const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function toDateInputValue(iso: string): string {
+  const d = new Date(iso);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -69,8 +75,9 @@ export function ItemRequestsList({
   const [requestedAt, setRequestedAt] = useState(todayInputValue);
   const [notes, setNotes] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [fulfillingId, setFulfillingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
 
@@ -103,21 +110,35 @@ export function ItemRequestsList({
     setUrgency("medium");
     setRequestedAt(todayInputValue());
     setNotes("");
+    setEditingId(null);
     setError(null);
   }
 
-  function openModal() {
+  function openCreateModal() {
     resetForm();
+    setModalOpen(true);
+  }
+
+  function openEditModal(req: ItemRequest) {
+    setEditingId(req.id);
+    setItemName(req.itemName);
+    setItemType(req.itemType ?? "");
+    setPriceListItemId(req.priceListItemId);
+    setQty(String(req.qty));
+    setUrgency(req.urgency);
+    setRequestedAt(toDateInputValue(req.requestedAt));
+    setNotes(req.notes ?? "");
+    setError(null);
     setModalOpen(true);
   }
 
   function closeModal() {
     if (saving) return;
     setModalOpen(false);
-    setError(null);
+    resetForm();
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const qtyNum = Number(qty);
@@ -130,52 +151,66 @@ export function ItemRequestsList({
       return;
     }
 
+    const payload = {
+      itemName: itemName.trim(),
+      itemType: itemType.trim() || undefined,
+      priceListItemId,
+      qty: qtyNum,
+      urgency,
+      requestedAt: new Date(`${requestedAt}T12:00:00`).toISOString(),
+      notes: notes.trim() || undefined,
+    };
+
     setSaving(true);
     try {
-      const res = await fetch(
-        `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            itemName: itemName.trim(),
-            itemType: itemType.trim() || undefined,
-            priceListItemId,
-            qty: qtyNum,
-            urgency,
-            requestedAt: new Date(`${requestedAt}T12:00:00`).toISOString(),
-            notes: notes.trim() || undefined,
-          }),
-        },
-      );
+      const url = editingId
+        ? `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests/${encodeURIComponent(editingId)}`
+        : `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests`;
+      const res = await fetch(url, {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const data = (await res.json()) as {
         request?: ItemRequest;
         error?: string;
       };
       if (!res.ok || !data.request) {
-        setError(data.error ?? "Failed to create request");
+        setError(
+          data.error ??
+            (editingId ? "Failed to update request" : "Failed to create request"),
+        );
         return;
       }
-      onRequestsChange([data.request!, ...requests]);
+      if (editingId) {
+        onRequestsChange(
+          requests.map((r) => (r.id === editingId ? data.request! : r)),
+        );
+      } else {
+        onRequestsChange([data.request!, ...requests]);
+      }
       setModalOpen(false);
       resetForm();
     } catch {
-      setError("Failed to create request");
+      setError(editingId ? "Failed to update request" : "Failed to create request");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleFulfill(requestId: string) {
+  async function patchStatus(
+    requestId: string,
+    status: "fulfilled" | "open",
+  ) {
     setError(null);
-    setFulfillingId(requestId);
+    setBusyId(requestId);
     try {
       const res = await fetch(
         `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests/${encodeURIComponent(requestId)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "fulfilled" }),
+          body: JSON.stringify({ status }),
         },
       );
       const data = (await res.json()) as {
@@ -183,16 +218,47 @@ export function ItemRequestsList({
         error?: string;
       };
       if (!res.ok || !data.request) {
-        setError(data.error ?? "Failed to fulfill request");
+        setError(
+          data.error ??
+            (status === "fulfilled"
+              ? "Failed to fulfill request"
+              : "Failed to undo fulfillment"),
+        );
         return;
       }
       onRequestsChange(
         requests.map((r) => (r.id === requestId ? data.request! : r)),
       );
     } catch {
-      setError("Failed to fulfill request");
+      setError(
+        status === "fulfilled"
+          ? "Failed to fulfill request"
+          : "Failed to undo fulfillment",
+      );
     } finally {
-      setFulfillingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(requestId: string) {
+    if (!confirm("Delete this item request?")) return;
+    setError(null);
+    setBusyId(requestId);
+    try {
+      const res = await fetch(
+        `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests/${encodeURIComponent(requestId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to delete request");
+        return;
+      }
+      onRequestsChange(requests.filter((r) => r.id !== requestId));
+    } catch {
+      setError("Failed to delete request");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -209,7 +275,7 @@ export function ItemRequestsList({
         </div>
         <button
           type="button"
-          onClick={openModal}
+          onClick={openCreateModal}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
         >
           <span className="text-base leading-none">+</span>
@@ -233,16 +299,18 @@ export function ItemRequestsList({
             <RequestSection
               title="Open"
               groups={openGroups}
-              fulfillingId={fulfillingId}
-              onFulfill={handleFulfill}
+              busyId={busyId}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+              onFulfill={(id) => patchStatus(id, "fulfilled")}
             />
           )}
           {fulfilledGroups.length > 0 && (
             <RequestSection
               title="Fulfilled"
               groups={fulfilledGroups}
-              fulfillingId={fulfillingId}
-              onFulfill={handleFulfill}
+              busyId={busyId}
+              onUndo={(id) => patchStatus(id, "open")}
             />
           )}
         </div>
@@ -251,7 +319,7 @@ export function ItemRequestsList({
       <Modal
         open={modalOpen}
         onClose={closeModal}
-        title="Add item request"
+        title={editingId ? "Edit item request" : "Add item request"}
         footer={
           <div className="flex w-full flex-wrap justify-end gap-2">
             <button
@@ -268,12 +336,12 @@ export function ItemRequestsList({
               disabled={saving}
               className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save request"}
+              {saving ? "Saving…" : editingId ? "Save changes" : "Save request"}
             </button>
           </div>
         }
       >
-        <form id="item-request-form" onSubmit={handleCreate} className="space-y-4">
+        <form id="item-request-form" onSubmit={handleSave} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-xs text-muted">Item name</label>
             <ItemNameCombobox
@@ -376,13 +444,19 @@ export function ItemRequestsList({
 function RequestSection({
   title,
   groups,
-  fulfillingId,
+  busyId,
+  onEdit,
+  onDelete,
   onFulfill,
+  onUndo,
 }: {
   title: string;
   groups: { label: string; items: ItemRequest[] }[];
-  fulfillingId: string | null;
-  onFulfill: (id: string) => void;
+  busyId: string | null;
+  onEdit?: (req: ItemRequest) => void;
+  onDelete?: (id: string) => void;
+  onFulfill?: (id: string) => void;
+  onUndo?: (id: string) => void;
 }) {
   return (
     <div>
@@ -401,73 +475,94 @@ function RequestSection({
                   req.status === "fulfilled" && req.fulfilledAt
                     ? daysToFulfill(req.requestedAt, req.fulfilledAt)
                     : null;
+                const busy = busyId === req.id;
 
                 return (
                   <li
                     key={req.id}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 sm:gap-4 sm:px-3.5"
+                    className="flex flex-col gap-2 rounded-lg px-3 py-2.5 sm:flex-row sm:items-center sm:gap-4 sm:px-3.5"
                   >
-                    <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
-                      <span className="text-[11px] text-muted">
-                        {date.weekday}
-                      </span>
-                      <span className="text-xl font-semibold tracking-tight tabular-nums">
-                        {date.day}
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {req.itemName}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        Qty {req.qty}
-                        {typeLabel ? (
-                          <>
-                            <span className="mx-1.5 text-border">·</span>
-                            {typeLabel}
-                          </>
-                        ) : null}
-                        <span className="mx-1.5 text-border">·</span>
-                        <span className={urgencyClass(req.urgency)}>
-                          {ITEM_REQUEST_URGENCY_LABELS[req.urgency]}
+                    <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+                      <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
+                        <span className="text-[11px] text-muted">
+                          {date.weekday}
                         </span>
-                        {req.notes ? (
-                          <>
-                            <span className="mx-1.5 text-border">·</span>
-                            {req.notes}
-                          </>
-                        ) : null}
-                      </p>
-                      {req.status === "fulfilled" && req.fulfilledAt ? (
-                        <p className="mt-0.5 text-xs text-muted">
-                          Fulfilled {formatShortDate(req.fulfilledAt)}
-                          {days !== null ? (
+                        <span className="text-xl font-semibold tracking-tight tabular-nums">
+                          {date.day}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {req.itemName}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted">
+                          Qty {req.qty}
+                          {typeLabel ? (
                             <>
                               <span className="mx-1.5 text-border">·</span>
-                              {days === 0
-                                ? "Same day"
-                                : `${days} day${days === 1 ? "" : "s"}`}
+                              {typeLabel}
+                            </>
+                          ) : null}
+                          <span className="mx-1.5 text-border">·</span>
+                          <span className={urgencyClass(req.urgency)}>
+                            {ITEM_REQUEST_URGENCY_LABELS[req.urgency]}
+                          </span>
+                          {req.notes ? (
+                            <>
+                              <span className="mx-1.5 text-border">·</span>
+                              {req.notes}
                             </>
                           ) : null}
                         </p>
-                      ) : null}
+                        {req.status === "fulfilled" && req.fulfilledAt ? (
+                          <p className="mt-0.5 text-xs text-muted">
+                            Fulfilled {formatShortDate(req.fulfilledAt)}
+                            {days !== null ? (
+                              <>
+                                <span className="mx-1.5 text-border">·</span>
+                                {days === 0
+                                  ? "Same day"
+                                  : `${days} day${days === 1 ? "" : "s"}`}
+                              </>
+                            ) : null}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                    {req.status === "open" ? (
-                      <button
-                        type="button"
-                        onClick={() => onFulfill(req.id)}
-                        disabled={fulfillingId === req.id}
-                        className="shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-60"
-                      >
-                        {fulfillingId === req.id
-                          ? "Saving…"
-                          : "Mark fulfilled"}
-                      </button>
-                    ) : (
-                      <span className="shrink-0 text-xs font-medium text-emerald-700">
-                        Fulfilled
-                      </span>
-                    )}
+
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-14 sm:pl-0">
+                      {req.status === "open" ? (
+                        <>
+                          <ActionButton
+                            onClick={() => onEdit?.(req)}
+                            disabled={busy}
+                          >
+                            Edit
+                          </ActionButton>
+                          <ActionButton
+                            onClick={() => onDelete?.(req.id)}
+                            disabled={busy}
+                            danger
+                          >
+                            Delete
+                          </ActionButton>
+                          <ActionButton
+                            onClick={() => onFulfill?.(req.id)}
+                            disabled={busy}
+                            primary
+                          >
+                            {busy ? "Saving…" : "Mark fulfilled"}
+                          </ActionButton>
+                        </>
+                      ) : (
+                        <ActionButton
+                          onClick={() => onUndo?.(req.id)}
+                          disabled={busy}
+                        >
+                          {busy ? "Saving…" : "Undo"}
+                        </ActionButton>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -476,5 +571,36 @@ function RequestSection({
         ))}
       </div>
     </div>
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  danger,
+  primary,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${
+        primary
+          ? "border-foreground bg-foreground text-surface hover:bg-foreground/90"
+          : danger
+            ? "border-border bg-background text-red-700 hover:bg-red-50"
+            : "border-border bg-background hover:bg-sidebar"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
-import { fulfillItemRequest } from "@/lib/salesmen/item-requests";
+import {
+  deleteItemRequest,
+  fulfillItemRequest,
+  unfulfillItemRequest,
+  updateItemRequest,
+} from "@/lib/salesmen/item-requests";
 import { getSalesman } from "@/lib/salesmen/queries";
+import type { ItemRequestUrgency } from "@/lib/salesmen/types";
 
 type RouteContext = {
   params: Promise<{ id: string; requestId: string }>;
@@ -20,6 +26,51 @@ async function hasEntitySalesmenAccess(
     .eq("module_id", "entity-salesmen")
     .maybeSingle();
   return Boolean(data);
+}
+
+function parseUrgency(raw: unknown): ItemRequestUrgency | { error: string } {
+  const value = String(raw ?? "medium");
+  if (value === "high" || value === "medium" || value === "low") return value;
+  return { error: "Invalid urgency" };
+}
+
+function parseRequestFields(body: Record<string, unknown>) {
+  const itemName = String(body.itemName ?? "").trim();
+  if (!itemName) return { error: "Item name is required" as const };
+
+  const qty = Number(body.qty);
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return { error: "Quantity must be greater than 0" as const };
+  }
+
+  const requestedAtRaw = String(body.requestedAt ?? "").trim();
+  const requestedAt = requestedAtRaw
+    ? new Date(requestedAtRaw).toISOString()
+    : new Date().toISOString();
+  if (Number.isNaN(new Date(requestedAt).getTime())) {
+    return { error: "Invalid request date" as const };
+  }
+
+  const urgency = parseUrgency(body.urgency);
+  if (typeof urgency === "object" && "error" in urgency) return urgency;
+
+  const notes = String(body.notes ?? "").trim();
+  const priceListItemId = body.priceListItemId
+    ? String(body.priceListItemId)
+    : undefined;
+  const itemType = String(body.itemType ?? "").trim() || undefined;
+
+  return {
+    data: {
+      itemName,
+      itemType,
+      priceListItemId,
+      qty,
+      urgency,
+      requestedAt,
+      notes: notes || undefined,
+    },
+  };
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -44,15 +95,40 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (body.status !== "fulfilled") {
-    return NextResponse.json(
-      { error: "Only status=fulfilled is supported" },
-      { status: 400 },
-    );
-  }
-
   try {
-    const updated = await fulfillItemRequest(supabase, id, requestId);
+    if (body.status === "fulfilled") {
+      const updated = await fulfillItemRequest(supabase, id, requestId);
+      if (!updated) {
+        return NextResponse.json(
+          { error: "Open request not found" },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({ request: updated });
+    }
+
+    if (body.status === "open") {
+      const updated = await unfulfillItemRequest(supabase, id, requestId);
+      if (!updated) {
+        return NextResponse.json(
+          { error: "Fulfilled request not found" },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({ request: updated });
+    }
+
+    const parsed = parseRequestFields(body);
+    if ("error" in parsed) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    const updated = await updateItemRequest(
+      supabase,
+      id,
+      requestId,
+      parsed.data,
+    );
     if (!updated) {
       return NextResponse.json(
         { error: "Open request not found" },
@@ -61,9 +137,39 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ request: updated });
   } catch (err) {
-    console.error("fulfill item request", err);
+    console.error("update item request", err);
     return NextResponse.json(
-      { error: "Failed to fulfill item request" },
+      { error: "Failed to update item request" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await getAuthedProfile();
+  if ("error" in auth && auth.error) return auth.error;
+  const { supabase, profile } = auth;
+
+  if (!(await hasEntitySalesmenAccess(supabase, profile.role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id, requestId } = await context.params;
+  const salesman = await getSalesman(supabase, id);
+  if (!salesman) {
+    return NextResponse.json({ error: "Salesman not found" }, { status: 404 });
+  }
+
+  try {
+    const deleted = await deleteItemRequest(supabase, id, requestId);
+    if (!deleted) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("delete item request", err);
+    return NextResponse.json(
+      { error: "Failed to delete item request" },
       { status: 500 },
     );
   }

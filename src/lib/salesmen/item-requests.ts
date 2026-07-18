@@ -92,6 +92,33 @@ export async function createItemRequest(
   return mapItemRequestRow(data as DbItemRequestRow);
 }
 
+export async function updateItemRequest(
+  supabase: SupabaseClient,
+  salesmanId: string,
+  requestId: string,
+  input: CreateItemRequestInput,
+): Promise<ItemRequest | null> {
+  const { data, error } = await supabase
+    .from("salesmen_item_requests")
+    .update({
+      item_name: input.itemName,
+      item_type: input.itemType ?? null,
+      price_list_item_id: input.priceListItemId ?? null,
+      qty: input.qty,
+      urgency: input.urgency,
+      requested_at: input.requestedAt,
+      notes: input.notes ?? null,
+    })
+    .eq("id", requestId)
+    .eq("salesman_id", salesmanId)
+    .eq("status", "open")
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapItemRequestRow(data as DbItemRequestRow);
+}
+
 export async function fulfillItemRequest(
   supabase: SupabaseClient,
   salesmanId: string,
@@ -111,6 +138,43 @@ export async function fulfillItemRequest(
   if (error) throw error;
   if (!data) return null;
   return mapItemRequestRow(data as DbItemRequestRow);
+}
+
+export async function unfulfillItemRequest(
+  supabase: SupabaseClient,
+  salesmanId: string,
+  requestId: string,
+): Promise<ItemRequest | null> {
+  const { data, error } = await supabase
+    .from("salesmen_item_requests")
+    .update({
+      status: "open",
+      fulfilled_at: null,
+    })
+    .eq("id", requestId)
+    .eq("salesman_id", salesmanId)
+    .eq("status", "fulfilled")
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapItemRequestRow(data as DbItemRequestRow);
+}
+
+export async function deleteItemRequest(
+  supabase: SupabaseClient,
+  salesmanId: string,
+  requestId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("salesmen_item_requests")
+    .delete()
+    .eq("id", requestId)
+    .eq("salesman_id", salesmanId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
 }
 
 /** Calendar days from request to fulfillment (0 = same day). */
