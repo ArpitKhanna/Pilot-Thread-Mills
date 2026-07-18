@@ -8,7 +8,9 @@ import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import { PersonalDetailsForm } from "@/components/salesmen/PersonalDetailsForm";
+import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   buildWhatsAppShareUrl,
@@ -27,6 +29,7 @@ type SalesmanDetailClientProps = {
   initialSalesman: Salesman;
   initialInvoices: Invoice[];
   priceList: PriceListItem[];
+  bankAccounts: BankAccount[];
 };
 
 const RANGE_OPTIONS: { id: TimeRangePreset; label: string }[] = [
@@ -59,10 +62,21 @@ export function SalesmanDetailClient({
   initialSalesman,
   initialInvoices,
   priceList,
+  bankAccounts,
 }: SalesmanDetailClientProps) {
   const router = useRouter();
   const [salesman, setSalesman] = useState(initialSalesman);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+
+  const paymentCount = useMemo(
+    () =>
+      invoices.filter(
+        (inv) =>
+          inv.amountPaid > 0 ||
+          (inv.paymentEntries != null && inv.paymentEntries.length > 0),
+      ).length,
+    [invoices],
+  );
 
   const [tab, setTab] = useState<DetailTab>("invoices");
   const [rangePreset, setRangePreset] = useState<TimeRangePreset>("month");
@@ -200,7 +214,7 @@ export function SalesmanDetailClient({
             <TabButton
               active={tab === "payments"}
               onClick={() => setTab("payments")}
-              label="Payments"
+              label={`Payments (${paymentCount})`}
             />
             <TabButton
               active={tab === "requests"}
@@ -371,6 +385,8 @@ export function SalesmanDetailClient({
               )}
             </div>
           </div>
+        ) : tab === "payments" ? (
+          <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
         ) : tab === "details" ? (
           <PersonalDetailsForm
             key={`${salesman.id}-${salesman.phone}-${salesman.discountRules.length}`}
@@ -380,7 +396,6 @@ export function SalesmanDetailClient({
           />
         ) : (
           <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-            {tab === "payments" && "Payments tab coming soon"}
             {tab === "requests" && "Item requests coming soon"}
           </div>
         )}

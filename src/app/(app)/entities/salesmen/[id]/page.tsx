@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { SalesmanDetailClient } from "@/components/salesmen/SalesmanDetailClient";
 import { getAppContext } from "@/app/(app)/layout";
 import type { PriceListItem } from "@/lib/auth/types";
+import { listBankAccounts } from "@/lib/bank-accounts/queries";
 import {
   getSalesman,
   listInvoicesForSalesman,
@@ -24,13 +25,14 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
 
-  const [{ data: items }, invoices] = await Promise.all([
+  const [{ data: items }, invoices, bankAccounts] = await Promise.all([
     supabase
       .from("price_list_items")
       .select("*")
       .eq("status", "approved")
       .order("item_name"),
     listInvoicesForSalesman(supabase, id),
+    listBankAccounts(supabase).catch(() => []),
   ]);
 
   return (
@@ -39,6 +41,7 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
       initialSalesman={salesman}
       initialInvoices={invoices}
       priceList={(items ?? []) as PriceListItem[]}
+      bankAccounts={bankAccounts}
     />
   );
 }
