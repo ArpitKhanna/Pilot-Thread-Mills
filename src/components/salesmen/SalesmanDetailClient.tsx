@@ -8,6 +8,7 @@ import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import {
   buildWhatsAppShareUrl,
+  canEditInvoice,
   formatINR,
   getInvoicesForSalesman,
   resolveDateRange,
@@ -74,6 +75,7 @@ export function SalesmanDetailClient({
   );
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [editNoticeOpen, setEditNoticeOpen] = useState(false);
+  const [editLockedOpen, setEditLockedOpen] = useState(false);
   const [addInvoiceOpen, setAddInvoiceOpen] = useState(false);
 
   const availableYears = useMemo(() => {
@@ -125,6 +127,10 @@ export function SalesmanDetailClient({
   }
 
   function handleEdit() {
+    if (!selectedInvoice || !canEditInvoice(selectedInvoice)) {
+      setEditLockedOpen(true);
+      return;
+    }
     setEditNoticeOpen(true);
   }
 
@@ -422,7 +428,28 @@ export function SalesmanDetailClient({
       >
         <p className="text-sm text-muted">
           Invoice editing is coming soon. You&apos;ll be able to update line
-          items and payments here.
+          items and payments here. Edits are only allowed within 5 minutes of
+          generation.
+        </p>
+      </Modal>
+
+      <Modal
+        open={editLockedOpen}
+        onClose={() => setEditLockedOpen(false)}
+        title="Editing locked"
+        footer={
+          <button
+            type="button"
+            onClick={() => setEditLockedOpen(false)}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
+          >
+            Close
+          </button>
+        }
+      >
+        <p className="text-sm text-muted">
+          This invoice can no longer be edited. Changes are only allowed within
+          5 minutes of generation so prices stay consistent.
         </p>
       </Modal>
 

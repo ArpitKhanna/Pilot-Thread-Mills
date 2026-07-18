@@ -34,6 +34,21 @@ export type InvoiceLineItem = {
   priceListItemId?: string;
 };
 
+export type InvoicePaymentMethod = "cash" | "cheque" | "upi" | "imps";
+
+/** Detailed payment capture during invoice creation (not printed line-by-line) */
+export type InvoicePaymentEntry = {
+  id: string;
+  method: InvoicePaymentMethod;
+  amount: number;
+  /** Cheque number when method is cheque */
+  chequeNumber?: string;
+  /** Deposit bank account id (cheque / upi / imps) */
+  depositAccountId?: string;
+  /** Sender name for UPI / IMPS */
+  senderName?: string;
+};
+
 export type Invoice = {
   id: string;
   number: string;
@@ -41,11 +56,15 @@ export type Invoice = {
   issuedAt: string;
   itemCount: number;
   totalAmount: number;
+  /** Clubbed sum of all payment entries */
   amountPaid: number;
   lineItems: InvoiceLineItem[];
   notes?: string;
+  /** Clubbed rule discount + additional discount */
   discountAmount?: number;
   returnItems?: InvoiceLineItem[];
+  /** Optional detail retained for ledger; preview uses amountPaid only */
+  paymentEntries?: InvoicePaymentEntry[];
 };
 
 export type TimeRangePreset =

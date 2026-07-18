@@ -441,3 +441,31 @@ export function buildWhatsAppShareUrl(
   const digits = phone.replace(/\D/g, "");
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
+
+/** Invoices can only be edited within this window after generation */
+export const INVOICE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+
+export function canEditInvoice(
+  invoice: Pick<Invoice, "issuedAt">,
+  now: number = Date.now(),
+): boolean {
+  const created = new Date(invoice.issuedAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return now - created < INVOICE_EDIT_WINDOW_MS && now >= created;
+}
+
+export function getInvoiceEditRemainingMs(
+  invoice: Pick<Invoice, "issuedAt">,
+  now: number = Date.now(),
+): number {
+  const created = new Date(invoice.issuedAt).getTime();
+  if (Number.isNaN(created)) return 0;
+  return Math.max(0, created + INVOICE_EDIT_WINDOW_MS - now);
+}
+
+export function formatEditCountdown(remainingMs: number): string {
+  const totalSec = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}

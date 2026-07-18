@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
+import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import {
   createEmptyDraftLine,
@@ -18,13 +19,20 @@ import {
   calculateSalesmanDiscount,
   formatINR,
 } from "@/lib/salesmen/mock-data";
-import type { Invoice, InvoiceLineItem, Salesman } from "@/lib/salesmen/types";
+import type {
+  Invoice,
+  InvoiceLineItem,
+  InvoicePaymentEntry,
+  Salesman,
+} from "@/lib/salesmen/types";
 
 type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
   salesmen: Salesman[];
   priceList: PriceListItem[];
 };
+
+type BuilderStep = 1 | 2;
 
 export function SalesmenInvoiceCreateClient({
   context,
@@ -35,6 +43,7 @@ export function SalesmenInvoiceCreateClient({
   const [draftNumber] = useState(() => `INV-SM-${Date.now()}`);
   const [issuedAt] = useState(() => new Date().toISOString());
 
+  const [step, setStep] = useState<BuilderStep>(1);
   const [salesmanId, setSalesmanId] = useState("");
   const [salesmanQuery, setSalesmanQuery] = useState("");
   const [salesmanOpen, setSalesmanOpen] = useState(false);
@@ -45,9 +54,8 @@ export function SalesmenInvoiceCreateClient({
   const [returnLine, setReturnLine] = useState<DraftLine>(() =>
     createEmptyDraftLine(),
   );
-  const [discount, setDiscount] = useState("");
-  const [discountManual, setDiscountManual] = useState(false);
-  const [amountPaid, setAmountPaid] = useState("");
+  const [additionalDiscount, setAdditionalDiscount] = useState("");
+  const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
 
@@ -89,7 +97,7 @@ export function SalesmenInvoiceCreateClient({
 
   const returnAmount = filledReturn?.amount ?? 0;
 
-  const suggestedDiscount = useMemo(
+  const ruleDiscount = useMemo(
     () =>
       calculateSalesmanDiscount(
         filledLines.map((l) => ({
@@ -102,20 +110,19 @@ export function SalesmenInvoiceCreateClient({
     [filledLines, priceList, salesman?.discountRule],
   );
 
-  useEffect(() => {
-    if (discountManual) return;
-    setDiscount(suggestedDiscount > 0 ? String(suggestedDiscount) : "");
-  }, [suggestedDiscount, discountManual]);
+  const additionalNum = Number(additionalDiscount);
+  const additionalDiscountAmount =
+    Number.isFinite(additionalNum) && additionalNum > 0 ? additionalNum : 0;
 
-  const discountNum = Number(discount);
-  const discountAmount =
-    Number.isFinite(discountNum) && discountNum > 0 ? discountNum : 0;
-
+  const discountAmount = ruleDiscount + additionalDiscountAmount;
   const invoiceTotal = Math.max(0, subtotal - returnAmount - discountAmount);
 
+  const amountPaid = useMemo(
+    () => payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+    [payments],
+  );
+
   const previousBalance = salesman?.pendingBalance ?? 0;
-  const paidNum = Number(amountPaid);
-  const paid = Number.isFinite(paidNum) && paidNum > 0 ? paidNum : 0;
 
   const liveInvoice: Invoice = useMemo(() => {
     const lineItems: InvoiceLineItem[] = filledLines.map((l) => ({
@@ -147,10 +154,11 @@ export function SalesmenInvoiceCreateClient({
       issuedAt,
       itemCount: lineItems.length,
       totalAmount: invoiceTotal,
-      amountPaid: paid,
+      amountPaid,
       lineItems,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
       returnItems,
+      paymentEntries: payments.length > 0 ? payments : undefined,
     };
   }, [
     draftId,
@@ -160,8 +168,9 @@ export function SalesmenInvoiceCreateClient({
     filledReturn,
     salesman?.id,
     invoiceTotal,
-    paid,
+    amountPaid,
     discountAmount,
+    payments,
   ]);
 
   const previewSalesman: Salesman = salesman ?? {
@@ -179,7 +188,6 @@ export function SalesmenInvoiceCreateClient({
     setSalesmanQuery(s.name);
     setSalesmanOpen(false);
     setError(null);
-    setDiscountManual(false);
   }
 
   function updateReturn(patch: Partial<DraftLine>) {
@@ -197,7 +205,7 @@ export function SalesmenInvoiceCreateClient({
     setReturnLine(createEmptyDraftLine());
   }
 
-  function validateForGenerate(): boolean {
+  function validateStep1(): boolean {
     if (!salesman) {
       setError("Select a salesman first.");
       return false;
@@ -210,8 +218,51 @@ export function SalesmenInvoiceCreateClient({
     return true;
   }
 
+  function goToPayments() {
+    if (!validateStep1()) return;
+    setStep(2);
+  }
+
+  function validatePayments(): boolean {
+    for (const payment of payments) {
+      if (!(payment.amount > 0)) {
+        setError("Each payment needs an amount greater than zero.");
+        return false;
+      }
+      if (payment.method === "cheque") {
+        if (!payment.chequeNumber?.trim()) {
+          setError("Cheque payments need a cheque number.");
+          return false;
+        }
+        if (!payment.depositAccountId) {
+          setError("Cheque payments need a deposit account.");
+          return false;
+        }
+      }
+      if (payment.method === "upi" || payment.method === "imps") {
+        if (!payment.senderName?.trim()) {
+          setError("UPI / IMPS payments need a sender name.");
+          return false;
+        }
+        if (!payment.depositAccountId) {
+          setError("UPI / IMPS payments need a deposit account.");
+          return false;
+        }
+      }
+    }
+    setError(null);
+    return true;
+  }
+
   function handleGenerateClick() {
-    if (!validateForGenerate()) return;
+    if (!validateStep1()) {
+      setStep(1);
+      return;
+    }
+    if (!validatePayments()) {
+      setStep(2);
+      return;
+    }
     setGenerateOpen(true);
   }
 
@@ -255,310 +306,313 @@ export function SalesmenInvoiceCreateClient({
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleGenerateClick}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-            >
-              Generate Invoice
-            </button>
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={handleGenerateClick}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
+              >
+                Generate Invoice
+              </button>
+            )}
           </div>
         </div>
 
         <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-2">
           <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r lg:px-8">
             <div className="mx-auto max-w-2xl space-y-6">
-              <section className="space-y-4">
-                <h2 className="text-sm font-medium">Invoice Details</h2>
+              <StepTabs
+                step={step}
+                onStepChange={(next) => {
+                  if (next === 2) {
+                    goToPayments();
+                    return;
+                  }
+                  setError(null);
+                  setStep(1);
+                }}
+              />
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block min-w-0 sm:col-span-2">
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Salesman
-                    </span>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        role="combobox"
-                        aria-expanded={salesmanOpen}
-                        aria-autocomplete="list"
-                        value={salesmanQuery}
-                        placeholder="Search salesman…"
-                        autoComplete="off"
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-                        onFocus={() => setSalesmanOpen(true)}
-                        onChange={(e) => {
-                          setSalesmanQuery(e.target.value);
-                          setSalesmanId("");
-                          setSalesmanOpen(true);
-                        }}
-                        onBlur={() => {
-                          window.setTimeout(() => setSalesmanOpen(false), 150);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") setSalesmanOpen(false);
-                          if (e.key === "Enter" && filteredSalesmen[0]) {
-                            e.preventDefault();
-                            selectSalesman(filteredSalesmen[0]);
-                          }
-                        }}
-                      />
-                      {salesmanOpen && filteredSalesmen.length > 0 && (
-                        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-md">
-                          {filteredSalesmen.map((s) => (
-                            <li key={s.id}>
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-sidebar"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  selectSalesman(s);
-                                }}
-                              >
-                                <span>{s.name}</span>
-                                <span className="tabular-nums text-muted">
-                                  {formatINR(s.pendingBalance)}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </label>
+              {step === 1 && (
+                <>
+                  <section className="space-y-4">
+                    <h2 className="text-sm font-medium">Invoice Details</h2>
 
-                  <div>
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Last balance
-                    </span>
-                    <p className="py-2.5 text-sm tabular-nums text-foreground">
-                      {salesman ? formatINR(previousBalance) : "—"}
-                    </p>
-                  </div>
-                </div>
-
-                {salesman && (
-                  <p className="text-xs text-muted">
-                    {salesman.phone ? `+${salesman.phone}` : null}
-                    {salesman.phone ? " · " : null}
-                    {salesman.category}
-                    {salesman.discountRule ? (
-                      <>
-                        {" · "}
-                        <span className="text-foreground">
-                          {salesman.discountRule.description}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block min-w-0 sm:col-span-2">
+                        <span className="mb-1.5 block text-xs font-medium text-muted">
+                          Salesman
                         </span>
-                      </>
-                    ) : null}
-                  </p>
-                )}
-              </section>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            role="combobox"
+                            aria-expanded={salesmanOpen}
+                            aria-autocomplete="list"
+                            value={salesmanQuery}
+                            placeholder="Search salesman…"
+                            autoComplete="off"
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+                            onFocus={() => setSalesmanOpen(true)}
+                            onChange={(e) => {
+                              setSalesmanQuery(e.target.value);
+                              setSalesmanId("");
+                              setSalesmanOpen(true);
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(
+                                () => setSalesmanOpen(false),
+                                150,
+                              );
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setSalesmanOpen(false);
+                              if (e.key === "Enter" && filteredSalesmen[0]) {
+                                e.preventDefault();
+                                selectSalesman(filteredSalesmen[0]);
+                              }
+                            }}
+                          />
+                          {salesmanOpen && filteredSalesmen.length > 0 && (
+                            <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-md">
+                              {filteredSalesmen.map((s) => (
+                                <li key={s.id}>
+                                  <button
+                                    type="button"
+                                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-sidebar"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      selectSalesman(s);
+                                    }}
+                                  >
+                                    <span>{s.name}</span>
+                                    <span className="tabular-nums text-muted">
+                                      {formatINR(s.pendingBalance)}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </label>
 
-              <section className="space-y-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="text-base font-medium">Items Details</h2>
-                  <p className="text-xs text-muted">
-                    Tab through item → qty · Enter for next row
-                  </p>
-                </div>
-                <InvoiceLineEntry
-                  priceList={priceList}
-                  lines={lines}
-                  onChange={setLines}
-                  disabled={!salesman}
-                />
-                {!salesman && (
-                  <p className="text-xs text-muted">
-                    Select a salesman to start entering items.
-                  </p>
-                )}
-                {salesman && priceList.length === 0 && (
-                  <p className="text-xs text-muted">
-                    No approved price list items available.
-                  </p>
-                )}
+                      <div>
+                        <span className="mb-1.5 block text-xs font-medium text-muted">
+                          Last balance
+                        </span>
+                        <p className="py-2.5 text-sm tabular-nums text-foreground">
+                          {salesman ? formatINR(previousBalance) : "—"}
+                        </p>
+                      </div>
+                    </div>
 
-                {!returnOpen ? (
-                  <button
-                    type="button"
-                    disabled={!salesman}
-                    onClick={() => setReturnOpen(true)}
-                    className="text-sm text-muted underline-offset-2 hover:text-foreground hover:underline disabled:opacity-40"
-                  >
-                    + Add return
-                  </button>
-                ) : (
-                  <div className="space-y-2 rounded-xl border border-dashed border-border bg-sidebar/40 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">Return item</p>
+                    {salesman && (
+                      <p className="text-xs text-muted">
+                        {salesman.phone ? `+${salesman.phone}` : null}
+                        {salesman.phone ? " · " : null}
+                        {salesman.category}
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="space-y-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h2 className="text-base font-medium">Items</h2>
+                      <p className="text-xs text-muted">
+                        Tab through item → qty · Enter for next row
+                      </p>
+                    </div>
+                    <InvoiceLineEntry
+                      priceList={priceList}
+                      lines={lines}
+                      onChange={setLines}
+                      disabled={!salesman}
+                    />
+                    {!salesman && (
+                      <p className="text-xs text-muted">
+                        Select a salesman to start entering items.
+                      </p>
+                    )}
+                    {salesman && priceList.length === 0 && (
+                      <p className="text-xs text-muted">
+                        No approved price list items available.
+                      </p>
+                    )}
+
+                    {!returnOpen ? (
                       <button
                         type="button"
-                        onClick={clearReturn}
-                        className="text-xs text-muted hover:text-foreground"
+                        disabled={!salesman}
+                        onClick={() => setReturnOpen(true)}
+                        className="text-sm text-muted underline-offset-2 hover:text-foreground hover:underline disabled:opacity-40"
                       >
-                        Remove
+                        + Add return
                       </button>
-                    </div>
-                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2">
-                      <ItemNameCombobox
-                        items={priceList}
-                        value={returnLine.name}
-                        disabled={!salesman}
-                        placeholder="Returning item…"
-                        onChange={(name) =>
-                          updateReturn({
-                            name,
-                            priceListItemId: null,
-                            unitPrice: 0,
-                          })
-                        }
-                        onSelect={(item) =>
-                          updateReturn({
-                            name: item.item_name,
-                            priceListItemId: item.id,
-                            unitPrice: item.salesmen_price,
-                          })
-                        }
-                        onTabToQty={() => undefined}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        inputMode="decimal"
-                        disabled={!salesman}
-                        value={returnLine.qty}
-                        placeholder="Qty"
-                        className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-                        onChange={(e) =>
-                          updateReturn({ qty: e.target.value })
-                        }
-                      />
-                      <span className="text-right text-sm tabular-nums text-[#c45c26]">
-                        {returnAmount > 0
-                          ? `−${formatINR(returnAmount)}`
-                          : "—"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted">
-                      Return amount is subtracted from the invoice total.
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <span className="mb-1.5 block text-xs font-medium text-muted">
-                    Subtotal
-                  </span>
-                  <div className="flex overflow-hidden rounded-lg border border-border bg-sidebar">
-                    <span className="flex items-center border-r border-border px-3 text-sm text-muted">
-                      ₹
-                    </span>
-                    <p className="min-w-0 flex-1 px-3 py-2.5 text-sm tabular-nums">
-                      {subtotal.toLocaleString("en-IN", {
-                        maximumFractionDigits: 2,
-                      })}
-                    </p>
-                  </div>
-                </div>
-
-                <label className="block">
-                  <span className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2 text-xs font-medium text-muted">
-                    <span>Discount</span>
-                    {salesman?.discountRule && suggestedDiscount > 0 && (
-                      <span className="font-normal">
-                        Auto: {formatINR(suggestedDiscount)}
-                        {discountManual ? (
-                          <>
-                            {" · "}
-                            <button
-                              type="button"
-                              className="underline-offset-2 hover:underline"
-                              onClick={() => {
-                                setDiscountManual(false);
-                                setDiscount(String(suggestedDiscount));
-                              }}
-                            >
-                              Reset
-                            </button>
-                          </>
-                        ) : null}
-                      </span>
+                    ) : (
+                      <div className="space-y-2 rounded-xl border border-dashed border-border bg-sidebar/40 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium">Return item</p>
+                          <button
+                            type="button"
+                            onClick={clearReturn}
+                            className="text-xs text-muted hover:text-foreground"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2">
+                          <ItemNameCombobox
+                            items={priceList}
+                            value={returnLine.name}
+                            disabled={!salesman}
+                            placeholder="Returning item…"
+                            onChange={(name) =>
+                              updateReturn({
+                                name,
+                                priceListItemId: null,
+                                unitPrice: 0,
+                              })
+                            }
+                            onSelect={(item) =>
+                              updateReturn({
+                                name: item.item_name,
+                                priceListItemId: item.id,
+                                unitPrice: item.salesmen_price,
+                              })
+                            }
+                            onTabToQty={() => undefined}
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            inputMode="decimal"
+                            disabled={!salesman}
+                            value={returnLine.qty}
+                            placeholder="Qty"
+                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+                            onChange={(e) =>
+                              updateReturn({ qty: e.target.value })
+                            }
+                          />
+                          <span className="text-right text-sm tabular-nums text-[#c45c26]">
+                            {returnAmount > 0
+                              ? `−${formatINR(returnAmount)}`
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
                     )}
-                  </span>
-                  <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
-                    <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      inputMode="decimal"
-                      value={discount}
-                      placeholder="0"
-                      disabled={!salesman}
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
-                      onChange={(e) => {
-                        setDiscountManual(true);
-                        setDiscount(e.target.value);
-                      }}
-                    />
-                  </div>
-                  {salesman?.discountRule && (
-                    <p className="mt-1 text-xs text-muted">
-                      Rule: {salesman.discountRule.description}
+
+                    <div>
+                      <span className="mb-1.5 block text-xs font-medium text-muted">
+                        Rule discount
+                      </span>
+                      <p className="py-2.5 text-sm tabular-nums text-foreground">
+                        {salesman
+                          ? formatINR(ruleDiscount)
+                          : "—"}
+                      </p>
+                      {salesman?.discountRule && (
+                        <p className="text-xs text-muted">
+                          {salesman.discountRule.description}
+                        </p>
+                      )}
+                      {salesman && !salesman.discountRule && (
+                        <p className="text-xs text-muted">
+                          No discount rule on this salesman
+                        </p>
+                      )}
+                    </div>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-muted">
+                        Additional discount
+                      </span>
+                      <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                        <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          inputMode="decimal"
+                          value={additionalDiscount}
+                          placeholder="0"
+                          disabled={!salesman}
+                          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
+                          onChange={(e) =>
+                            setAdditionalDiscount(e.target.value)
+                          }
+                        />
+                      </div>
+                    </label>
+                  </section>
+
+                  {error && (
+                    <p className="text-sm text-[#c45c26]" role="alert">
+                      {error}
                     </p>
                   )}
-                </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-muted">
-                    Amount paid
-                  </span>
-                  <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
-                    <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      inputMode="decimal"
-                      value={amountPaid}
-                      placeholder="0"
-                      disabled={!salesman}
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
-                      onChange={(e) => setAmountPaid(e.target.value)}
-                    />
+                  <div className="flex justify-end pb-4">
+                    <button
+                      type="button"
+                      onClick={goToPayments}
+                      className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
+                    >
+                      Continue to payments
+                    </button>
                   </div>
-                </label>
-
-                {(returnAmount > 0 || discountAmount > 0) && (
-                  <p className="text-sm tabular-nums text-muted">
-                    Invoice total:{" "}
-                    <span className="font-medium text-foreground">
-                      {formatINR(invoiceTotal)}
-                    </span>
-                  </p>
-                )}
-              </section>
-
-              {error && (
-                <p className="text-sm text-[#c45c26]" role="alert">
-                  {error}
-                </p>
+                </>
               )}
 
-              <div className="pb-4 lg:hidden">
-                <button
-                  type="button"
-                  onClick={handleGenerateClick}
-                  className="w-full rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-                >
-                  Generate Invoice
-                </button>
-              </div>
+              {step === 2 && (
+                <>
+                  <section className="space-y-1">
+                    <h2 className="text-base font-medium">Payments</h2>
+                    <p className="text-sm text-muted">
+                      {salesman?.name ?? "Salesman"} · Invoice total{" "}
+                      {formatINR(invoiceTotal)}
+                    </p>
+                  </section>
+
+                  <InvoicePaymentsStep
+                    payments={payments}
+                    onChange={setPayments}
+                    invoiceTotal={invoiceTotal}
+                    disabled={!salesman}
+                  />
+
+                  {error && (
+                    <p className="text-sm text-[#c45c26]" role="alert">
+                      {error}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setStep(1);
+                      }}
+                      className="rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-sidebar"
+                    >
+                      Back to items
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGenerateClick}
+                      className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 lg:hidden"
+                    >
+                      Generate Invoice
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -609,6 +663,10 @@ export function SalesmenInvoiceCreateClient({
           <span className="font-medium text-foreground">
             {salesman?.name}
           </span>
+          . Paid {formatINR(amountPaid)}
+          {discountAmount > 0
+            ? ` · Discount ${formatINR(discountAmount)}`
+            : ""}
           . How would you like to deliver it?
         </p>
         <div className="mt-5 grid gap-2">
@@ -640,6 +698,41 @@ export function SalesmenInvoiceCreateClient({
         </div>
       </Modal>
     </>
+  );
+}
+
+function StepTabs({
+  step,
+  onStepChange,
+}: {
+  step: BuilderStep;
+  onStepChange: (step: BuilderStep) => void;
+}) {
+  return (
+    <div className="inline-flex w-full rounded-lg border border-border bg-surface p-0.5 sm:w-auto">
+      <button
+        type="button"
+        onClick={() => onStepChange(1)}
+        className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none ${
+          step === 1
+            ? "bg-sidebar font-medium"
+            : "text-muted hover:text-foreground"
+        }`}
+      >
+        1 · Items
+      </button>
+      <button
+        type="button"
+        onClick={() => onStepChange(2)}
+        className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none ${
+          step === 2
+            ? "bg-sidebar font-medium"
+            : "text-muted hover:text-foreground"
+        }`}
+      >
+        2 · Payments
+      </button>
+    </div>
   );
 }
 

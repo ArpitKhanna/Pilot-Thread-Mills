@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  canEditInvoice,
+  formatEditCountdown,
   formatINR,
   formatShortDate,
+  getInvoiceEditRemainingMs,
 } from "@/lib/salesmen/mock-data";
 import type { Invoice, InvoiceLineItem, Salesman } from "@/lib/salesmen/types";
 
@@ -140,6 +143,7 @@ export function InvoicePreview({
   previousBalance,
 }: InvoicePreviewProps) {
   const [pageIndex, setPageIndex] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!asOverlay) return;
@@ -165,8 +169,12 @@ export function InvoicePreview({
     [invoice.lineItems],
   );
 
+  const editable = Boolean(onEdit) && canEditInvoice(invoice, now);
+  const editRemainingMs = getInvoiceEditRemainingMs(invoice, now);
+
   useEffect(() => {
     setPageIndex(0);
+    setNow(Date.now());
   }, [invoice.id]);
 
   useEffect(() => {
@@ -174,6 +182,13 @@ export function InvoicePreview({
       setPageIndex(Math.max(0, pages.length - 1));
     }
   }, [pageIndex, pages.length]);
+
+  useEffect(() => {
+    if (!onEdit) return;
+    if (!canEditInvoice(invoice, Date.now())) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [invoice.id, invoice.issuedAt, onEdit]);
 
   const showToolbar = !hideToolbar && !forPrint;
   const currentPage = pages[pageIndex] ?? pages[0];
@@ -239,7 +254,20 @@ export function InvoicePreview({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {onEdit && <ActionButton label="Edit" onClick={onEdit} />}
+            {editable && onEdit && (
+              <ActionButton
+                label={`Edit (${formatEditCountdown(editRemainingMs)})`}
+                onClick={onEdit}
+              />
+            )}
+            {onEdit && !editable && (
+              <span
+                className="text-xs text-muted"
+                title="Invoices can only be edited within 5 minutes of generation"
+              >
+                Edit locked
+              </span>
+            )}
             {onPrint && <ActionButton label="Print" onClick={onPrint} />}
             {onWhatsApp && (
               <ActionButton label="WhatsApp" onClick={onWhatsApp} primary />
