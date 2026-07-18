@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -59,9 +60,8 @@ export function SalesmanDetailClient({
   initialSalesman,
 }: SalesmanDetailClientProps) {
   const [salesman, setSalesman] = useState(initialSalesman);
-  const invoices = useMemo(
-    () => getInvoicesForSalesman(salesman.id),
-    [salesman.id],
+  const [invoices, setInvoices] = useState<Invoice[]>(() =>
+    getInvoicesForSalesman(salesman.id),
   );
 
   const [tab, setTab] = useState<DetailTab>("invoices");
@@ -76,7 +76,10 @@ export function SalesmanDetailClient({
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [editNoticeOpen, setEditNoticeOpen] = useState(false);
   const [editLockedOpen, setEditLockedOpen] = useState(false);
-  const [addInvoiceOpen, setAddInvoiceOpen] = useState(false);
+
+  useEffect(() => {
+    setInvoices(getInvoicesForSalesman(salesman.id));
+  }, [salesman.id]);
 
   const availableYears = useMemo(() => {
     const years = new Set(
@@ -329,14 +332,13 @@ export function SalesmanDetailClient({
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => setAddInvoiceOpen(true)}
+                <Link
+                  href={`/orders/salesmen?salesmanId=${encodeURIComponent(salesman.id)}`}
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
                 >
                   <span className="text-base leading-none">+</span>
                   Add Invoice
-                </button>
+                </Link>
               </div>
             </div>
 
@@ -453,25 +455,6 @@ export function SalesmanDetailClient({
         </p>
       </Modal>
 
-      <Modal
-        open={addInvoiceOpen}
-        onClose={() => setAddInvoiceOpen(false)}
-        title="Add Invoice"
-        footer={
-          <button
-            type="button"
-            onClick={() => setAddInvoiceOpen(false)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
-          >
-            Close
-          </button>
-        }
-      >
-        <p className="text-sm text-muted">
-          Invoice creation for this salesman is coming soon. This will open the
-          full create-invoice flow.
-        </p>
-      </Modal>
     </>
   );
 }

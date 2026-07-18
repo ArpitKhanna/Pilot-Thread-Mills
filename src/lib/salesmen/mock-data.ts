@@ -1,3 +1,4 @@
+import { getCreatedInvoices } from "./invoice-store";
 import type {
   DateRange,
   Invoice,
@@ -5,6 +6,8 @@ import type {
   Salesman,
   TimeRangePreset,
 } from "./types";
+
+export { addInvoice } from "./invoice-store";
 
 export const MOCK_SALESMEN: Salesman[] = [
   {
@@ -275,14 +278,21 @@ export function getSalesmanById(id: string): Salesman | undefined {
   return MOCK_SALESMEN.find((s) => s.id === id);
 }
 
-export function getInvoicesForSalesman(salesmanId: string): Invoice[] {
-  return MOCK_INVOICES.filter((inv) => inv.salesmanId === salesmanId).sort(
+function allInvoices(): Invoice[] {
+  const created = getCreatedInvoices();
+  const createdIds = new Set(created.map((i) => i.id));
+  const seeded = MOCK_INVOICES.filter((i) => !createdIds.has(i.id));
+  return [...created, ...seeded].sort(
     (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
   );
 }
 
+export function getInvoicesForSalesman(salesmanId: string): Invoice[] {
+  return allInvoices().filter((inv) => inv.salesmanId === salesmanId);
+}
+
 export function getInvoiceById(id: string): Invoice | undefined {
-  return MOCK_INVOICES.find((inv) => inv.id === id);
+  return allInvoices().find((inv) => inv.id === id);
 }
 
 function startOfDay(d: Date): Date {

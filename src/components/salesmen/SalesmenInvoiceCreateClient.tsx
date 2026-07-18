@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
 import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
@@ -15,7 +16,7 @@ import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
-  buildWhatsAppShareUrl,
+  addInvoice,
   calculateSalesmanDiscount,
   formatINR,
 } from "@/lib/salesmen/mock-data";
@@ -30,6 +31,7 @@ type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
   salesmen: Salesman[];
   priceList: PriceListItem[];
+  initialSalesmanId?: string;
 };
 
 type BuilderStep = 1 | 2;
@@ -38,7 +40,9 @@ export function SalesmenInvoiceCreateClient({
   context,
   salesmen,
   priceList,
+  initialSalesmanId,
 }: SalesmenInvoiceCreateClientProps) {
+  const router = useRouter();
   const [draftId] = useState(() => `inv-draft-${Date.now()}`);
   const [draftNumber] = useState(() => `INV-SM-${Date.now()}`);
   const [issuedAt] = useState(() => new Date().toISOString());
@@ -57,7 +61,16 @@ export function SalesmenInvoiceCreateClient({
   const [additionalDiscount, setAdditionalDiscount] = useState("");
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [generateOpen, setGenerateOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!initialSalesmanId) return;
+    const match = salesmen.find((s) => s.id === initialSalesmanId);
+    if (!match) return;
+    setSalesmanId(match.id);
+    setSalesmanQuery(match.name);
+  }, [initialSalesmanId, salesmen]);
 
   const salesman = salesmen.find((s) => s.id === salesmanId) ?? null;
 
@@ -263,28 +276,19 @@ export function SalesmenInvoiceCreateClient({
       setStep(2);
       return;
     }
-    setGenerateOpen(true);
+    setConfirmOpen(true);
   }
 
-  function handlePrint() {
-    requestAnimationFrame(() => {
-      window.setTimeout(() => window.print(), 50);
+  function confirmGenerate() {
+    if (!salesman || saving) return;
+    setSaving(true);
+    const saved = addInvoice({
+      ...liveInvoice,
+      issuedAt: new Date().toISOString(),
     });
-  }
-
-  function handleWhatsApp() {
-    if (!salesman) return;
-    const url = buildWhatsAppShareUrl(
-      salesman.phone,
-      liveInvoice,
-      salesman.name,
-    );
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
-  function handleBoth() {
-    handleWhatsApp();
-    handlePrint();
+    setConfirmOpen(false);
+    router.push(`/entities/salesmen/${saved.salesmanId}`);
+    router.refresh();
   }
 
   return (
@@ -299,22 +303,11 @@ export function SalesmenInvoiceCreateClient({
       />
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden print:hidden">
-        <div className="flex shrink-0 flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-border px-4 py-4 sm:px-6 lg:px-8">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               Create New Invoice
             </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {step === 2 && (
-              <button
-                type="button"
-                onClick={handleGenerateClick}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-              >
-                Generate Invoice
-              </button>
-            )}
           </div>
         </div>
 
@@ -606,7 +599,7 @@ export function SalesmenInvoiceCreateClient({
                     <button
                       type="button"
                       onClick={handleGenerateClick}
-                      className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 lg:hidden"
+                      className="rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
                     >
                       Generate Invoice
                     </button>
@@ -641,21 +634,34 @@ export function SalesmenInvoiceCreateClient({
       </div>
 
       <Modal
-        open={generateOpen}
-        onClose={() => setGenerateOpen(false)}
-        title="Generate Invoice"
+        open={confirmOpen}
+        onClose={() => {
+          if (!saving) setConfirmOpen(false);
+        }}
+        title="Generate this invoice?"
         footer={
-          <button
-            type="button"
-            onClick={() => setGenerateOpen(false)}
-            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-sidebar"
-          >
-            Cancel
-          </button>
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setConfirmOpen(false)}
+              className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-sidebar disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={confirmGenerate}
+              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Yes, generate"}
+            </button>
+          </div>
         }
       >
         <p className="text-sm text-muted">
-          Invoice{" "}
+          Create invoice{" "}
           <span className="font-medium text-foreground">
             {liveInvoice.number}
           </span>{" "}
@@ -663,39 +669,33 @@ export function SalesmenInvoiceCreateClient({
           <span className="font-medium text-foreground">
             {salesman?.name}
           </span>
-          . Paid {formatINR(amountPaid)}
-          {discountAmount > 0
-            ? ` · Discount ${formatINR(discountAmount)}`
-            : ""}
-          . How would you like to deliver it?
+          ?
         </p>
-        <div className="mt-5 grid gap-2">
-          <ActionChoice
-            label="Send via WhatsApp"
-            description={`Opens WhatsApp to ${salesman?.name ?? "salesman"}`}
-            onClick={() => {
-              handleWhatsApp();
-              setGenerateOpen(false);
-            }}
-          />
-          <ActionChoice
-            label="Print"
-            description="Open the print dialog for this invoice"
-            onClick={() => {
-              setGenerateOpen(false);
-              handlePrint();
-            }}
-          />
-          <ActionChoice
-            label="Both"
-            description="Send on WhatsApp and print"
-            primary
-            onClick={() => {
-              setGenerateOpen(false);
-              handleBoth();
-            }}
-          />
-        </div>
+        <dl className="mt-4 space-y-1.5 text-sm">
+          <div className="flex justify-between gap-4 text-muted">
+            <dt>Invoice total</dt>
+            <dd className="tabular-nums text-foreground">
+              {formatINR(invoiceTotal)}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-4 text-muted">
+            <dt>Paid</dt>
+            <dd className="tabular-nums text-foreground">
+              {formatINR(amountPaid)}
+            </dd>
+          </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between gap-4 text-muted">
+              <dt>Discount</dt>
+              <dd className="tabular-nums text-foreground">
+                {formatINR(discountAmount)}
+              </dd>
+            </div>
+          )}
+        </dl>
+        <p className="mt-4 text-xs text-muted">
+          This will add the invoice to {salesman?.name}&apos;s invoice list.
+        </p>
       </Modal>
     </>
   );
@@ -733,38 +733,5 @@ function StepTabs({
         2 · Payments
       </button>
     </div>
-  );
-}
-
-function ActionChoice({
-  label,
-  description,
-  onClick,
-  primary = false,
-}: {
-  label: string;
-  description: string;
-  onClick: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-        primary
-          ? "border-foreground bg-foreground text-surface hover:bg-foreground/90"
-          : "border-border bg-surface hover:bg-sidebar"
-      }`}
-    >
-      <span className="block text-sm font-medium">{label}</span>
-      <span
-        className={`mt-0.5 block text-xs ${
-          primary ? "text-surface/70" : "text-muted"
-        }`}
-      >
-        {description}
-      </span>
-    </button>
   );
 }
