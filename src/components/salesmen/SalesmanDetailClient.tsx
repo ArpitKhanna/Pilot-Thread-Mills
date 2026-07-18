@@ -8,39 +8,39 @@ import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { ItemRequestsList } from "@/components/salesmen/ItemRequestsList";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import { PersonalDetailsForm } from "@/components/salesmen/PersonalDetailsForm";
+import { SalesmanOverview } from "@/components/salesmen/SalesmanOverview";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   buildWhatsAppShareUrl,
   canEditInvoice,
   formatINR,
-  resolveDateRange,
-  summarizePurchasesAndPayments,
 } from "@/lib/salesmen/mock-data";
-import type { Invoice, Salesman, TimeRangePreset } from "@/lib/salesmen/types";
+import type {
+  Invoice,
+  ItemRequest,
+  Salesman,
+} from "@/lib/salesmen/types";
 import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
-type DetailTab = "invoices" | "payments" | "requests" | "details";
+type DetailTab =
+  | "overview"
+  | "invoices"
+  | "payments"
+  | "requests"
+  | "details";
 
 type SalesmanDetailClientProps = {
   context: AppContext;
   initialSalesman: Salesman;
   initialInvoices: Invoice[];
+  initialItemRequests: ItemRequest[];
   priceList: PriceListItem[];
   bankAccounts: BankAccount[];
 };
-
-const RANGE_OPTIONS: { id: TimeRangePreset; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "1W" },
-  { id: "month", label: "1M" },
-  { id: "6m", label: "6M" },
-  { id: "1y", label: "1Y" },
-  { id: "max", label: "Max" },
-  { id: "custom", label: "Custom" },
-];
 
 const MONTH_OPTIONS = [
   { value: "0", label: "January" },
@@ -61,12 +61,14 @@ export function SalesmanDetailClient({
   context,
   initialSalesman,
   initialInvoices,
+  initialItemRequests,
   priceList,
   bankAccounts,
 }: SalesmanDetailClientProps) {
   const router = useRouter();
   const [salesman, setSalesman] = useState(initialSalesman);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [itemRequests, setItemRequests] = useState(initialItemRequests);
 
   const paymentCount = useMemo(
     () =>
@@ -78,10 +80,12 @@ export function SalesmanDetailClient({
     [invoices],
   );
 
-  const [tab, setTab] = useState<DetailTab>("invoices");
-  const [rangePreset, setRangePreset] = useState<TimeRangePreset>("month");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const openRequestCount = useMemo(
+    () => itemRequests.filter((r) => r.status === "open").length,
+    [itemRequests],
+  );
+
+  const [tab, setTab] = useState<DetailTab>("overview");
   const [filterMonth, setFilterMonth] = useState<string>("all");
   const [filterYear, setFilterYear] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
@@ -93,7 +97,8 @@ export function SalesmanDetailClient({
   useEffect(() => {
     setSalesman(initialSalesman);
     setInvoices(initialInvoices);
-  }, [initialSalesman, initialInvoices]);
+    setItemRequests(initialItemRequests);
+  }, [initialSalesman, initialInvoices, initialItemRequests]);
 
   const availableYears = useMemo(() => {
     const years = new Set(
@@ -127,16 +132,6 @@ export function SalesmanDetailClient({
       return filteredInvoices[0] ?? null;
     });
   }, [filteredInvoices]);
-
-  const summary = useMemo(() => {
-    const range = resolveDateRange(rangePreset, customFrom, customTo);
-    return summarizePurchasesAndPayments(invoices, range);
-  }, [invoices, rangePreset, customFrom, customTo]);
-
-  const paidPct =
-    summary.purchases > 0
-      ? Math.min(100, (summary.payments / summary.purchases) * 100)
-      : 0;
 
   function handleSelect(invoice: Invoice) {
     setSelectedInvoice(invoice);
@@ -180,7 +175,6 @@ export function SalesmanDetailClient({
 
       <div className="flex min-h-0 flex-1 flex-col print:hidden">
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        {/* Header + tabs */}
         <div className="mb-5 flex flex-col gap-4 sm:mb-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -202,10 +196,27 @@ export function SalesmanDetailClient({
               <span className="text-muted">
                 {ENTITY_TYPE_LABELS[salesman.entityType]}
               </span>
+              <span className="text-border" aria-hidden>
+                |
+              </span>
+              <span
+                className={
+                  salesman.pendingBalance > 0
+                    ? "font-medium text-[#c45c26]"
+                    : "text-muted"
+                }
+              >
+                Balance {formatINR(salesman.pendingBalance)}
+              </span>
             </p>
           </div>
 
-          <div className="inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 lg:w-auto lg:max-w-[min(100%,36rem)]">
+          <div className="inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 lg:w-auto lg:max-w-[min(100%,42rem)]">
+            <TabButton
+              active={tab === "overview"}
+              onClick={() => setTab("overview")}
+              label="Overview"
+            />
             <TabButton
               active={tab === "invoices"}
               onClick={() => setTab("invoices")}
@@ -219,7 +230,7 @@ export function SalesmanDetailClient({
             <TabButton
               active={tab === "requests"}
               onClick={() => setTab("requests")}
-              label="Item Request(s)"
+              label={`Item Request(s) (${openRequestCount})`}
             />
             <TabButton
               active={tab === "details"}
@@ -229,93 +240,9 @@ export function SalesmanDetailClient({
           </div>
         </div>
 
-        {/* Purchase & Payments chart */}
-        <section className="mb-6 rounded-xl border border-border bg-surface p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-              Purchase &amp; Payments
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-0.5">
-                {RANGE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setRangePreset(opt.id)}
-                    className={`rounded-md px-2.5 py-1.5 text-xs sm:text-sm ${
-                      rangePreset === opt.id
-                        ? "bg-surface font-medium shadow-sm"
-                        : "text-muted hover:text-foreground"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {rangePreset === "custom" && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                    aria-label="From date"
-                  />
-                  <span className="text-xs text-muted">to</span>
-                  <input
-                    type="date"
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                    aria-label="To date"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <div
-              className="relative h-4 overflow-hidden rounded-full bg-[#f5f0eb]"
-              role="img"
-              aria-label={`Purchases ${formatINR(summary.purchases)}, payments ${formatINR(summary.payments)}, pending ${formatINR(summary.pending)}`}
-            >
-              {/* Full track = purchases; payments fill from left; remainder reads as pending */}
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-[#f8d4b8]"
-                style={{
-                  width: summary.purchases > 0 ? "100%" : "0%",
-                }}
-              />
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-[#e86f2a] transition-all"
-                style={{ width: `${paidPct}%` }}
-              />
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <MetricStat
-                label="Purchases"
-                amount={summary.purchases}
-                swatch="bg-[#f8d4b8]"
-              />
-              <MetricStat
-                label="Payments"
-                amount={summary.payments}
-                swatch="bg-[#e86f2a]"
-              />
-              <MetricStat
-                label="Pending"
-                amount={summary.pending}
-                amountClass="text-[#c45c26]"
-                swatch="bg-[#f8d4b8] ring-1 ring-inset ring-[#e86f2a]/30"
-              />
-            </div>
-          </div>
-        </section>
-
-        {tab === "invoices" ? (
+        {tab === "overview" ? (
+          <SalesmanOverview invoices={invoices} />
+        ) : tab === "invoices" ? (
           <div>
             <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-col gap-3 bg-background px-4 py-3 sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:-mx-8 lg:px-8">
               <h2 className="text-lg font-medium tracking-tight">
@@ -387,22 +314,24 @@ export function SalesmanDetailClient({
           </div>
         ) : tab === "payments" ? (
           <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
-        ) : tab === "details" ? (
+        ) : tab === "requests" ? (
+          <ItemRequestsList
+            salesmanId={salesman.id}
+            priceList={priceList}
+            requests={itemRequests}
+            onRequestsChange={setItemRequests}
+          />
+        ) : (
           <PersonalDetailsForm
             key={`${salesman.id}-${salesman.phone}-${salesman.discountRules.length}`}
             salesman={salesman}
             priceList={priceList}
             onSaved={setSalesman}
           />
-        ) : (
-          <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-            {tab === "requests" && "Item requests coming soon"}
-          </div>
         )}
         </main>
       </div>
 
-      {/* Mobile preview overlay — only after explicit select */}
       {selectedInvoice && mobilePreviewOpen && (
         <div className="lg:hidden print:hidden">
           <InvoicePreview
@@ -450,34 +379,7 @@ export function SalesmanDetailClient({
           5 minutes of generation so prices stay consistent.
         </p>
       </Modal>
-
     </>
-  );
-}
-
-function MetricStat({
-  label,
-  amount,
-  swatch,
-  amountClass,
-}: {
-  label: string;
-  amount: number;
-  swatch: string;
-  amountClass?: string;
-}) {
-  return (
-    <div>
-      <p className="flex items-center gap-1.5 text-xs text-muted">
-        <span className={`inline-block h-2 w-2 rounded-full ${swatch}`} />
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-base font-medium tabular-nums sm:text-lg ${amountClass ?? ""}`}
-      >
-        {formatINR(amount)}
-      </p>
-    </div>
   );
 }
 

@@ -93,3 +93,17 @@ export type PurchasePaymentsSummary = {
   payments: number;
   pending: number;
 };
+
+export type ItemRequestStatus = "open" | "fulfilled";
+
+export type ItemRequest = {
+  id: string;
+  salesmanId: string;
+  itemName: string;
+  priceListItemId?: string;
+  qty: number;
+  requestedAt: string;
+  notes?: string;
+  status: ItemRequestStatus;
+  fulfilledAt: string | null;
+};

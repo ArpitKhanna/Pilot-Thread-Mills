@@ -3,6 +3,7 @@ import { SalesmanDetailClient } from "@/components/salesmen/SalesmanDetailClient
 import { getAppContext } from "@/app/(app)/layout";
 import type { PriceListItem } from "@/lib/auth/types";
 import { listBankAccounts } from "@/lib/bank-accounts/queries";
+import { listItemRequestsForSalesman } from "@/lib/salesmen/item-requests";
 import {
   getSalesman,
   listInvoicesForSalesman,
@@ -25,21 +26,24 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
 
-  const [{ data: items }, invoices, bankAccounts] = await Promise.all([
-    supabase
-      .from("price_list_items")
-      .select("*")
-      .eq("status", "approved")
-      .order("item_name"),
-    listInvoicesForSalesman(supabase, id),
-    listBankAccounts(supabase).catch(() => []),
-  ]);
+  const [{ data: items }, invoices, bankAccounts, itemRequests] =
+    await Promise.all([
+      supabase
+        .from("price_list_items")
+        .select("*")
+        .eq("status", "approved")
+        .order("item_name"),
+      listInvoicesForSalesman(supabase, id),
+      listBankAccounts(supabase).catch(() => []),
+      listItemRequestsForSalesman(supabase, id).catch(() => []),
+    ]);
 
   return (
     <SalesmanDetailClient
       context={context}
       initialSalesman={salesman}
       initialInvoices={invoices}
+      initialItemRequests={itemRequests}
       priceList={(items ?? []) as PriceListItem[]}
       bankAccounts={bankAccounts}
     />
