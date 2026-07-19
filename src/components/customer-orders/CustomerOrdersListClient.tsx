@@ -5,6 +5,7 @@ import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
 import { PendingLink } from "@/components/ui/PendingLink";
+import type { PriceListItem } from "@/lib/auth/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
   type CustomerOrder,
@@ -17,6 +18,7 @@ type CustomerOrdersListClientProps = {
   context: AppContext;
   initialOrders: CustomerOrder[];
   customers: Salesman[];
+  priceList: PriceListItem[];
 };
 
 const STATUS_FILTERS: Array<CustomerOrderStatus | "all"> = [
@@ -49,6 +51,7 @@ export function CustomerOrdersListClient({
   context,
   initialOrders,
   customers,
+  priceList,
 }: CustomerOrdersListClientProps) {
   const [orders] = useState(initialOrders);
   const [status, setStatus] = useState<CustomerOrderStatus | "all">("all");
@@ -189,6 +192,7 @@ export function CustomerOrdersListClient({
         open={newOpen}
         onClose={() => setNewOpen(false)}
         customers={customers}
+        priceList={priceList}
       />
     </>
   );

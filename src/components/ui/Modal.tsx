@@ -8,9 +8,24 @@ type ModalProps = {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Wider dialog for multi-step / denser forms. Default "md". */
+  size?: "md" | "lg" | "xl";
 };
 
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
+  md: "sm:max-w-lg",
+  lg: "sm:max-w-2xl",
+  xl: "sm:max-w-4xl",
+};
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  size = "md",
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -32,7 +47,9 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
         onClick={onClose}
       />
-      <div className="relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-xl sm:max-h-[90dvh] sm:max-w-lg sm:rounded-xl">
+      <div
+        className={`relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-xl sm:max-h-[90dvh] sm:rounded-xl ${SIZE_CLASS[size]}`}
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4 sm:px-6">
           <h2 className="text-lg font-medium">{title}</h2>
           <button
