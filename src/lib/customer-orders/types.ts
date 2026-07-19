@@ -80,21 +80,3 @@ export const ORDER_LINE_UNIT_LABELS: Record<CustomerOrderLineUnit, string> = {
   cone: "Cone",
   unit: "Unit",
 };
-
-export type OcrSuggestedLine = {
-  shadeCode: string;
-  qty: number;
-  unit: CustomerOrderLineUnit;
-};
-
-export type OcrSuggestedColumn = {
-  itemHint: string;
-  priceListItemId: string | null;
-  itemName: string | null;
-  lines: OcrSuggestedLine[];
-};
-
-export type OcrSuggestResult = {
-  columns: OcrSuggestedColumn[];
-  raw: unknown;
-};

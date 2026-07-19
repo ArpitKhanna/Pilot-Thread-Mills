@@ -15,7 +15,6 @@ import {
   type CustomerOrder,
   type CustomerOrderLineUnit,
   type CustomerOrderStatus,
-  type OcrSuggestResult,
 } from "@/lib/customer-orders/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
@@ -27,7 +26,6 @@ type DraftLine = {
   shadeCode: string;
   qty: string;
   unit: CustomerOrderLineUnit;
-  source: "ocr" | "manual";
   shadeId: string | null;
   colorLabel: string;
   colorHex: string;
@@ -50,7 +48,6 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
         shadeCode: "",
         qty: "1",
         unit: "box",
-        source: "manual",
         shadeId: null,
         colorLabel: "",
         colorHex: "",
@@ -64,7 +61,6 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
     shadeCode: line.shadeCode,
     qty: String(line.qty),
     unit: line.unit,
-    source: line.source,
     shadeId: line.shadeId,
     colorLabel: line.shade?.colorLabel ?? "",
     colorHex: line.shade?.colorHex ?? "",
@@ -92,7 +88,6 @@ export function CustomerOrderDetailClient({
   const [lines, setLines] = useState(() => linesFromOrder(initialOrder));
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [ocrMessage, setOcrMessage] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [discountAmount, setDiscountAmount] = useState("0");
@@ -126,7 +121,6 @@ export function CustomerOrderDetailClient({
         shadeCode: "",
         qty: "1",
         unit: "box",
-        source: "manual",
         shadeId: null,
         colorLabel: "",
         colorHex: "",
@@ -152,7 +146,7 @@ export function CustomerOrderDetailClient({
           shadeCode: l.shadeCode.trim(),
           qty: Number(l.qty),
           unit: l.unit,
-          source: l.source,
+          source: "manual" as const,
         }));
 
       const res = await fetch(`/api/customer-orders/${order.id}/lines`, {
@@ -229,65 +223,6 @@ export function CustomerOrderDetailClient({
       setOrder(json.order);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function runOcr(attachmentId: string) {
-    setBusy(`ocr-${attachmentId}`);
-    setError("");
-    setOcrMessage("");
-    try {
-      const res = await fetch("/api/customer-orders/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, attachmentId }),
-      });
-      const json = (await res.json()) as {
-        suggestion?: OcrSuggestResult;
-        error?: string;
-      };
-      if (!res.ok || !json.suggestion) {
-        throw new Error(json.error ?? "OCR failed");
-      }
-
-      const suggested: DraftLine[] = [];
-      for (const col of json.suggestion.columns) {
-        for (const line of col.lines) {
-          suggested.push({
-            key: crypto.randomUUID(),
-            priceListItemId: col.priceListItemId,
-            itemName: col.itemName ?? col.itemHint,
-            shadeCode: line.shadeCode,
-            qty: String(line.qty),
-            unit: line.unit,
-            source: "ocr",
-            shadeId: null,
-            colorLabel: "",
-            colorHex: "",
-          });
-        }
-      }
-
-      if (suggested.length === 0) {
-        setOcrMessage("OCR found no shade lines. Enter them manually.");
-        return;
-      }
-
-      setLines((prev) => {
-        const keepManual = prev.filter(
-          (l) =>
-            l.source === "manual" &&
-            (l.shadeCode.trim() || l.priceListItemId),
-        );
-        return [...keepManual, ...suggested];
-      });
-      setOcrMessage(
-        `Suggested ${suggested.length} shade line(s). Review and save before confirming.`,
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "OCR failed");
     } finally {
       setBusy("");
     }
@@ -550,11 +485,6 @@ export function CustomerOrderDetailClient({
             {error}
           </p>
         ) : null}
-        {ocrMessage ? (
-          <p className="mb-4 rounded-lg border border-border bg-sidebar px-3 py-2 text-sm">
-            {ocrMessage}
-          </p>
-        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
           <section className="space-y-4">
@@ -599,30 +529,16 @@ export function CustomerOrderDetailClient({
                       ) : (
                         <p className="mb-2 text-sm">{slip.fileName ?? "File"}</p>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        {!locked ? (
-                          <button
-                            type="button"
-                            disabled={Boolean(busy)}
-                            onClick={() => runOcr(slip.id)}
-                            className="rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
-                          >
-                            {busy === `ocr-${slip.id}`
-                              ? "Reading…"
-                              : "Suggest from image"}
-                          </button>
-                        ) : null}
-                        {!locked ? (
-                          <button
-                            type="button"
-                            disabled={Boolean(busy)}
-                            onClick={() => removeAttachment(slip.id)}
-                            className="rounded-md border border-border px-2.5 py-1.5 text-xs"
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
+                      {!locked ? (
+                        <button
+                          type="button"
+                          disabled={Boolean(busy)}
+                          onClick={() => removeAttachment(slip.id)}
+                          className="rounded-md border border-border px-2.5 py-1.5 text-xs"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -774,11 +690,6 @@ export function CustomerOrderDetailClient({
                           ×
                         </button>
                       </>
-                    ) : null}
-                    {line.source === "ocr" ? (
-                      <span className="text-[10px] uppercase text-muted">
-                        OCR
-                      </span>
                     ) : null}
                   </div>
                 </div>

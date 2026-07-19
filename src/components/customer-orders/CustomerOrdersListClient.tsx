@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
+import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
 import { PendingLink } from "@/components/ui/PendingLink";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
@@ -10,10 +11,12 @@ import {
   type CustomerOrderStatus,
 } from "@/lib/customer-orders/types";
 import { formatShortDate } from "@/lib/salesmen/mock-data";
+import type { Salesman } from "@/lib/salesmen/types";
 
 type CustomerOrdersListClientProps = {
   context: AppContext;
   initialOrders: CustomerOrder[];
+  customers: Salesman[];
 };
 
 const STATUS_FILTERS: Array<CustomerOrderStatus | "all"> = [
@@ -45,10 +48,12 @@ function statusTone(status: CustomerOrderStatus): string {
 export function CustomerOrdersListClient({
   context,
   initialOrders,
+  customers,
 }: CustomerOrdersListClientProps) {
   const [orders] = useState(initialOrders);
   const [status, setStatus] = useState<CustomerOrderStatus | "all">("all");
   const [search, setSearch] = useState("");
+  const [newOpen, setNewOpen] = useState(false);
 
   const displayed = useMemo(() => {
     return orders.filter((order) => {
@@ -79,17 +84,17 @@ export function CustomerOrdersListClient({
               Customer Orders
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Capture WhatsApp / notebook slips, review shades, then invoice
+              Upload order slips, match swatches, enter shades, then invoice
             </p>
           </div>
-          <PendingLink
-            href="/orders/customers/new"
+          <button
+            type="button"
+            onClick={() => setNewOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-            pendingLabel="Opening…"
           >
             <span className="text-lg leading-none">+</span>
             New Order
-          </PendingLink>
+          </button>
         </div>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -125,7 +130,7 @@ export function CustomerOrdersListClient({
 
         {displayed.length === 0 ? (
           <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-            No customer orders yet. Create one from a WhatsApp or notebook slip.
+            No customer orders yet. Create one and upload the order slip as proof.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -179,6 +184,12 @@ export function CustomerOrdersListClient({
           </div>
         )}
       </main>
+
+      <NewCustomerOrderModal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        customers={customers}
+      />
     </>
   );
 }
