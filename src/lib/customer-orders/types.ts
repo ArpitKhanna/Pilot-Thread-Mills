@@ -44,9 +44,15 @@ export type CustomerOrderLine = {
   shadeCode: string;
   qty: number;
   unit: CustomerOrderLineUnit;
+  unitPrice?: number;
   source: CustomerOrderLineSource;
   sortOrder: number;
   shade?: ItemShade | null;
+};
+
+export type DeliveryStaff = {
+  id: string;
+  fullName: string;
 };
 
 export type CustomerOrder = {
@@ -57,19 +63,22 @@ export type CustomerOrder = {
   orderDate: string;
   notes: string | null;
   invoiceId: string | null;
+  deliveryBy: string | null;
+  deliveryByName: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   lineCount: number;
+  amount: number;
   lines: CustomerOrderLine[];
   attachments: CustomerOrderAttachment[];
 };
 
 export const CUSTOMER_ORDER_STATUS_LABELS: Record<CustomerOrderStatus, string> =
   {
-    draft: "Draft",
+    draft: "Drafts",
     confirmed: "Confirmed",
-    picking: "Picking",
+    picking: "Out for Delivery",
     invoiced: "Invoiced",
     cancelled: "Cancelled",
   };

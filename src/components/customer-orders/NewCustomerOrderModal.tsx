@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
@@ -12,6 +20,8 @@ import {
   type CustomerOrderLineUnit,
 } from "@/lib/customer-orders/types";
 import type { Salesman } from "@/lib/salesmen/types";
+
+type MenuPos = { top: number; left: number; width: number };
 
 type DraftLine = {
   key: string;
@@ -40,60 +50,131 @@ function emptyLine(): DraftLine {
   };
 }
 
+function emptyLines(count = 3): DraftLine[] {
+  return Array.from({ length: count }, () => emptyLine());
+}
+
+function todayLocalDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function NewCustomerOrderModal({
   open,
   onClose,
-  customers: initialCustomers,
+  customers,
   priceList,
 }: NewCustomerOrderModalProps) {
   const router = useRouter();
-  const [customers, setCustomers] = useState(initialCustomers);
   const [step, setStep] = useState<1 | 2>(1);
   const [orderId, setOrderId] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useState("");
-  const [orderDate, setOrderDate] = useState(
-    () => new Date().toISOString().slice(0, 10),
-  );
-  const [notes, setNotes] = useState("");
-  const [search, setSearch] = useState("");
+  const [customerQuery, setCustomerQuery] = useState("");
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [customerMenuPos, setCustomerMenuPos] = useState<MenuPos | null>(null);
+  const customerListId = useId();
+  const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const customerMenuRef = useRef<HTMLDivElement | null>(null);
+  const [orderDate, setOrderDate] = useState(todayLocalDate);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [quickAdd, setQuickAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
 
   const [slips, setSlips] = useState<CustomerOrderAttachment[]>([]);
   const [patches, setPatches] = useState<CustomerOrderAttachment[]>([]);
-  const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  const [manualOrderOpen, setManualOrderOpen] = useState(false);
+  const [lines, setLines] = useState<DraftLine[]>(() => emptyLines(3));
+
+  const selectedCustomer =
+    customers.find((c) => c.id === customerId) ?? null;
+
+  const filteredCustomers = useMemo(() => {
+    const active = customers
+      .filter((c) => c.isActive)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const q = customerQuery.trim().toLowerCase();
+    if (
+      !q ||
+      (selectedCustomer && selectedCustomer.name.toLowerCase() === q)
+    ) {
+      return active;
+    }
+    return active.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone ?? "").toLowerCase().includes(q),
+    );
+  }, [customers, customerQuery, selectedCustomer]);
+
+  function updateCustomerMenuPosition() {
+    const el = customerInputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(rect.width, 240);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+    setCustomerMenuPos({
+      top: openUp ? rect.top - 4 : rect.bottom + 4,
+      left: Math.min(rect.left, window.innerWidth - width - 8),
+      width,
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (!customerOpen) {
+      setCustomerMenuPos(null);
+      return;
+    }
+    updateCustomerMenuPosition();
+  }, [customerOpen, customerQuery, filteredCustomers.length]);
 
   useEffect(() => {
-    if (open) setCustomers(initialCustomers);
-  }, [open, initialCustomers]);
+    if (!customerOpen) return;
+    function onScrollOrResize() {
+      updateCustomerMenuPosition();
+    }
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [customerOpen]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return customers
-      .filter((c) => c.isActive)
-      .filter((c) => (q ? c.name.toLowerCase().includes(q) : true))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [customers, search]);
+  useEffect(() => {
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (customerInputRef.current?.contains(target)) return;
+      if (customerMenuRef.current?.contains(target)) return;
+      setCustomerOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  function selectCustomer(customer: Salesman) {
+    setCustomerId(customer.id);
+    setCustomerQuery(customer.name);
+    setCustomerOpen(false);
+    setError("");
+  }
 
   function reset() {
     setStep(1);
     setOrderId(null);
     setCustomerId("");
-    setOrderDate(new Date().toISOString().slice(0, 10));
-    setNotes("");
-    setSearch("");
+    setCustomerQuery("");
+    setCustomerOpen(false);
+    setOrderDate(todayLocalDate());
     setError("");
-    setQuickAdd(false);
-    setNewName("");
-    setNewPhone("");
     setBusy("");
     setSlips([]);
     setPatches([]);
-    setLines([emptyLine()]);
+    setManualOrderOpen(false);
+    setLines(emptyLines(3));
   }
 
   function handleClose() {
@@ -138,21 +219,6 @@ export function NewCustomerOrderModal({
   }
 
   async function goToStep2() {
-    if (quickAdd) {
-      if (!newName.trim()) {
-        setError("Customer name is required");
-        return;
-      }
-      await createOrderDraft({
-        orderDate,
-        notes: notes.trim() || null,
-        createCustomer: {
-          name: newName.trim(),
-          phone: newPhone.trim(),
-        },
-      });
-      return;
-    }
     if (!customerId) {
       setError("Select a customer");
       return;
@@ -160,7 +226,6 @@ export function NewCustomerOrderModal({
     await createOrderDraft({
       customerId,
       orderDate,
-      notes: notes.trim() || null,
     });
   }
 
@@ -313,102 +378,208 @@ export function NewCustomerOrderModal({
               <input
                 type="date"
                 value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground"
+                readOnly
+                disabled
+                className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2.5 text-sm text-muted"
               />
             </label>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">Customer</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickAdd((v) => !v);
-                    setError("");
-                  }}
-                  className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
-                >
-                  {quickAdd ? "Pick existing" : "+ Quick add"}
-                </button>
-              </div>
-
-              {quickAdd ? (
-                <div className="space-y-3 rounded-xl border border-border p-3">
-                  <label className="block space-y-1.5">
-                    <span className="text-sm font-medium">Name</span>
-                    <input
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                    />
-                  </label>
-                  <label className="block space-y-1.5">
-                    <span className="text-sm font-medium">Phone</span>
-                    <input
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                    />
-                  </label>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="search"
-                    placeholder="Search customers"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                  />
-                  <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-surface">
-                    {filtered.length === 0 ? (
-                      <p className="px-4 py-8 text-center text-sm text-muted">
-                        No customers found. Use Quick add.
-                      </p>
-                    ) : (
-                      <ul>
-                        {filtered.map((customer) => (
-                          <li
-                            key={customer.id}
-                            className="border-b border-border last:border-0"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setCustomerId(customer.id)}
-                              className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
-                                customerId === customer.id
-                                  ? "bg-sidebar font-medium"
-                                  : "hover:bg-sidebar/50"
-                              }`}
-                            >
-                              <span>{customer.name}</span>
-                              <span className="text-xs text-muted">
-                                {customer.phone || "No phone"}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
 
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Notes (optional)</span>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                placeholder="Market day, delivery notes…"
+              <span className="text-sm font-medium">Customer</span>
+              <input
+                ref={customerInputRef}
+                type="text"
+                role="combobox"
+                aria-expanded={customerOpen}
+                aria-controls={customerListId}
+                aria-autocomplete="list"
+                value={customerQuery}
+                placeholder="Search customer…"
+                autoComplete="off"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+                onFocus={() => setCustomerOpen(true)}
+                onChange={(e) => {
+                  setCustomerQuery(e.target.value);
+                  setCustomerId("");
+                  setCustomerOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setCustomerOpen(false);
+                    return;
+                  }
+                  if (e.key === "Enter" && filteredCustomers[0]) {
+                    e.preventDefault();
+                    selectCustomer(filteredCustomers[0]);
+                  }
+                }}
               />
+              {customerOpen &&
+              customerMenuPos &&
+              typeof document !== "undefined"
+                ? createPortal(
+                    <div
+                      ref={customerMenuRef}
+                      id={customerListId}
+                      role="listbox"
+                      style={{
+                        position: "fixed",
+                        top: customerMenuPos.top,
+                        left: customerMenuPos.left,
+                        width: customerMenuPos.width,
+                        transform:
+                          customerMenuPos.top <
+                          (customerInputRef.current?.getBoundingClientRect()
+                            .top ?? 0)
+                            ? "translateY(-100%)"
+                            : undefined,
+                        zIndex: 80,
+                      }}
+                      className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
+                    >
+                      {filteredCustomers.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted">
+                          No matching customers
+                        </div>
+                      ) : (
+                        filteredCustomers.map((customer) => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            role="option"
+                            aria-selected={customerId === customer.id}
+                            className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                              customerId === customer.id
+                                ? "bg-sidebar"
+                                : "hover:bg-sidebar"
+                            }`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectCustomer(customer);
+                            }}
+                          >
+                            <span className="min-w-0 truncate">
+                              {customer.name}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted">
+                              {customer.phone || "No phone"}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>,
+                    document.body,
+                  )
+                : null}
             </label>
+
           </>
         ) : (
           <div className="space-y-5">
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Create manual order</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualOrderOpen(true);
+                    setLines((prev) =>
+                      prev.length >= 3 ? prev : emptyLines(3),
+                    );
+                  }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+                >
+                  Create
+                </button>
+              </div>
+              {manualOrderOpen ? (
+                <div className="space-y-2">
+                  {lines.map((line) => (
+                    <div
+                      key={line.key}
+                      className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
+                    >
+                      <ItemNameCombobox
+                        items={priceList}
+                        value={line.itemName}
+                        onChange={(value) =>
+                          updateLine(line.key, {
+                            itemName: value,
+                            priceListItemId: null,
+                          })
+                        }
+                        onSelect={(item) =>
+                          updateLine(line.key, {
+                            itemName: item.item_name,
+                            priceListItemId: item.id,
+                          })
+                        }
+                        onTabToQty={() => undefined}
+                        showPrice={false}
+                        placeholder="Item"
+                      />
+                      <input
+                        value={line.shadeCode}
+                        onChange={(e) =>
+                          updateLine(line.key, { shadeCode: e.target.value })
+                        }
+                        placeholder="Shade"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                      />
+                      <input
+                        value={line.qty}
+                        onChange={(e) =>
+                          updateLine(line.key, { qty: e.target.value })
+                        }
+                        placeholder="Qty"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                      />
+                      <select
+                        value={line.unit}
+                        onChange={(e) =>
+                          updateLine(line.key, {
+                            unit: e.target.value as CustomerOrderLineUnit,
+                          })
+                        }
+                        className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                      >
+                        {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLines((prev) =>
+                            prev.length <= 1
+                              ? prev
+                              : prev.filter((l) => l.key !== line.key),
+                          )
+                        }
+                        className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLines((prev) => [...prev, emptyLine()])
+                    }
+                    className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    Add items
+                  </button>
+                </div>
+              ) : null}
+            </section>
+
             <section className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium">Order slips</h3>
@@ -426,11 +597,7 @@ export function NewCustomerOrderModal({
                   />
                 </label>
               </div>
-              {slips.length === 0 ? (
-                <p className="text-sm text-muted">
-                  Upload WhatsApp / notebook photos as proof.
-                </p>
-              ) : (
+              {slips.length > 0 ? (
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {slips.map((slip) => (
                     <li
@@ -461,7 +628,7 @@ export function NewCustomerOrderModal({
                     </li>
                   ))}
                 </ul>
-              )}
+              ) : null}
             </section>
 
             <section className="space-y-2">
@@ -481,11 +648,7 @@ export function NewCustomerOrderModal({
                   />
                 </label>
               </div>
-              {patches.length === 0 ? (
-                <p className="text-sm text-muted">
-                  Optional fabric swatches for color matching.
-                </p>
-              ) : (
+              {patches.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {patches.map((patch) => (
                     <div
@@ -513,94 +676,7 @@ export function NewCustomerOrderModal({
                     </div>
                   ))}
                 </div>
-              )}
-            </section>
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Shade lines</h3>
-                <button
-                  type="button"
-                  onClick={() => setLines((prev) => [...prev, emptyLine()])}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
-                >
-                  + Line
-                </button>
-              </div>
-              <div className="space-y-2">
-                {lines.map((line) => (
-                  <div
-                    key={line.key}
-                    className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
-                  >
-                    <ItemNameCombobox
-                      items={priceList}
-                      value={line.itemName}
-                      onChange={(value) =>
-                        updateLine(line.key, {
-                          itemName: value,
-                          priceListItemId: null,
-                        })
-                      }
-                      onSelect={(item) =>
-                        updateLine(line.key, {
-                          itemName: item.item_name,
-                          priceListItemId: item.id,
-                        })
-                      }
-                      onTabToQty={() => undefined}
-                      showPrice={false}
-                      placeholder="Item"
-                    />
-                    <input
-                      value={line.shadeCode}
-                      onChange={(e) =>
-                        updateLine(line.key, { shadeCode: e.target.value })
-                      }
-                      placeholder="Shade"
-                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
-                    />
-                    <input
-                      value={line.qty}
-                      onChange={(e) =>
-                        updateLine(line.key, { qty: e.target.value })
-                      }
-                      placeholder="Qty"
-                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
-                    />
-                    <select
-                      value={line.unit}
-                      onChange={(e) =>
-                        updateLine(line.key, {
-                          unit: e.target.value as CustomerOrderLineUnit,
-                        })
-                      }
-                      className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
-                    >
-                      {Object.entries(ORDER_LINE_UNIT_LABELS).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setLines((prev) =>
-                          prev.length <= 1
-                            ? prev
-                            : prev.filter((l) => l.key !== line.key),
-                        )
-                      }
-                      className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
+              ) : null}
             </section>
           </div>
         )}
@@ -624,7 +700,7 @@ export function NewCustomerOrderModal({
               </button>
               <button
                 type="button"
-                disabled={Boolean(busy) || (!quickAdd && !customerId)}
+                disabled={Boolean(busy) || !customerId}
                 onClick={goToStep2}
                 className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
               >
@@ -632,24 +708,14 @@ export function NewCustomerOrderModal({
               </button>
             </>
           ) : (
-            <>
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={handleClose}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
-              >
-                Save for later
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={finishOrder}
-                className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
-              >
-                {busy === "save" ? "Saving…" : "Save & open order"}
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={finishOrder}
+              className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
+            >
+              {busy === "save" ? "Saving…" : "Save and create order"}
+            </button>
           )}
         </div>
       </div>

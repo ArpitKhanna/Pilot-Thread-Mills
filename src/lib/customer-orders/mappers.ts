@@ -26,6 +26,8 @@ export type DbOrderRow = {
   order_date: string;
   notes: string | null;
   invoice_id: string | null;
+  delivery_by?: string | null;
+  delivery_by_name?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -54,7 +56,10 @@ export type DbOrderLineRow = {
   unit: CustomerOrderLineUnit;
   source: CustomerOrderLineSource;
   sort_order: number;
-  price_list_items?: { item_name: string } | { item_name: string }[] | null;
+  price_list_items?:
+    | { item_name: string; customer_price?: number | string }
+    | { item_name: string; customer_price?: number | string }[]
+    | null;
   item_shades?: DbItemShadeRow | DbItemShadeRow[] | null;
 };
 
@@ -72,14 +77,34 @@ function nestedName(
 
 function nestedItemName(
   value:
-    | { item_name: string }
-    | { item_name: string }[]
+    | { item_name: string; customer_price?: number | string }
+    | { item_name: string; customer_price?: number | string }[]
     | null
     | undefined,
 ): string | null {
   if (!value) return null;
   if (Array.isArray(value)) return value[0]?.item_name ?? null;
   return value.item_name;
+}
+
+function nestedCustomerPrice(
+  value:
+    | { item_name: string; customer_price?: number | string }
+    | { item_name: string; customer_price?: number | string }[]
+    | null
+    | undefined,
+): number {
+  if (!value) return 0;
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!row?.customer_price) return 0;
+  return num(row.customer_price);
+}
+
+export function sumOrderAmount(lines: CustomerOrderLine[]): number {
+  return lines.reduce(
+    (sum, line) => sum + line.qty * (line.unitPrice ?? 0),
+    0,
+  );
 }
 
 function nestedShade(
@@ -131,6 +156,7 @@ export function mapOrderLineRow(row: DbOrderLineRow): CustomerOrderLine {
     shadeCode: row.shade_code,
     qty: num(row.qty),
     unit: row.unit,
+    unitPrice: nestedCustomerPrice(row.price_list_items),
     source: row.source,
     sortOrder: row.sort_order,
     shade: shadeRow ? mapItemShadeRow(shadeRow) : null,
@@ -150,10 +176,13 @@ export function mapOrderRow(
     orderDate: row.order_date,
     notes: row.notes,
     invoiceId: row.invoice_id,
+    deliveryBy: row.delivery_by ?? null,
+    deliveryByName: row.delivery_by_name ?? null,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lineCount: lines.length,
+    amount: sumOrderAmount(lines),
     lines,
     attachments,
   };

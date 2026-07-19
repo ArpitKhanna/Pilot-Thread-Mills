@@ -16,6 +16,7 @@ import type {
   CustomerOrderLineSource,
   CustomerOrderLineUnit,
   CustomerOrderStatus,
+  DeliveryStaff,
   ItemShade,
 } from "./types";
 
@@ -28,7 +29,7 @@ const ORDER_SELECT = `
 
 const LINE_SELECT = `
   *,
-  price_list_items:price_list_item_id ( item_name ),
+  price_list_items:price_list_item_id ( item_name, customer_price ),
   item_shades:shade_id ( * )
 `;
 
@@ -95,21 +96,68 @@ export async function listCustomerOrders(
   const ids = orders.map((o) => o.id);
   const { data: lineRows, error: linesError } = await supabase
     .from("customer_order_lines")
-    .select("order_id")
+    .select(
+      "order_id, qty, price_list_items:price_list_item_id ( customer_price )",
+    )
     .in("order_id", ids);
   if (linesError) throw linesError;
 
   const counts = new Map<string, number>();
+  const amounts = new Map<string, number>();
   for (const row of lineRows ?? []) {
-    const orderId = String((row as { order_id: string }).order_id);
+    const line = row as {
+      order_id: string;
+      qty: number | string;
+      price_list_items?:
+        | { customer_price?: number | string }
+        | { customer_price?: number | string }[]
+        | null;
+    };
+    const orderId = String(line.order_id);
     counts.set(orderId, (counts.get(orderId) ?? 0) + 1);
+
+    const qty =
+      typeof line.qty === "number" ? line.qty : Number(line.qty);
+    const priceRaw = Array.isArray(line.price_list_items)
+      ? line.price_list_items[0]?.customer_price
+      : line.price_list_items?.customer_price;
+    const price =
+      priceRaw === undefined || priceRaw === null
+        ? 0
+        : typeof priceRaw === "number"
+          ? priceRaw
+          : Number(priceRaw);
+    amounts.set(
+      orderId,
+      (amounts.get(orderId) ?? 0) +
+        (Number.isFinite(qty) ? qty : 0) *
+          (Number.isFinite(price) ? price : 0),
+    );
   }
 
   return orders.map((row) => {
     const mapped = mapOrderRow(row);
     mapped.lineCount = counts.get(row.id) ?? 0;
+    mapped.amount = amounts.get(row.id) ?? 0;
     return mapped;
   });
+}
+
+export async function listDeliveryStaff(
+  supabase: SupabaseClient,
+): Promise<DeliveryStaff[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("account_type", "employee")
+    .eq("role", "delivery")
+    .eq("is_active", true)
+    .order("full_name");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    fullName: String(row.full_name),
+  }));
 }
 
 export async function getCustomerOrder(
@@ -163,6 +211,7 @@ export type UpdateCustomerOrderInput = {
   notes?: string | null;
   orderDate?: string;
   invoiceId?: string | null;
+  deliveryBy?: string | null;
 };
 
 const STATUS_TRANSITIONS: Record<CustomerOrderStatus, CustomerOrderStatus[]> = {
@@ -200,6 +249,26 @@ export async function updateCustomerOrder(
   if (input.notes !== undefined) updates.notes = input.notes;
   if (input.orderDate !== undefined) updates.order_date = input.orderDate;
   if (input.invoiceId !== undefined) updates.invoice_id = input.invoiceId;
+
+  if (input.deliveryBy !== undefined) {
+    if (input.deliveryBy === null) {
+      updates.delivery_by = null;
+      updates.delivery_by_name = null;
+    } else {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("id", input.deliveryBy)
+        .eq("account_type", "employee")
+        .eq("role", "delivery")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile) throw new Error("Delivery person not found");
+      updates.delivery_by = profile.id;
+      updates.delivery_by_name = profile.full_name;
+    }
+  }
 
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase

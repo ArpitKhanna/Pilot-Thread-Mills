@@ -11,7 +11,7 @@ import {
   type CustomerOrder,
   type CustomerOrderStatus,
 } from "@/lib/customer-orders/types";
-import { formatShortDate } from "@/lib/salesmen/mock-data";
+import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
 import type { Salesman } from "@/lib/salesmen/types";
 
 type CustomerOrdersListClientProps = {
@@ -25,9 +25,8 @@ const STATUS_FILTERS: Array<CustomerOrderStatus | "all"> = [
   "all",
   "draft",
   "confirmed",
-  "picking",
   "invoiced",
-  "cancelled",
+  "picking",
 ];
 
 function statusTone(status: CustomerOrderStatus): string {
@@ -47,6 +46,18 @@ function statusTone(status: CustomerOrderStatus): string {
   }
 }
 
+function todayLocalDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function orderDateKey(orderDate: string): string {
+  return orderDate.slice(0, 10);
+}
+
 export function CustomerOrdersListClient({
   context,
   initialOrders,
@@ -55,11 +66,13 @@ export function CustomerOrdersListClient({
 }: CustomerOrdersListClientProps) {
   const [orders] = useState(initialOrders);
   const [status, setStatus] = useState<CustomerOrderStatus | "all">("all");
+  const [dateFilter, setDateFilter] = useState(todayLocalDate);
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
 
   const displayed = useMemo(() => {
     return orders.filter((order) => {
+      if (orderDateKey(order.orderDate) !== dateFilter) return false;
       if (status !== "all" && order.status !== status) return false;
       if (!search.trim()) return true;
       const q = search.toLowerCase().trim();
@@ -68,7 +81,7 @@ export function CustomerOrdersListClient({
         order.id.toLowerCase().includes(q)
       );
     });
-  }, [orders, status, search]);
+  }, [orders, status, dateFilter, search]);
 
   return (
     <>
@@ -76,7 +89,8 @@ export function CustomerOrdersListClient({
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
-          { label: "Customer Orders" },
+          { label: "Orders" },
+          { label: "Customers" },
         ]}
       />
 
@@ -86,9 +100,6 @@ export function CustomerOrdersListClient({
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               Customer Orders
             </h1>
-            <p className="mt-1 text-sm text-muted">
-              Upload order slips, match swatches, enter shades, then invoice
-            </p>
           </div>
           <button
             type="button"
@@ -120,7 +131,31 @@ export function CustomerOrdersListClient({
             ))}
           </div>
 
+          <label className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:w-auto">
+            <span className="shrink-0 text-xs font-medium text-muted">
+              Date
+            </span>
+            <input
+              type="date"
+              value={dateFilter}
+              max={todayLocalDate()}
+              onChange={(e) => setDateFilter(e.target.value || todayLocalDate())}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none sm:w-36"
+            />
+          </label>
+
           <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 sm:ml-auto sm:max-w-xs sm:py-2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              className="shrink-0 text-muted"
+              aria-hidden
+            >
+              <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
+              <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
             <input
               type="search"
               placeholder="Search customer"
@@ -133,7 +168,7 @@ export function CustomerOrdersListClient({
 
         {displayed.length === 0 ? (
           <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-            No customer orders yet. Create one and upload the order slip as proof.
+            No orders for this date. Create one or pick another day.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -146,7 +181,10 @@ export function CustomerOrdersListClient({
                   </th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="hidden px-4 py-3 font-medium md:table-cell">
-                    Lines
+                    Amount
+                  </th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell">
+                    Delivery By
                   </th>
                 </tr>
               </thead>
@@ -166,6 +204,12 @@ export function CustomerOrdersListClient({
                       <div className="mt-0.5 text-xs text-muted sm:hidden">
                         {formatShortDate(order.orderDate)}
                       </div>
+                      <div className="mt-0.5 text-xs text-muted md:hidden">
+                        {formatINR(order.amount)}
+                        {order.deliveryByName
+                          ? ` · ${order.deliveryByName}`
+                          : ""}
+                      </div>
                     </td>
                     <td className="hidden px-4 py-3 text-muted sm:table-cell">
                       {formatShortDate(order.orderDate)}
@@ -177,8 +221,11 @@ export function CustomerOrdersListClient({
                         {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
                       </span>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted md:table-cell">
-                      {order.lineCount}
+                    <td className="hidden px-4 py-3 tabular-nums text-muted md:table-cell">
+                      {formatINR(order.amount)}
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted lg:table-cell">
+                      {order.deliveryByName ?? "—"}
                     </td>
                   </tr>
                 ))}

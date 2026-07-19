@@ -68,6 +68,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.orderDate !== undefined) {
     input.orderDate = String(body.orderDate);
   }
+  if (body.deliveryBy !== undefined) {
+    input.deliveryBy =
+      body.deliveryBy == null || body.deliveryBy === ""
+        ? null
+        : String(body.deliveryBy);
+  }
 
   try {
     const order = await updateCustomerOrder(supabase, id, input);

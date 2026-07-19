@@ -3,7 +3,10 @@ import { getAppContext } from "@/app/(app)/layout";
 import { CustomerOrderDetailClient } from "@/components/customer-orders/CustomerOrderDetailClient";
 import type { PriceListItem } from "@/lib/auth/types";
 import { listActiveBankAccounts } from "@/lib/bank-accounts/queries";
-import { getCustomerOrder } from "@/lib/customer-orders/queries";
+import {
+  getCustomerOrder,
+  listDeliveryStaff,
+} from "@/lib/customer-orders/queries";
 import { createClient } from "@/lib/supabase/server";
 
 type CustomerOrderDetailPageProps = {
@@ -22,15 +25,17 @@ export default async function CustomerOrderDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [order, priceListResult, bankAccounts] = await Promise.all([
-    getCustomerOrder(supabase, id),
-    supabase
-      .from("price_list_items")
-      .select("*")
-      .eq("status", "approved")
-      .order("item_name"),
-    listActiveBankAccounts(supabase),
-  ]);
+  const [order, priceListResult, bankAccounts, deliveryStaff] =
+    await Promise.all([
+      getCustomerOrder(supabase, id),
+      supabase
+        .from("price_list_items")
+        .select("*")
+        .eq("status", "approved")
+        .order("item_name"),
+      listActiveBankAccounts(supabase),
+      listDeliveryStaff(supabase),
+    ]);
 
   if (!order) notFound();
 
@@ -40,6 +45,7 @@ export default async function CustomerOrderDetailPage({
       initialOrder={order}
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
       bankAccounts={bankAccounts}
+      deliveryStaff={deliveryStaff}
     />
   );
 }

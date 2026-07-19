@@ -24,7 +24,9 @@ export async function convertOrderToInvoice(
   if (!order) throw new Error("Order not found");
   if (order.invoiceId) throw new Error("Order already converted to an invoice");
   if (order.status !== "picking" && order.status !== "confirmed") {
-    throw new Error("Order must be confirmed or in picking before invoicing");
+    throw new Error(
+      "Order must be confirmed or out for delivery before invoicing",
+    );
   }
   if (order.lines.length === 0) {
     throw new Error("Order has no lines to invoice");

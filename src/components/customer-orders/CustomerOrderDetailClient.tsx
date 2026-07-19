@@ -15,6 +15,7 @@ import {
   type CustomerOrder,
   type CustomerOrderLineUnit,
   type CustomerOrderStatus,
+  type DeliveryStaff,
 } from "@/lib/customer-orders/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
@@ -36,6 +37,7 @@ type CustomerOrderDetailClientProps = {
   initialOrder: CustomerOrder;
   priceList: PriceListItem[];
   bankAccounts: BankAccount[];
+  deliveryStaff: DeliveryStaff[];
 };
 
 function linesFromOrder(order: CustomerOrder): DraftLine[] {
@@ -82,6 +84,7 @@ export function CustomerOrderDetailClient({
   initialOrder,
   priceList,
   bankAccounts,
+  deliveryStaff,
 }: CustomerOrderDetailClientProps) {
   const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
@@ -89,6 +92,10 @@ export function CustomerOrderDetailClient({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryBy, setDeliveryBy] = useState(
+    () => initialOrder.deliveryBy ?? "",
+  );
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [discountAmount, setDiscountAmount] = useState("0");
   const [shadeEditorKey, setShadeEditorKey] = useState<string | null>(null);
@@ -228,7 +235,10 @@ export function CustomerOrderDetailClient({
     }
   }
 
-  async function setStatus(status: CustomerOrderStatus) {
+  async function setStatus(
+    status: CustomerOrderStatus,
+    extras?: { deliveryBy?: string | null },
+  ) {
     setBusy("status");
     setError("");
     try {
@@ -238,7 +248,12 @@ export function CustomerOrderDetailClient({
       const res = await fetch(`/api/customer-orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          ...(extras?.deliveryBy !== undefined
+            ? { deliveryBy: extras.deliveryBy }
+            : {}),
+        }),
       });
       const json = (await res.json()) as {
         order?: CustomerOrder;
@@ -249,8 +264,50 @@ export function CustomerOrderDetailClient({
       }
       setOrder(json.order);
       setLines(linesFromOrder(json.order));
+      setDeliveryBy(json.order.deliveryBy ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Status update failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function confirmOutForDelivery() {
+    if (!deliveryBy) {
+      setError("Select a delivery person");
+      return;
+    }
+    await setStatus("picking", { deliveryBy });
+    setDeliveryOpen(false);
+  }
+
+  async function saveDeliveryPerson() {
+    if (!deliveryBy) {
+      setError("Select a delivery person");
+      return;
+    }
+    setBusy("delivery");
+    setError("");
+    try {
+      const res = await fetch(`/api/customer-orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryBy }),
+      });
+      const json = (await res.json()) as {
+        order?: CustomerOrder;
+        error?: string;
+      };
+      if (!res.ok || !json.order) {
+        throw new Error(json.error ?? "Could not update delivery person");
+      }
+      setOrder(json.order);
+      setDeliveryBy(json.order.deliveryBy ?? "");
+      setDeliveryOpen(false);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not update delivery person",
+      );
     } finally {
       setBusy("");
     }
@@ -364,7 +421,9 @@ export function CustomerOrderDetailClient({
           error?: string;
         };
         if (!pickRes.ok || !pickJson.order) {
-          throw new Error(pickJson.error ?? "Could not move to picking");
+          throw new Error(
+            pickJson.error ?? "Could not mark out for delivery",
+          );
         }
         setOrder(pickJson.order);
       }
@@ -408,7 +467,8 @@ export function CustomerOrderDetailClient({
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
-          { label: "Customer Orders", href: "/orders/customers" },
+          { label: "Orders" },
+          { label: "Customers", href: "/orders/customers" },
           { label: order.customerName ?? "Order" },
         ]}
       />
@@ -421,6 +481,9 @@ export function CustomerOrderDetailClient({
             </h1>
             <p className="mt-1 text-sm text-muted">
               {order.orderDate} · {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+              {order.deliveryByName
+                ? ` · Delivery by ${order.deliveryByName}`
+                : ""}
               {order.invoiceId ? " · Invoiced" : ""}
             </p>
           </div>
@@ -449,10 +512,28 @@ export function CustomerOrderDetailClient({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => setStatus("picking")}
+                    onClick={() => {
+                      setDeliveryBy(order.deliveryBy ?? "");
+                      setDeliveryOpen(true);
+                    }}
                     className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Start picking
+                    Out for delivery
+                  </button>
+                ) : null}
+                {order.status === "picking" ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => {
+                      setDeliveryBy(order.deliveryBy ?? "");
+                      setDeliveryOpen(true);
+                    }}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                  >
+                    {order.deliveryByName
+                      ? "Change delivery"
+                      : "Assign delivery"}
                   </button>
                 ) : null}
                 {order.status === "confirmed" || order.status === "picking" ? (
@@ -698,6 +779,73 @@ export function CustomerOrderDetailClient({
           </section>
         </div>
       </main>
+
+      <Modal
+        open={deliveryOpen}
+        onClose={() => setDeliveryOpen(false)}
+        title={
+          order.status === "picking"
+            ? "Delivery person"
+            : "Out for delivery"
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Choose who will deliver this order.
+          </p>
+          {deliveryStaff.length === 0 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              No active delivery staff found. Add a delivery employee in Admin
+              first.
+            </p>
+          ) : (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Delivery by</span>
+              <select
+                value={deliveryBy}
+                onChange={(e) => setDeliveryBy(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground"
+              >
+                <option value="">Select person…</option>
+                {deliveryStaff.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeliveryOpen(false)}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={
+                Boolean(busy) || !deliveryBy || deliveryStaff.length === 0
+              }
+              onClick={() => {
+                if (order.status === "picking") {
+                  void saveDeliveryPerson();
+                } else {
+                  void confirmOutForDelivery();
+                }
+              }}
+              className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
+            >
+              {busy === "status" || busy === "delivery"
+                ? "Saving…"
+                : order.status === "picking"
+                  ? "Save"
+                  : "Mark out for delivery"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={Boolean(shadeEditor)}
