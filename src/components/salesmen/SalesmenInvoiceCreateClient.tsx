@@ -400,9 +400,9 @@ export function SalesmenInvoiceCreateClient({
       setConfirmOpen(false);
       router.push(`/entities/salesmen/${salesman.id}?tab=invoices`);
       router.refresh();
+      // Keep saving until navigation completes.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save invoice.");
-    } finally {
       setSaving(false);
     }
   }

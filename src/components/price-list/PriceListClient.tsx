@@ -60,6 +60,10 @@ export function PriceListClient({
   const [editingItem, setEditingItem] = useState<PriceListItem | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"approve" | "delete" | null>(
+    null,
+  );
   const [error, setError] = useState("");
 
   const displayedItems = useMemo(() => {
@@ -148,21 +152,37 @@ export function PriceListClient({
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this item from the price list?")) return;
-    const res = await fetch(`/api/price-list/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setItems((prev) => prev.filter((i) => i.id !== id));
+    if (busyId) return;
+    setBusyId(id);
+    setBusyAction("delete");
+    try {
+      const res = await fetch(`/api/price-list/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== id));
+      }
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
     }
   }
 
   async function handleApprove(id: string) {
-    const res = await fetch(`/api/price-list/${id}/approve`, {
-      method: "POST",
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setItems((prev) =>
-        prev.map((i) => (i.id === id ? data.item : i)),
-      );
+    if (busyId) return;
+    setBusyId(id);
+    setBusyAction("approve");
+    try {
+      const res = await fetch(`/api/price-list/${id}/approve`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setItems((prev) =>
+          prev.map((i) => (i.id === id ? data.item : i)),
+        );
+      }
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
     }
   }
 
@@ -345,28 +365,35 @@ export function PriceListClient({
                     {tab === "pending" && isAdmin && (
                       <button
                         type="button"
+                        disabled={busyId === item.id}
                         onClick={() => handleApprove(item.id)}
-                        className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-surface"
+                        className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-surface disabled:opacity-60"
                       >
-                        Approve
+                        {busyId === item.id && busyAction === "approve"
+                          ? "Approving…"
+                          : "Approve"}
                       </button>
                     )}
                     {editMode && (
                       <>
                         <button
                           type="button"
+                          disabled={busyId === item.id}
                           onClick={() => openEditModal(item)}
-                          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar"
+                          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                         >
                           Edit
                         </button>
                         {isAdmin && (
                           <button
                             type="button"
+                            disabled={busyId === item.id}
                             onClick={() => handleDelete(item.id)}
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600"
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 disabled:opacity-60"
                           >
-                            Delete
+                            {busyId === item.id && busyAction === "delete"
+                              ? "Deleting…"
+                              : "Delete"}
                           </button>
                         )}
                       </>
@@ -440,28 +467,35 @@ export function PriceListClient({
                           {tab === "pending" && isAdmin && (
                             <button
                               type="button"
+                              disabled={busyId === item.id}
                               onClick={() => handleApprove(item.id)}
-                              className="rounded-md bg-foreground px-3 py-1 text-xs font-medium text-surface"
+                              className="rounded-md bg-foreground px-3 py-1 text-xs font-medium text-surface disabled:opacity-60"
                             >
-                              Approve
+                              {busyId === item.id && busyAction === "approve"
+                                ? "Approving…"
+                                : "Approve"}
                             </button>
                           )}
                           {editMode && (
                             <>
                               <button
                                 type="button"
+                                disabled={busyId === item.id}
                                 onClick={() => openEditModal(item)}
-                                className="rounded-md border border-border px-3 py-1 text-xs hover:bg-sidebar"
+                                className="rounded-md border border-border px-3 py-1 text-xs hover:bg-sidebar disabled:opacity-60"
                               >
                                 Edit
                               </button>
                               {isAdmin && (
                                 <button
                                   type="button"
+                                  disabled={busyId === item.id}
                                   onClick={() => handleDelete(item.id)}
-                                  className="rounded-md border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                                  className="rounded-md border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
                                 >
-                                  Delete
+                                  {busyId === item.id && busyAction === "delete"
+                                    ? "Deleting…"
+                                    : "Delete"}
                                 </button>
                               )}
                             </>

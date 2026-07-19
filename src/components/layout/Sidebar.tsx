@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
+import { PendingLink } from "@/components/ui/PendingLink";
 import { groupModulesBySection, MODULE_ICONS } from "@/lib/modules/navigation";
 import { useMobileNav } from "./MobileNavContext";
 import { NavIcon } from "./NavIcon";
@@ -34,7 +34,11 @@ export function Sidebar({ context }: SidebarProps) {
   const navContent = (
     <>
       <div className={`px-5 pt-6 pb-6 lg:pb-8 ${collapsed ? "lg:px-3" : ""}`}>
-        <Link href="/dashboard" className="block" onClick={() => setOpen(false)}>
+        <PendingLink
+          href="/dashboard"
+          className="block"
+          onClick={() => setOpen(false)}
+        >
           <span
             className={`font-logo-serif block font-normal tracking-tight text-foreground ${
               collapsed ? "lg:text-xl lg:text-center" : "text-[2rem] leading-none"
@@ -50,7 +54,7 @@ export function Sidebar({ context }: SidebarProps) {
               Thread Mills
             </span>
           )}
-        </Link>
+        </PendingLink>
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-6 lg:space-y-6">
@@ -69,7 +73,7 @@ export function Sidebar({ context }: SidebarProps) {
                     pathname.startsWith(`${item.href}/`);
                   return (
                     <li key={item.id}>
-                      <Link
+                      <PendingLink
                         href={item.href}
                         title={collapsed ? item.name : undefined}
                         onClick={() => setOpen(false)}
@@ -86,7 +90,7 @@ export function Sidebar({ context }: SidebarProps) {
                         <span className={collapsed ? "lg:hidden" : ""}>
                           {item.name}
                         </span>
-                      </Link>
+                      </PendingLink>
                     </li>
                   );
                 })}

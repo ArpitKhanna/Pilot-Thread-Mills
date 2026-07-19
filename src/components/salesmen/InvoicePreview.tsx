@@ -20,6 +20,7 @@ type InvoicePreviewProps = {
   salesman: Salesman;
   onClose?: () => void;
   onEdit?: () => void;
+  editPending?: boolean;
   onPrint?: () => void;
   onWhatsApp?: () => void;
   asOverlay?: boolean;
@@ -140,6 +141,7 @@ export function InvoicePreview({
   salesman,
   onClose,
   onEdit,
+  editPending = false,
   onPrint,
   onWhatsApp,
   asOverlay = false,
@@ -261,8 +263,13 @@ export function InvoicePreview({
           <div className="flex flex-wrap items-center gap-2">
             {editable && onEdit && (
               <ActionButton
-                label={`Edit (${formatEditCountdown(editRemainingMs)})`}
+                label={
+                  editPending
+                    ? "Opening…"
+                    : `Edit (${formatEditCountdown(editRemainingMs)})`
+                }
                 onClick={onEdit}
+                disabled={editPending}
               />
             )}
             {onEdit && !editable && (
@@ -593,16 +600,19 @@ function ActionButton({
   label,
   onClick,
   primary = false,
+  disabled = false,
 }: {
   label: string;
   onClick: () => void;
   primary?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+      disabled={disabled}
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
         primary
           ? "bg-foreground text-surface hover:bg-foreground/90"
           : "border border-border bg-surface hover:bg-sidebar"

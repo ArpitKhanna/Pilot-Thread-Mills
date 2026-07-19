@@ -44,6 +44,8 @@ export function BankAccountsClient({
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState("");
 
   const displayed = useMemo(() => {
@@ -124,30 +126,42 @@ export function BankAccountsClient({
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this bank account?")) return;
-    const res = await fetch(`/api/bank-accounts/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setAccounts((prev) => prev.filter((a) => a.id !== id));
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/bank-accounts/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setAccounts((prev) => prev.filter((a) => a.id !== id));
+      }
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function handleToggleActive(account: BankAccount) {
-    const res = await fetch(`/api/bank-accounts/${account.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: form.name || account.name,
-        bankName: form.bankName || account.bankName,
-        accountNumber: form.accountNumber,
-        isActive: !form.isActive,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setAccounts((prev) =>
-        prev.map((a) => (a.id === account.id ? data.account : a)),
-      );
-      setEditing(data.account);
-      setForm((f) => ({ ...f, isActive: data.account.isActive }));
+    if (toggling || saving) return;
+    setToggling(true);
+    try {
+      const res = await fetch(`/api/bank-accounts/${account.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name || account.name,
+          bankName: form.bankName || account.bankName,
+          accountNumber: form.accountNumber,
+          isActive: !form.isActive,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAccounts((prev) =>
+          prev.map((a) => (a.id === account.id ? data.account : a)),
+        );
+        setEditing(data.account);
+        setForm((f) => ({ ...f, isActive: data.account.isActive }));
+      }
+    } finally {
+      setToggling(false);
     }
   }
 
@@ -291,23 +305,25 @@ export function BankAccountsClient({
                   <div className="mt-3 flex gap-2">
                     <button
                       type="button"
+                      disabled={busyId === account.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         openEditModal(account);
                       }}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar"
+                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
+                      disabled={busyId === account.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleDelete(account.id);
                       }}
-                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
                     >
-                      Delete
+                      {busyId === account.id ? "Deleting…" : "Delete"}
                     </button>
                   </div>
                 )}
@@ -326,15 +342,20 @@ export function BankAccountsClient({
             {editing && (
               <button
                 type="button"
+                disabled={toggling || saving}
                 onClick={() => handleToggleActive(editing)}
-                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
+                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
               >
-                {form.isActive ? "Mark inactive" : "Mark active"}
+                {toggling
+                  ? "Updating…"
+                  : form.isActive
+                    ? "Mark inactive"
+                    : "Mark active"}
               </button>
             )}
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || toggling}
               onClick={handleSave}
               className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
             >

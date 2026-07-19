@@ -29,14 +29,15 @@ function LoginForm() {
 
       if (!response.ok) {
         setError(data.error ?? "Sign in failed");
+        setLoading(false);
         return;
       }
 
       router.push(redirect);
       router.refresh();
+      // Keep loading until navigation completes.
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   }

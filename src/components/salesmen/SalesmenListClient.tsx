@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
+import { PendingLink } from "@/components/ui/PendingLink";
 import type { AppContext } from "@/app/(app)/layout";
 import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
 import type { Salesman } from "@/lib/salesmen/types";
@@ -39,6 +39,7 @@ export function SalesmenListClient({
   const [editing, setEditing] = useState<Salesman | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const displayed = useMemo(() => {
@@ -136,15 +137,21 @@ export function SalesmenListClient({
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this salesman?")) return;
-    const res = await fetch(`/api/salesmen/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    const data = (await res.json()) as { error?: string };
-    if (!res.ok) {
-      alert(data.error ?? "Failed to delete salesman");
-      return;
+    if (busyId) return;
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/salesmen/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        alert(data.error ?? "Failed to delete salesman");
+        return;
+      }
+      setSalesmen((prev) => prev.filter((s) => s.id !== id));
+    } finally {
+      setBusyId(null);
     }
-    setSalesmen((prev) => prev.filter((s) => s.id !== id));
   }
 
   return (
@@ -256,7 +263,7 @@ export function SalesmenListClient({
                 key={salesman.id}
                 className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-foreground/20 hover:bg-sidebar/40"
               >
-                <Link
+                <PendingLink
                   href={`/entities/salesmen/${salesman.id}`}
                   className="block"
                 >
@@ -298,23 +305,25 @@ export function SalesmenListClient({
                       </p>
                     </div>
                   </div>
-                </Link>
+                </PendingLink>
 
                 {editMode && (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                     <button
                       type="button"
+                      disabled={busyId === salesman.id}
                       onClick={() => openEditModal(salesman)}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar"
+                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
+                      disabled={busyId === salesman.id}
                       onClick={() => handleDelete(salesman.id)}
-                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600"
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 disabled:opacity-60"
                     >
-                      Delete
+                      {busyId === salesman.id ? "Deleting…" : "Delete"}
                     </button>
                   </div>
                 )}

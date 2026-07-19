@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
+import { PendingLink } from "@/components/ui/PendingLink";
 import type { AppContext } from "@/app/(app)/layout";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
@@ -66,6 +66,7 @@ export function SalesmanDetailClient({
   bankAccounts,
 }: SalesmanDetailClientProps) {
   const router = useRouter();
+  const [editPending, startEditTransition] = useTransition();
   const [salesman, setSalesman] = useState(initialSalesman);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [itemRequests, setItemRequests] = useState(initialItemRequests);
@@ -143,7 +144,10 @@ export function SalesmanDetailClient({
       setEditLockedOpen(true);
       return;
     }
-    router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
+    if (editPending) return;
+    startEditTransition(() => {
+      router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
+    });
   }
 
   function handlePrint(invoice: Invoice) {
@@ -275,13 +279,15 @@ export function SalesmanDetailClient({
                     </option>
                   ))}
                 </select>
-                <Link
+                <PendingLink
                   href={`/orders/salesmen?salesmanId=${encodeURIComponent(salesman.id)}`}
+                  showPendingLabel
+                  pendingLabel="Loading…"
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
                 >
                   <span className="text-base leading-none">+</span>
                   Add Invoice
-                </Link>
+                </PendingLink>
               </div>
             </div>
 
@@ -300,6 +306,7 @@ export function SalesmanDetailClient({
                       salesman={salesman}
                       onClose={() => setSelectedInvoice(null)}
                       onEdit={handleEdit}
+                      editPending={editPending}
                       onPrint={() => handlePrint(selectedInvoice)}
                       onWhatsApp={() => handleWhatsApp(selectedInvoice)}
                     />
@@ -340,6 +347,7 @@ export function SalesmanDetailClient({
             asOverlay
             onClose={() => setMobilePreviewOpen(false)}
             onEdit={handleEdit}
+            editPending={editPending}
             onPrint={() => handlePrint(selectedInvoice)}
             onWhatsApp={() => handleWhatsApp(selectedInvoice)}
           />

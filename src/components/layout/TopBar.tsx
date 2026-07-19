@@ -16,11 +16,18 @@ export function TopBar({ context, breadcrumbs }: TopBarProps) {
   const router = useRouter();
   const { toggle } = useMobileNav();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setSigningOut(false);
+    }
   }
 
   const currentPage = breadcrumbs[breadcrumbs.length - 1]?.label;
@@ -113,10 +120,11 @@ export function TopBar({ context, breadcrumbs }: TopBarProps) {
               </div>
               <button
                 type="button"
+                disabled={signingOut}
                 onClick={signOut}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-sidebar"
+                className="w-full px-4 py-2 text-left text-sm hover:bg-sidebar disabled:opacity-60"
               >
-                Sign out
+                {signingOut ? "Signing out…" : "Sign out"}
               </button>
             </div>
           </>

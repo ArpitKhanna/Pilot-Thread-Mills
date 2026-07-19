@@ -78,6 +78,9 @@ export function ItemRequestsList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<
+    "delete" | "fulfill" | "undo" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
 
@@ -202,8 +205,10 @@ export function ItemRequestsList({
     requestId: string,
     status: "fulfilled" | "open",
   ) {
+    if (busyId) return;
     setError(null);
     setBusyId(requestId);
+    setBusyAction(status === "fulfilled" ? "fulfill" : "undo");
     try {
       const res = await fetch(
         `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests/${encodeURIComponent(requestId)}`,
@@ -237,13 +242,16 @@ export function ItemRequestsList({
       );
     } finally {
       setBusyId(null);
+      setBusyAction(null);
     }
   }
 
   async function handleDelete(requestId: string) {
     if (!confirm("Delete this item request?")) return;
+    if (busyId) return;
     setError(null);
     setBusyId(requestId);
+    setBusyAction("delete");
     try {
       const res = await fetch(
         `/api/salesmen/${encodeURIComponent(salesmanId)}/item-requests/${encodeURIComponent(requestId)}`,
@@ -259,6 +267,7 @@ export function ItemRequestsList({
       setError("Failed to delete request");
     } finally {
       setBusyId(null);
+      setBusyAction(null);
     }
   }
 
@@ -300,6 +309,7 @@ export function ItemRequestsList({
               title="Open"
               groups={openGroups}
               busyId={busyId}
+              busyAction={busyAction}
               onEdit={openEditModal}
               onDelete={handleDelete}
               onFulfill={(id) => patchStatus(id, "fulfilled")}
@@ -310,6 +320,7 @@ export function ItemRequestsList({
               title="Fulfilled"
               groups={fulfilledGroups}
               busyId={busyId}
+              busyAction={busyAction}
               onUndo={(id) => patchStatus(id, "open")}
             />
           )}
@@ -445,6 +456,7 @@ function RequestSection({
   title,
   groups,
   busyId,
+  busyAction,
   onEdit,
   onDelete,
   onFulfill,
@@ -453,6 +465,7 @@ function RequestSection({
   title: string;
   groups: { label: string; items: ItemRequest[] }[];
   busyId: string | null;
+  busyAction: "delete" | "fulfill" | "undo" | null;
   onEdit?: (req: ItemRequest) => void;
   onDelete?: (id: string) => void;
   onFulfill?: (id: string) => void;
@@ -544,14 +557,18 @@ function RequestSection({
                             disabled={busy}
                             danger
                           >
-                            Delete
+                            {busy && busyAction === "delete"
+                              ? "Deleting…"
+                              : "Delete"}
                           </ActionButton>
                           <ActionButton
                             onClick={() => onFulfill?.(req.id)}
                             disabled={busy}
                             primary
                           >
-                            {busy ? "Saving…" : "Mark fulfilled"}
+                            {busy && busyAction === "fulfill"
+                              ? "Saving…"
+                              : "Mark fulfilled"}
                           </ActionButton>
                         </>
                       ) : (
@@ -559,7 +576,7 @@ function RequestSection({
                           onClick={() => onUndo?.(req.id)}
                           disabled={busy}
                         >
-                          {busy ? "Saving…" : "Undo"}
+                          {busy && busyAction === "undo" ? "Saving…" : "Undo"}
                         </ActionButton>
                       )}
                     </div>
