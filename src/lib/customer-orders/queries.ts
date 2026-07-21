@@ -159,51 +159,56 @@ export async function listCustomerOrdersForCustomer(
   if (orders.length === 0) return [];
 
   const ids = orders.map((o) => o.id);
-  const { data: lineRows, error: linesError } = await supabase
-    .from("customer_order_lines")
-    .select(
-      "order_id, qty, price_list_items:price_list_item_id ( customer_price )",
-    )
-    .in("order_id", ids);
-  if (linesError) throw linesError;
 
-  const counts = new Map<string, number>();
-  const amounts = new Map<string, number>();
-  for (const row of lineRows ?? []) {
-    const line = row as {
-      order_id: string;
-      qty: number | string;
-      price_list_items?:
-        | { customer_price?: number | string }
-        | { customer_price?: number | string }[]
-        | null;
-    };
-    const orderId = String(line.order_id);
-    counts.set(orderId, (counts.get(orderId) ?? 0) + 1);
+  const [linesResult, attachmentsResult] = await Promise.all([
+    supabase
+      .from("customer_order_lines")
+      .select(LINE_SELECT)
+      .in("order_id", ids)
+      .order("sort_order"),
+    supabase
+      .from("customer_order_attachments")
+      .select("*")
+      .in("order_id", ids)
+      .order("sort_order"),
+  ]);
 
-    const qty =
-      typeof line.qty === "number" ? line.qty : Number(line.qty);
-    const priceRaw = Array.isArray(line.price_list_items)
-      ? line.price_list_items[0]?.customer_price
-      : line.price_list_items?.customer_price;
-    const price =
-      priceRaw === undefined || priceRaw === null
-        ? 0
-        : typeof priceRaw === "number"
-          ? priceRaw
-          : Number(priceRaw);
-    amounts.set(
-      orderId,
-      (amounts.get(orderId) ?? 0) +
-        (Number.isFinite(qty) ? qty : 0) *
-          (Number.isFinite(price) ? price : 0),
-    );
+  if (linesResult.error) throw linesResult.error;
+  if (attachmentsResult.error) throw attachmentsResult.error;
+
+  const linesByOrder = new Map<string, CustomerOrderLine[]>();
+  for (const row of (linesResult.data ?? []) as DbOrderLineRow[]) {
+    const mapped = mapOrderLineRow(row);
+    const list = linesByOrder.get(mapped.orderId) ?? [];
+    list.push(mapped);
+    linesByOrder.set(mapped.orderId, list);
   }
 
+  const attachmentsByOrder = new Map<
+    string,
+    ReturnType<typeof mapAttachmentRow>[]
+  >();
+  await Promise.all(
+    ((attachmentsResult.data ?? []) as DbAttachmentRow[]).map(async (row) => {
+      const mapped = mapAttachmentRow(
+        row,
+        await createSignedUrl(supabase, row.storage_path),
+      );
+      const list = attachmentsByOrder.get(mapped.orderId) ?? [];
+      list.push(mapped);
+      attachmentsByOrder.set(mapped.orderId, list);
+    }),
+  );
+
   return orders.map((row) => {
-    const mapped = mapOrderRow(row);
-    mapped.lineCount = counts.get(row.id) ?? 0;
-    mapped.amount = amounts.get(row.id) ?? 0;
+    const lines = linesByOrder.get(row.id) ?? [];
+    const attachments = attachmentsByOrder.get(row.id) ?? [];
+    const mapped = mapOrderRow(row, lines, attachments);
+    mapped.lineCount = lines.length;
+    mapped.amount = lines.reduce(
+      (sum, line) => sum + line.qty * (line.unitPrice ?? 0),
+      0,
+    );
     return mapped;
   });
 }

@@ -1,31 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { CustomerPastOrdersTab } from "@/components/customers/CustomerPastOrdersTab";
 import { CustomerPersonalDetailsForm } from "@/components/customers/CustomerPersonalDetailsForm";
 import { TopBar } from "@/components/layout/AppShell";
-import { Modal } from "@/components/ui/Modal";
-import { PendingLink } from "@/components/ui/PendingLink";
-import { InvoiceList } from "@/components/salesmen/InvoiceList";
-import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { CustomerOrder } from "@/lib/customer-orders/types";
 import { computeCustomerTierInsight } from "@/lib/customers/tier";
-import {
-  buildWhatsAppShareUrl,
-  canEditInvoice,
-  formatINR,
-} from "@/lib/salesmen/mock-data";
+import { formatINR } from "@/lib/salesmen/mock-data";
 import type { Invoice, Salesman } from "@/lib/salesmen/types";
 import {
   CUSTOMER_TIER_LABELS,
@@ -33,12 +18,7 @@ import {
   MARKET_DAY_LABELS,
 } from "@/lib/salesmen/types";
 
-type DetailTab =
-  | "orders"
-  | "invoices"
-  | "payments"
-  | "pending"
-  | "details";
+type DetailTab = "orders" | "payments" | "pending" | "details";
 
 type CustomerDetailClientProps = {
   context: AppContext;
@@ -48,21 +28,6 @@ type CustomerDetailClientProps = {
   bankAccounts: BankAccount[];
   priceList: PriceListItem[];
 };
-
-const MONTH_OPTIONS = [
-  { value: "0", label: "January" },
-  { value: "1", label: "February" },
-  { value: "2", label: "March" },
-  { value: "3", label: "April" },
-  { value: "4", label: "May" },
-  { value: "5", label: "June" },
-  { value: "6", label: "July" },
-  { value: "7", label: "August" },
-  { value: "8", label: "September" },
-  { value: "9", label: "October" },
-  { value: "10", label: "November" },
-  { value: "11", label: "December" },
-] as const;
 
 function TabButton({
   active,
@@ -96,24 +61,16 @@ export function CustomerDetailClient({
   bankAccounts,
   priceList,
 }: CustomerDetailClientProps) {
-  const router = useRouter();
-  const [editPending, startEditTransition] = useTransition();
   const [customer, setCustomer] = useState(initialCustomer);
-  const [orders] = useState(initialOrders);
+  const [orders, setOrders] = useState(initialOrders);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [tab, setTab] = useState<DetailTab>("orders");
-  const [filterMonth, setFilterMonth] = useState("all");
-  const [filterYear, setFilterYear] = useState("all");
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
-    () => initialInvoices[0] ?? null,
-  );
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
-  const [editLockedOpen, setEditLockedOpen] = useState(false);
 
   useEffect(() => {
     setCustomer(initialCustomer);
+    setOrders(initialOrders);
     setInvoices(initialInvoices);
-  }, [initialCustomer, initialInvoices]);
+  }, [initialCustomer, initialOrders, initialInvoices]);
 
   const paymentCount = useMemo(
     () =>
@@ -145,71 +102,6 @@ export function CustomerDetailClient({
     customer.balanceThreshold != null &&
     customer.balanceThreshold > 0 &&
     customer.pendingBalance >= customer.balanceThreshold;
-
-  const availableYears = useMemo(() => {
-    const years = new Set(
-      invoices.map((inv) => new Date(inv.issuedAt).getFullYear()),
-    );
-    return Array.from(years).sort((a, b) => b - a);
-  }, [invoices]);
-
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      const d = new Date(inv.issuedAt);
-      if (filterYear !== "all" && d.getFullYear() !== Number(filterYear)) {
-        return false;
-      }
-      if (filterMonth !== "all" && d.getMonth() !== Number(filterMonth)) {
-        return false;
-      }
-      return true;
-    });
-  }, [invoices, filterMonth, filterYear]);
-
-  useEffect(() => {
-    if (filteredInvoices.length === 0) {
-      setSelectedInvoice(null);
-      return;
-    }
-    setSelectedInvoice((current) => {
-      if (current && filteredInvoices.some((inv) => inv.id === current.id)) {
-        return current;
-      }
-      return filteredInvoices[0] ?? null;
-    });
-  }, [filteredInvoices]);
-
-  function handleSelect(invoice: Invoice) {
-    setSelectedInvoice(invoice);
-    setMobilePreviewOpen(true);
-  }
-
-  function handleEdit() {
-    if (!selectedInvoice || !canEditInvoice(selectedInvoice)) {
-      setEditLockedOpen(true);
-      return;
-    }
-    if (editPending) return;
-    startEditTransition(() => {
-      router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
-    });
-  }
-
-  function handlePrint(invoice: Invoice) {
-    setSelectedInvoice(invoice);
-    requestAnimationFrame(() => {
-      window.setTimeout(() => window.print(), 50);
-    });
-  }
-
-  function handleWhatsApp(invoice: Invoice) {
-    const url = buildWhatsAppShareUrl(
-      customer.phone,
-      invoice,
-      customer.name,
-    );
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
 
   const metaParts: { key: string; node: ReactNode }[] = [
     {
@@ -335,11 +227,6 @@ export function CustomerDetailClient({
               label={`Past Orders (${orders.length})`}
             />
             <TabButton
-              active={tab === "invoices"}
-              onClick={() => setTab("invoices")}
-              label={`Invoices (${invoices.length})`}
-            />
-            <TabButton
               active={tab === "payments"}
               onClick={() => setTab("payments")}
               label={`Payments (${paymentCount})`}
@@ -357,79 +244,15 @@ export function CustomerDetailClient({
           </div>
 
           {tab === "orders" ? (
-            <CustomerPastOrdersTab orders={orders} />
-          ) : tab === "invoices" ? (
-            <div>
-              <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-col gap-3 bg-background px-4 py-3 sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:-mx-8 lg:px-8">
-                <h2 className="text-lg font-medium tracking-tight">
-                  Invoices ({filteredInvoices.length})
-                </h2>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <select
-                    value={filterMonth}
-                    onChange={(e) => setFilterMonth(e.target.value)}
-                    className="rounded-lg border border-border bg-surface py-2 pr-9 pl-3 text-sm"
-                    aria-label="Filter by month"
-                  >
-                    <option value="all">All months</option>
-                    {MONTH_OPTIONS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                    className="rounded-lg border border-border bg-surface py-2 pr-9 pl-3 text-sm"
-                    aria-label="Filter by year"
-                  >
-                    <option value="all">All years</option>
-                    {availableYears.map((year) => (
-                      <option key={year} value={String(year)}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                  <PendingLink
-                    href={`/orders/salesmen?salesmanId=${encodeURIComponent(customer.id)}`}
-                    showPendingLabel
-                    pendingLabel="Loading…"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
-                  >
-                    <span className="text-base leading-none">+</span>
-                    Add Invoice
-                  </PendingLink>
-                </div>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-                <InvoiceList
-                  invoices={filteredInvoices}
-                  selectedId={selectedInvoice?.id ?? null}
-                  onSelect={handleSelect}
-                />
-                {selectedInvoice ? (
-                  <div className="hidden print:hidden lg:block">
-                    <div className="sticky top-4 flex max-h-[calc(100dvh-6rem)] flex-col">
-                      <InvoicePreview
-                        invoice={selectedInvoice}
-                        salesman={customer}
-                        onClose={() => setSelectedInvoice(null)}
-                        onEdit={handleEdit}
-                        editPending={editPending}
-                        onPrint={() => handlePrint(selectedInvoice)}
-                        onWhatsApp={() => handleWhatsApp(selectedInvoice)}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="hidden items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-16 text-sm text-muted lg:flex">
-                    Select an invoice to preview
-                  </div>
-                )}
-              </div>
-            </div>
+            <CustomerPastOrdersTab
+              orders={orders}
+              invoices={invoices}
+              onOrderUpdated={(order) =>
+                setOrders((prev) =>
+                  prev.map((o) => (o.id === order.id ? order : o)),
+                )
+              }
+            />
           ) : tab === "payments" ? (
             <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
           ) : tab === "pending" ? (
@@ -447,54 +270,6 @@ export function CustomerDetailClient({
           )}
         </main>
       </div>
-
-      {selectedInvoice && mobilePreviewOpen && (
-        <div className="lg:hidden print:hidden">
-          <InvoicePreview
-            invoice={selectedInvoice}
-            salesman={customer}
-            asOverlay
-            onClose={() => setMobilePreviewOpen(false)}
-            onEdit={handleEdit}
-            editPending={editPending}
-            onPrint={() => handlePrint(selectedInvoice)}
-            onWhatsApp={() => handleWhatsApp(selectedInvoice)}
-          />
-        </div>
-      )}
-
-      {selectedInvoice && (
-        <div className="hidden print:block">
-          <InvoicePreview
-            invoice={selectedInvoice}
-            salesman={customer}
-            forPrint
-            onClose={() => undefined}
-            onEdit={() => undefined}
-            onPrint={() => undefined}
-            onWhatsApp={() => undefined}
-          />
-        </div>
-      )}
-
-      <Modal
-        open={editLockedOpen}
-        onClose={() => setEditLockedOpen(false)}
-        title="Edit window closed"
-        footer={
-          <button
-            type="button"
-            onClick={() => setEditLockedOpen(false)}
-            className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface"
-          >
-            OK
-          </button>
-        }
-      >
-        <p className="text-sm text-muted">
-          This invoice can no longer be edited. The edit window has expired.
-        </p>
-      </Modal>
     </>
   );
 }
