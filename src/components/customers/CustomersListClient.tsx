@@ -372,107 +372,113 @@ export function CustomersListClient({
             No customers found
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {displayed.map((customer) => (
-              <article
-                key={customer.id}
-                className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-foreground/20 hover:bg-sidebar/40"
-              >
-                <PendingLink
-                  href={`/entities/customers/${customer.id}`}
-                  className="block"
-                >
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="truncate text-base font-medium">
-                    {customer.name}
-                  </h2>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      customer.isActive
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-sidebar text-muted"
-                    }`}
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-border bg-sidebar/50 text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Shop</th>
+                  <th className="px-4 py-3 font-medium">Pending</th>
+                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                    Market Day
+                  </th>
+                  <th className="hidden px-4 py-3 font-medium md:table-cell">
+                    Area
+                  </th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  {editMode ? (
+                    <th className="px-4 py-3 text-right font-medium">
+                      Actions
+                    </th>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody>
+                {displayed.map((customer) => (
+                  <tr
+                    key={customer.id}
+                    className="border-b border-border last:border-0 hover:bg-sidebar/40"
                   >
-                    {customer.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-
-                {customer.isDefaulter ? (
-                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700">
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
-                      aria-hidden
-                    />
-                    Defaulter
-                  </p>
-                ) : (
-                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
-                      aria-hidden
-                    />
-                    Not a defaulter
-                  </p>
-                )}
-
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
-                  <div>
-                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                      Pending
-                    </p>
-                    <p
-                      className={`mt-0.5 font-medium ${
+                    <td className="px-4 py-3">
+                      <PendingLink
+                        href={`/entities/customers/${customer.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {customer.name}
+                      </PendingLink>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted sm:hidden">
+                        <span>
+                          {customer.marketDay
+                            ? MARKET_DAY_LABELS[customer.marketDay]
+                            : "No market day"}
+                        </span>
+                        {customer.area.trim() ? (
+                          <span>· {customer.area.trim()}</span>
+                        ) : null}
+                      </div>
+                      {customer.isDefaulter ? (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+                            aria-hidden
+                          />
+                          Defaulter
+                        </span>
+                      ) : null}
+                    </td>
+                    <td
+                      className={`px-4 py-3 tabular-nums ${
                         customer.pendingBalance > 0
-                          ? "text-[#c45c26]"
-                          : "text-foreground"
+                          ? "font-medium text-[#c45c26]"
+                          : "text-muted"
                       }`}
                     >
                       {formatINR(customer.pendingBalance)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                      Market Day
-                    </p>
-                    <p className="mt-0.5 text-sm font-medium">
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted sm:table-cell">
                       {customer.marketDay
                         ? MARKET_DAY_LABELS[customer.marketDay]
                         : "—"}
-                    </p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                      Area
-                    </p>
-                    <p className="mt-0.5 text-sm font-medium">
+                    </td>
+                    <td className="hidden max-w-[12rem] truncate px-4 py-3 text-muted md:table-cell">
                       {customer.area.trim() || "—"}
-                    </p>
-                  </div>
-                </div>
-                </PendingLink>
-
-                {editMode && (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                    <button
-                      type="button"
-                      disabled={busyId === customer.id}
-                      onClick={() => openEditModal(customer)}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === customer.id}
-                      onClick={() => handleDelete(customer.id)}
-                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 disabled:opacity-60"
-                    >
-                      {busyId === customer.id ? "Deleting…" : "Delete"}
-                    </button>
-                  </div>
-                )}
-              </article>
-            ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                          customer.isActive
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-sidebar text-muted"
+                        }`}
+                      >
+                        {customer.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    {editMode ? (
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={busyId === customer.id}
+                            onClick={() => openEditModal(customer)}
+                            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === customer.id}
+                            onClick={() => handleDelete(customer.id)}
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 disabled:opacity-60"
+                          >
+                            {busyId === customer.id ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </main>

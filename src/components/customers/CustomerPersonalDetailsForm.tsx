@@ -9,17 +9,15 @@ import {
   formatCustomerAddressLines,
   parseMapPinInput,
 } from "@/lib/customers/share";
+import type { CustomerTierInsight } from "@/lib/customers/tier";
 import type {
   CustomerPriceRule,
-  CustomerTier,
   CustomerTierRubric,
   MarketDay,
   Salesman,
-  TierRubricScore,
 } from "@/lib/salesmen/types";
 import {
   CUSTOMER_TIER_LABELS,
-  deriveCustomerTier,
   ENTITY_TYPE_LABELS,
   MARKET_DAY_LABELS,
   MARKET_DAYS,
@@ -29,14 +27,18 @@ import {
 type CustomerPersonalDetailsFormProps = {
   customer: Salesman;
   priceList: PriceListItem[];
+  tierInsight: CustomerTierInsight;
   onSaved: (customer: Salesman) => void;
 };
+
+type PriceRuleOperator = "+" | "-";
 
 type DraftPriceRule = {
   key: string;
   itemName: string;
   priceListItemId: string | null;
-  adjustmentPerUnit: string;
+  operator: PriceRuleOperator;
+  amount: string;
 };
 
 const RUBRIC_KEYS: (keyof CustomerTierRubric)[] = [
@@ -46,24 +48,26 @@ const RUBRIC_KEYS: (keyof CustomerTierRubric)[] = [
   "paymentSpeed",
 ];
 
-const SCORE_OPTIONS: TierRubricScore[] = [1, 2, 3, 4, 5];
+function emptyDraftRule(): DraftPriceRule {
+  return {
+    key: crypto.randomUUID(),
+    itemName: "",
+    priceListItemId: null,
+    operator: "+",
+    amount: "",
+  };
+}
 
 function rulesToDraft(rules: CustomerPriceRule[]): DraftPriceRule[] {
   if (rules.length === 0) {
-    return [
-      {
-        key: crypto.randomUUID(),
-        itemName: "",
-        priceListItemId: null,
-        adjustmentPerUnit: "",
-      },
-    ];
+    return [emptyDraftRule()];
   }
   return rules.map((rule) => ({
     key: rule.id,
     itemName: rule.itemName,
     priceListItemId: rule.priceListItemId ?? null,
-    adjustmentPerUnit: String(rule.adjustmentPerUnit),
+    operator: rule.adjustmentPerUnit < 0 ? "-" : "+",
+    amount: String(Math.abs(rule.adjustmentPerUnit)),
   }));
 }
 
@@ -83,12 +87,10 @@ function syncFromCustomer(customer: Salesman) {
     mapLat: customer.mapLat != null ? String(customer.mapLat) : "",
     mapLng: customer.mapLng != null ? String(customer.mapLng) : "",
     pinPaste: "",
-    isDefaulter: customer.isDefaulter,
     balanceThreshold:
       customer.balanceThreshold != null
         ? String(customer.balanceThreshold)
         : "",
-    tierRubric: { ...customer.tierRubric },
     priceRules: rulesToDraft(customer.priceRules),
   };
 }
@@ -102,6 +104,7 @@ function describeAdjustment(itemName: string, adjustment: number): string {
 export function CustomerPersonalDetailsForm({
   customer,
   priceList,
+  tierInsight,
   onSaved,
 }: CustomerPersonalDetailsFormProps) {
   const [editing, setEditing] = useState(false);
@@ -133,26 +136,17 @@ export function CustomerPersonalDetailsForm({
     customer.mapLng != null ? String(customer.mapLng) : "",
   );
   const [pinPaste, setPinPaste] = useState("");
-  const [isDefaulter, setIsDefaulter] = useState(customer.isDefaulter);
   const [balanceThreshold, setBalanceThreshold] = useState(
     customer.balanceThreshold != null
       ? String(customer.balanceThreshold)
       : "",
   );
-  const [tierRubric, setTierRubric] = useState<CustomerTierRubric>({
-    ...customer.tierRubric,
-  });
   const [priceRules, setPriceRules] = useState<DraftPriceRule[]>(() =>
     rulesToDraft(customer.priceRules),
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-
-  const derivedTier: CustomerTier | "" = useMemo(
-    () => deriveCustomerTier(editing ? tierRubric : customer.tierRubric),
-    [editing, tierRubric, customer.tierRubric],
-  );
 
   const displayMapsUrl = useMemo(() => {
     const lat = mapLat.trim() === "" ? null : Number(mapLat);
@@ -195,9 +189,7 @@ export function CustomerPersonalDetailsForm({
     setMapLat(next.mapLat);
     setMapLng(next.mapLng);
     setPinPaste("");
-    setIsDefaulter(next.isDefaulter);
     setBalanceThreshold(next.balanceThreshold);
-    setTierRubric(next.tierRubric);
     setPriceRules(next.priceRules);
   }, [customer, editing]);
 
@@ -216,9 +208,7 @@ export function CustomerPersonalDetailsForm({
     setMapLat(next.mapLat);
     setMapLng(next.mapLng);
     setPinPaste("");
-    setIsDefaulter(next.isDefaulter);
     setBalanceThreshold(next.balanceThreshold);
-    setTierRubric(next.tierRubric);
     setPriceRules(next.priceRules);
   }
 
@@ -259,30 +249,13 @@ export function CustomerPersonalDetailsForm({
   }
 
   function addRule() {
-    setPriceRules((prev) => [
-      ...prev,
-      {
-        key: crypto.randomUUID(),
-        itemName: "",
-        priceListItemId: null,
-        adjustmentPerUnit: "",
-      },
-    ]);
+    setPriceRules((prev) => [...prev, emptyDraftRule()]);
   }
 
   function removeRule(key: string) {
     setPriceRules((prev) => {
       const next = prev.filter((rule) => rule.key !== key);
-      return next.length > 0
-        ? next
-        : [
-            {
-              key: crypto.randomUUID(),
-              itemName: "",
-              priceListItemId: null,
-              adjustmentPerUnit: "",
-            },
-          ];
+      return next.length > 0 ? next : [emptyDraftRule()];
     });
   }
 
@@ -341,24 +314,28 @@ export function CustomerPersonalDetailsForm({
     const parsedPriceRules: CustomerPriceRule[] = [];
     for (const rule of priceRules) {
       const itemName = rule.itemName.trim();
-      const adjustment = Number(rule.adjustmentPerUnit);
+      const absAmount = Number(rule.amount);
       const blank =
-        !itemName &&
-        (!rule.adjustmentPerUnit.trim() || Number(rule.adjustmentPerUnit) === 0);
+        !itemName && (!rule.amount.trim() || Number(rule.amount) === 0);
       if (blank) continue;
       if (!itemName) {
         setError("Each price rule needs an item name.");
         return;
       }
-      if (!Number.isFinite(adjustment) || adjustment === 0) {
-        setError("Each price rule needs a non-zero ±₹ adjustment.");
+      if (!Number.isFinite(absAmount) || absAmount <= 0) {
+        setError("Each price rule needs a positive ₹ amount.");
         return;
       }
+      const signed =
+        rule.operator === "-"
+          ? -Math.abs(absAmount)
+          : Math.abs(absAmount);
+      const adjustment = Math.round(signed * 100) / 100;
       parsedPriceRules.push({
         id: rule.key,
         itemName,
         priceListItemId: rule.priceListItemId ?? undefined,
-        adjustmentPerUnit: Math.round(adjustment * 100) / 100,
+        adjustmentPerUnit: adjustment,
         description: describeAdjustment(itemName, adjustment),
       });
     }
@@ -382,9 +359,7 @@ export function CustomerPersonalDetailsForm({
           addressPincode: addressPincode.trim(),
           mapLat: parsedLat,
           mapLng: parsedLng,
-          isDefaulter,
           balanceThreshold: threshold,
-          tierRubric,
           priceRules: parsedPriceRules,
         }),
       });
@@ -410,7 +385,6 @@ export function CustomerPersonalDetailsForm({
   const inputClass =
     "w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:bg-background disabled:text-foreground disabled:opacity-100";
 
-  const viewRubric = editing ? tierRubric : customer.tierRubric;
   const viewRules = editing
     ? priceRules
     : rulesToDraft(
@@ -714,80 +688,49 @@ export function CustomerPersonalDetailsForm({
               />
             </div>
           </div>
-          <div className="sm:col-span-2">
-            {editing ? (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isDefaulter}
-                  onChange={(e) => setIsDefaulter(e.target.checked)}
-                  className="rounded border-border"
-                />
-                Mark as defaulter
-              </label>
-            ) : (
-              <p className="text-sm text-muted">
-                Defaulter:{" "}
-                <span className="font-medium text-foreground">
-                  {isDefaulter ? "Yes" : "No"}
-                </span>
-              </p>
-            )}
-          </div>
         </div>
       </section>
 
       <section className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-medium">Tier rubric</h3>
+            <h3 className="text-sm font-medium">Tier</h3>
             <p className="mt-1 text-sm text-muted">
-              Rate 1–5 on each factor. Overall tier is derived from the
-              average.
+              Calculated automatically from orders and payments (read-only).
             </p>
           </div>
           <span
             className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-medium ${
-              derivedTier
+              tierInsight.tier
                 ? "bg-sidebar text-foreground"
                 : "bg-sidebar text-muted"
             }`}
           >
-            {derivedTier
-              ? CUSTOMER_TIER_LABELS[derivedTier]
-              : "Tier incomplete"}
+            {tierInsight.tier
+              ? CUSTOMER_TIER_LABELS[tierInsight.tier]
+              : "Insufficient data"}
           </span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {RUBRIC_KEYS.map((key) => (
-            <div key={key}>
-              <label className="mb-1.5 block text-sm font-medium">
-                {TIER_RUBRIC_LABELS[key]}
-              </label>
-              <select
-                value={viewRubric[key] ?? ""}
-                disabled={!editing}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setTierRubric((prev) => ({
-                    ...prev,
-                    [key]:
-                      raw === ""
-                        ? null
-                        : (Number(raw) as TierRubricScore),
-                  }));
-                }}
-                className={`${inputClass} py-2.5 pr-9 pl-3`}
+          {RUBRIC_KEYS.map((key) => {
+            const factor = tierInsight.factors[key];
+            return (
+              <div
+                key={key}
+                className="rounded-xl border border-border bg-surface px-3 py-3"
               >
-                <option value="">Not rated</option>
-                {SCORE_OPTIONS.map((score) => (
-                  <option key={score} value={score}>
-                    {score}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    {TIER_RUBRIC_LABELS[key]}
+                  </p>
+                  <span className="shrink-0 text-sm font-medium tabular-nums">
+                    {factor.score != null ? `${factor.score}/5` : "—"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted">{factor.summary}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -795,8 +738,9 @@ export function CustomerPersonalDetailsForm({
         <div>
           <h3 className="text-sm font-medium">Discount / upcharge rules</h3>
           <p className="mt-1 text-sm text-muted">
-            Adjust list price per unit for this customer. Use +₹ for upcharge
-            and −₹ for discount (e.g. Ellfa at list +2 or list −2).
+            Adjust list price per unit for this customer. Choose + for upcharge
+            or − for discount (e.g. Ellfa at list +2 or list −2). Applied when
+            converting orders to invoices.
           </p>
         </div>
 
@@ -804,10 +748,15 @@ export function CustomerPersonalDetailsForm({
           <p className="text-sm text-muted">No price rules</p>
         ) : (
           <div className="space-y-3">
-            {(editing ? priceRules : viewRules).map((rule, index) => (
+            {(editing ? priceRules : viewRules).map((rule, index) => {
+              const signedPreview =
+                rule.operator === "-"
+                  ? -Math.abs(Number(rule.amount) || 0)
+                  : Math.abs(Number(rule.amount) || 0);
+              return (
               <div
                 key={rule.key}
-                className="grid gap-3 border-t border-border pt-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end"
+                className="grid gap-3 border-t border-border pt-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_5.5rem_minmax(5.5rem,7rem)_auto] sm:items-end"
               >
                 <label className="block min-w-0">
                   <span className="mb-1.5 block text-xs font-medium text-muted">
@@ -848,7 +797,26 @@ export function CustomerPersonalDetailsForm({
 
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-muted">
-                    ± ₹ / unit
+                    Operator
+                  </span>
+                  <select
+                    value={rule.operator}
+                    disabled={!editing}
+                    onChange={(e) =>
+                      updateRule(rule.key, {
+                        operator: e.target.value as PriceRuleOperator,
+                      })
+                    }
+                    className={inputClass}
+                  >
+                    <option value="+">+ Upcharge</option>
+                    <option value="-">− Discount</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
+                    ₹ / unit
                   </span>
                   <div
                     className={`flex overflow-hidden rounded-lg border border-border ${
@@ -862,11 +830,12 @@ export function CustomerPersonalDetailsForm({
                     </span>
                     <input
                       type="number"
+                      min="0"
                       step="any"
-                      value={rule.adjustmentPerUnit}
+                      value={rule.amount}
                       onChange={(e) =>
                         updateRule(rule.key, {
-                          adjustmentPerUnit: e.target.value,
+                          amount: e.target.value,
                         })
                       }
                       disabled={!editing}
@@ -890,17 +859,18 @@ export function CustomerPersonalDetailsForm({
                 )}
 
                 {rule.itemName.trim() &&
-                  Number(rule.adjustmentPerUnit) !== 0 &&
-                  Number.isFinite(Number(rule.adjustmentPerUnit)) && (
-                    <p className="text-xs text-muted sm:col-span-3">
+                  signedPreview !== 0 &&
+                  Number.isFinite(signedPreview) && (
+                    <p className="text-xs text-muted sm:col-span-4">
                       {describeAdjustment(
                         rule.itemName.trim(),
-                        Number(rule.adjustmentPerUnit),
+                        signedPreview,
                       )}
                     </p>
                   )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

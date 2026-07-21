@@ -20,6 +20,7 @@ import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { CustomerOrder } from "@/lib/customer-orders/types";
+import { computeCustomerTierInsight } from "@/lib/customers/tier";
 import {
   buildWhatsAppShareUrl,
   canEditInvoice,
@@ -135,6 +136,11 @@ export function CustomerDetailClient({
     [orders],
   );
 
+  const tierInsight = useMemo(
+    () => computeCustomerTierInsight(orders, invoices),
+    [orders, invoices],
+  );
+
   const balanceAlert =
     customer.balanceThreshold != null &&
     customer.balanceThreshold > 0 &&
@@ -228,6 +234,20 @@ export function CustomerDetailClient({
         </span>
       ),
     },
+    {
+      key: "tier",
+      node: (
+        <span
+          className={
+            tierInsight.tier ? "font-medium text-foreground" : "text-muted"
+          }
+        >
+          {tierInsight.tier
+            ? CUSTOMER_TIER_LABELS[tierInsight.tier]
+            : "Tier —"}
+        </span>
+      ),
+    },
   ];
 
   if (customer.marketDay) {
@@ -236,17 +256,6 @@ export function CustomerDetailClient({
       node: (
         <span className="text-muted">
           Market: {MARKET_DAY_LABELS[customer.marketDay]}
-        </span>
-      ),
-    });
-  }
-
-  if (customer.tier) {
-    metaParts.push({
-      key: "tier",
-      node: (
-        <span className="text-muted">
-          {CUSTOMER_TIER_LABELS[customer.tier]}
         </span>
       ),
     });
@@ -319,7 +328,7 @@ export function CustomerDetailClient({
             </div>
           </div>
 
-          <div className="mb-5 inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 sm:mb-6">
+          <div className="mb-5 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 sm:mb-6">
             <TabButton
               active={tab === "orders"}
               onClick={() => setTab("orders")}
@@ -432,6 +441,7 @@ export function CustomerDetailClient({
             <CustomerPersonalDetailsForm
               customer={customer}
               priceList={priceList}
+              tierInsight={tierInsight}
               onSaved={setCustomer}
             />
           )}

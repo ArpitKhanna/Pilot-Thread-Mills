@@ -9,6 +9,7 @@ import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
+import { estimateCustomerLinesTotal } from "@/lib/customers/price-rules";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
   ORDER_LINE_UNIT_LABELS,
@@ -18,7 +19,10 @@ import {
   type DeliveryStaff,
 } from "@/lib/customer-orders/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
-import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
+import type {
+  CustomerPriceRule,
+  InvoicePaymentEntry,
+} from "@/lib/salesmen/types";
 
 type DraftLine = {
   key: string;
@@ -38,6 +42,7 @@ type CustomerOrderDetailClientProps = {
   priceList: PriceListItem[];
   bankAccounts: BankAccount[];
   deliveryStaff: DeliveryStaff[];
+  priceRules?: CustomerPriceRule[];
 };
 
 function linesFromOrder(order: CustomerOrder): DraftLine[] {
@@ -69,22 +74,13 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
   }));
 }
 
-function estimateTotal(lines: DraftLine[], priceList: PriceListItem[]): number {
-  return lines.reduce((sum, line) => {
-    const qty = Number(line.qty);
-    if (!(qty > 0) || !line.priceListItemId) return sum;
-    const item = priceList.find((p) => p.id === line.priceListItemId);
-    if (!item) return sum;
-    return sum + Number(item.customer_price) * qty;
-  }, 0);
-}
-
 export function CustomerOrderDetailClient({
   context,
   initialOrder,
   priceList,
   bankAccounts,
   deliveryStaff,
+  priceRules = [],
 }: CustomerOrderDetailClientProps) {
   const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
@@ -101,13 +97,23 @@ export function CustomerOrderDetailClient({
   const [shadeEditorKey, setShadeEditorKey] = useState<string | null>(null);
 
   const locked = order.status === "invoiced" || order.status === "cancelled";
-  const invoiceTotal = useMemo(
+  const linesEstimate = useMemo(
     () =>
-      Math.max(
-        0,
-        estimateTotal(lines, priceList) - (Number(discountAmount) || 0),
+      estimateCustomerLinesTotal(
+        lines.map((l) => ({
+          priceListItemId: l.priceListItemId,
+          itemName: l.itemName,
+          qty: Number(l.qty) || 0,
+        })),
+        priceList,
+        priceRules,
       ),
-    [lines, priceList, discountAmount],
+    [lines, priceList, priceRules],
+  );
+
+  const invoiceTotal = useMemo(
+    () => Math.max(0, linesEstimate - (Number(discountAmount) || 0)),
+    [linesEstimate, discountAmount],
   );
 
   const shadeEditor = lines.find((l) => l.key === shadeEditorKey) ?? null;
@@ -675,8 +681,9 @@ export function CustomerOrderDetailClient({
               <div>
                 <h2 className="text-sm font-medium">Shade lines</h2>
                 <p className="text-xs text-muted">
-                  Est. {formatINR(estimateTotal(lines, priceList))} at customer
+                  Est. {formatINR(linesEstimate)} at customer
                   prices
+                  {priceRules.length > 0 ? " (with price rules)" : ""}
                 </p>
               </div>
               {!locked ? (
@@ -919,6 +926,25 @@ export function CustomerOrderDetailClient({
         title="Convert to invoice"
       >
         <div className="space-y-5">
+          {priceRules.length > 0 ? (
+            <div className="rounded-lg border border-border bg-sidebar/40 px-3 py-2.5">
+              <p className="text-xs font-medium text-muted">
+                Price rules applied to unit prices
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-sm text-foreground">
+                {priceRules.map((rule) => (
+                  <li key={rule.id}>{rule.description}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-sm tabular-nums">
+                Lines total {formatINR(linesEstimate)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              Lines total {formatINR(linesEstimate)} at list customer prices
+            </p>
+          )}
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">Additional discount</span>
             <input

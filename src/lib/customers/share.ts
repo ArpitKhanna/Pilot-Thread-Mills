@@ -139,35 +139,34 @@ export function buildCustomerWhatsAppShareUrl(
   opts?: { toPhone?: string },
 ): string {
   const addressLines = formatCustomerAddressLines(customer);
-  const mapsUrl = buildGoogleMapsUrl({
-    lat: customer.mapLat,
-    lng: customer.mapLng,
-    addressLines,
-  });
+  const pinUrl =
+    customer.mapLat != null &&
+    customer.mapLng != null &&
+    Number.isFinite(customer.mapLat) &&
+    Number.isFinite(customer.mapLng)
+      ? `https://www.google.com/maps?q=${customer.mapLat},${customer.mapLng}`
+      : null;
 
   const lines = [
-    `*${customer.name.trim() || "Customer"}*`,
+    `Shop Name: ${customer.name.trim() || "—"}`,
+    `Customer Name: ${customer.contactName.trim() || "—"}`,
+    `Phone Number: ${customer.phone.trim() || "—"}`,
+    `Alternate Phone Number: ${customer.alternatePhone.trim() || "—"}`,
   ];
-  if (customer.contactName.trim()) {
-    lines.push(`Contact: ${customer.contactName.trim()}`);
-  }
-  if (customer.phone.trim()) {
-    lines.push(`Phone: ${customer.phone.trim()}`);
-  }
-  if (customer.alternatePhone.trim()) {
-    lines.push(`Alt phone: ${customer.alternatePhone.trim()}`);
-  }
+
   if (addressLines.length > 0) {
-    lines.push("", "Address:", ...addressLines);
-  }
-  if (mapsUrl) {
-    lines.push("", `Map: ${mapsUrl}`);
+    lines.push(`Address: ${addressLines.join(", ")}`);
+  } else {
+    lines.push("Address: —");
   }
 
+  lines.push(`Google Pin: ${pinUrl ?? "—"}`);
+
   const text = lines.join("\n");
-  const target = (opts?.toPhone ?? customer.phone).replace(/\D/g, "");
+  const target = (opts?.toPhone ?? "").replace(/\D/g, "");
   if (target) {
     return `https://wa.me/${target}?text=${encodeURIComponent(text)}`;
   }
+  // Open WhatsApp without a fixed recipient so staff can choose who to send to
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }

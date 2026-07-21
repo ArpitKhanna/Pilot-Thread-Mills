@@ -1,10 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PriceListItem } from "@/lib/auth/types";
+import { resolveCustomerUnitPrice } from "@/lib/customers/price-rules";
 import {
   paymentInserts,
   type InvoiceWritePayload,
 } from "@/lib/salesmen/invoice-api";
-import { getInvoiceById, refreshSalesmanTotals } from "@/lib/salesmen/queries";
+import {
+  getInvoiceById,
+  getSalesman,
+  refreshSalesmanTotals,
+} from "@/lib/salesmen/queries";
 import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
 import { getCustomerOrder, updateCustomerOrder } from "./queries";
 
@@ -46,17 +51,26 @@ export async function convertOrderToInvoice(
     .in("id", itemIds.length > 0 ? itemIds : ["00000000-0000-0000-0000-000000000000"]);
   if (priceError) throw priceError;
 
-  const priceById = new Map(
-    ((priceRows ?? []) as PriceListItem[]).map((item) => [item.id, item]),
-  );
+  const priceList = (priceRows ?? []) as PriceListItem[];
+  const priceById = new Map(priceList.map((item) => [item.id, item]));
+
+  const customer = order.customerId
+    ? await getSalesman(supabase, order.customerId)
+    : null;
+  const priceRules = customer?.priceRules ?? [];
 
   const lineItems = order.lines.map((line, index) => {
     const catalog = line.priceListItemId
       ? priceById.get(line.priceListItemId)
       : undefined;
-    const unitPrice = catalog ? Number(catalog.customer_price) : 0;
+    const listPrice = catalog ? Number(catalog.customer_price) : 0;
     const nameBase =
       catalog?.item_name ?? line.itemName ?? "Item";
+    const unitPrice = resolveCustomerUnitPrice(listPrice, priceRules, {
+      priceListItemId: line.priceListItemId,
+      itemName: nameBase,
+      priceList,
+    });
     const name = line.shadeCode
       ? `${nameBase} — ${line.shadeCode}`
       : nameBase;

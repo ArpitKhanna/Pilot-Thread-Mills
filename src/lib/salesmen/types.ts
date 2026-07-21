@@ -29,14 +29,15 @@ export const MARKET_DAY_LABELS: Record<MarketDay, string> = {
   sunday: "Sunday",
 };
 
-export type CustomerTier = "A" | "B" | "C";
+export type CustomerTier = "A" | "B" | "C" | "D";
 
-export const CUSTOMER_TIERS: CustomerTier[] = ["A", "B", "C"];
+export const CUSTOMER_TIERS: CustomerTier[] = ["A", "B", "C", "D"];
 
 export const CUSTOMER_TIER_LABELS: Record<CustomerTier, string> = {
   A: "Tier A",
   B: "Tier B",
   C: "Tier C",
+  D: "Tier D",
 };
 
 export type TierRubricScore = 1 | 2 | 3 | 4 | 5;
@@ -62,7 +63,7 @@ export const TIER_RUBRIC_LABELS: Record<keyof CustomerTierRubric, string> = {
   paymentSpeed: "Payment Speed",
 };
 
-/** Derive overall tier from rubric averages. Empty if any score is unset. */
+/** Derive overall tier from rubric averages. Empty if no scores. */
 export function deriveCustomerTier(
   rubric: CustomerTierRubric,
 ): CustomerTier | "" {
@@ -71,14 +72,13 @@ export function deriveCustomerTier(
     rubric.orderAmount,
     rubric.paymentAmount,
     rubric.paymentSpeed,
-  ];
-  if (scores.some((s) => s == null)) return "";
-  const avg =
-    (scores as TierRubricScore[]).reduce((sum, s) => sum + s, 0) /
-    scores.length;
+  ].filter((s): s is TierRubricScore => s != null);
+  if (scores.length === 0) return "";
+  const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
   if (avg >= 4) return "A";
-  if (avg >= 2.5) return "B";
-  return "C";
+  if (avg >= 3) return "B";
+  if (avg >= 2) return "C";
+  return "D";
 }
 
 /** Per-unit discount: for every matching item name purchased, award ₹amount */

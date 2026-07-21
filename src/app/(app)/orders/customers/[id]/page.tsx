@@ -7,6 +7,7 @@ import {
   getCustomerOrder,
   listDeliveryStaff,
 } from "@/lib/customer-orders/queries";
+import { getSalesman } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
 type CustomerOrderDetailPageProps = {
@@ -39,6 +40,10 @@ export default async function CustomerOrderDetailPage({
 
   if (!order) notFound();
 
+  const customer = order.customerId
+    ? await getSalesman(supabase, order.customerId)
+    : null;
+
   return (
     <CustomerOrderDetailClient
       context={context}
@@ -46,6 +51,7 @@ export default async function CustomerOrderDetailPage({
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
       bankAccounts={bankAccounts}
       deliveryStaff={deliveryStaff}
+      priceRules={customer?.priceRules ?? []}
     />
   );
 }
