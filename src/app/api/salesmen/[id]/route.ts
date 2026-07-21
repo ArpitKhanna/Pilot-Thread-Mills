@@ -131,6 +131,35 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.pending_balance = Math.round(pendingBalance * 100) / 100;
   }
 
+  if (body.marketDay !== undefined) {
+    const marketDay = String(body.marketDay ?? "").trim().toLowerCase();
+    const allowed = [
+      "",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday",
+    ];
+    if (!allowed.includes(marketDay)) {
+      return NextResponse.json(
+        { error: "Invalid market day" },
+        { status: 400 },
+      );
+    }
+    updates.market_day = marketDay;
+  }
+
+  if (body.area !== undefined) {
+    updates.area = String(body.area ?? "").trim();
+  }
+
+  if (typeof body.isDefaulter === "boolean") {
+    updates.is_defaulter = body.isDefaulter;
+  }
+
   const { error: updateError } = await supabase
     .from("salesmen")
     .update(updates)

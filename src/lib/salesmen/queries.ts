@@ -15,6 +15,31 @@ export async function listSalesmen(
   const { data, error } = await supabase
     .from("salesmen")
     .select("*")
+    .eq("entity_type", "salesman")
+    .order("name");
+  if (error) throw error;
+  return ((data ?? []) as DbSalesmanRow[]).map(mapSalesmanRow);
+}
+
+export async function listCustomers(
+  supabase: SupabaseClient,
+): Promise<Salesman[]> {
+  const { data, error } = await supabase
+    .from("salesmen")
+    .select("*")
+    .eq("entity_type", "customer")
+    .order("name");
+  if (error) throw error;
+  return ((data ?? []) as DbSalesmanRow[]).map(mapSalesmanRow);
+}
+
+/** All parties (salesmen + customers) — for pickers that need both */
+export async function listParties(
+  supabase: SupabaseClient,
+): Promise<Salesman[]> {
+  const { data, error } = await supabase
+    .from("salesmen")
+    .select("*")
     .order("name");
   if (error) throw error;
   return ((data ?? []) as DbSalesmanRow[]).map(mapSalesmanRow);
@@ -68,6 +93,16 @@ export type CreateSalesmanInput = {
   pendingBalance?: number;
 };
 
+export type CreateCustomerInput = {
+  name: string;
+  phone: string;
+  alternatePhone?: string;
+  pendingBalance?: number;
+  marketDay?: string;
+  area?: string;
+  isDefaulter?: boolean;
+};
+
 export async function createSalesman(
   supabase: SupabaseClient,
   input: CreateSalesmanInput,
@@ -86,6 +121,37 @@ export async function createSalesman(
       pending_balance: input.pendingBalance ?? 0,
       last_invoice_at: null,
       discount_rules: [],
+      market_day: "",
+      area: "",
+      is_defaulter: false,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapSalesmanRow(data as DbSalesmanRow);
+}
+
+export async function createCustomer(
+  supabase: SupabaseClient,
+  input: CreateCustomerInput,
+): Promise<Salesman> {
+  const id = await allocateSalesmanId(supabase, input.name);
+  const { data, error } = await supabase
+    .from("salesmen")
+    .insert({
+      id,
+      name: input.name,
+      phone: input.phone,
+      alternate_phone: input.alternatePhone ?? "",
+      entity_type: "customer",
+      category: "Customer",
+      is_active: true,
+      pending_balance: input.pendingBalance ?? 0,
+      last_invoice_at: null,
+      discount_rules: [],
+      market_day: input.marketDay ?? "",
+      area: input.area ?? "",
+      is_defaulter: input.isDefaulter ?? false,
     })
     .select("*")
     .single();

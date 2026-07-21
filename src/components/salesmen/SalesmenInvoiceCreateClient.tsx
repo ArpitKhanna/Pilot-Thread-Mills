@@ -279,6 +279,9 @@ export function SalesmenInvoiceCreateClient({
     pendingBalance: 0,
     lastInvoiceAt: null,
     discountRules: [],
+    marketDay: "",
+    area: "",
+    isDefaulter: false,
   };
 
   function selectSalesman(s: Salesman) {

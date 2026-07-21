@@ -3,10 +3,12 @@ import type {
   InvoiceLineItem,
   InvoicePaymentEntry,
   InvoicePaymentMethod,
+  MarketDay,
   Salesman,
   SalesmanDiscountRule,
   SalesmanEntityType,
 } from "./types";
+import { MARKET_DAYS } from "./types";
 
 export type DbSalesmanRow = {
   id: string;
@@ -19,6 +21,9 @@ export type DbSalesmanRow = {
   pending_balance: number | string;
   last_invoice_at: string | null;
   discount_rules: unknown;
+  market_day: string | null;
+  area: string | null;
+  is_defaulter: boolean | null;
 };
 
 export type DbInvoiceRow = {
@@ -64,6 +69,13 @@ function parseEntityType(value: string | null | undefined): SalesmanEntityType {
   return value === "customer" ? "customer" : "salesman";
 }
 
+function parseMarketDay(value: string | null | undefined): MarketDay | "" {
+  if (!value) return "";
+  return (MARKET_DAYS as readonly string[]).includes(value)
+    ? (value as MarketDay)
+    : "";
+}
+
 function parseDiscountRules(raw: unknown): SalesmanDiscountRule[] {
   if (!raw) return [];
   const list = Array.isArray(raw) ? raw : [raw];
@@ -106,6 +118,9 @@ export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
     pendingBalance: num(row.pending_balance),
     lastInvoiceAt: row.last_invoice_at,
     discountRules: parseDiscountRules(row.discount_rules),
+    marketDay: parseMarketDay(row.market_day),
+    area: row.area ?? "",
+    isDefaulter: Boolean(row.is_defaulter),
   };
 }
 

@@ -1,5 +1,34 @@
 export type SalesmanEntityType = "salesman" | "customer";
 
+export type MarketDay =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+export const MARKET_DAYS: MarketDay[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
+
+export const MARKET_DAY_LABELS: Record<MarketDay, string> = {
+  monday: "Monday",
+  tuesday: "Tuesday",
+  wednesday: "Wednesday",
+  thursday: "Thursday",
+  friday: "Friday",
+  saturday: "Saturday",
+  sunday: "Sunday",
+};
+
 /** Per-unit discount: for every matching item name purchased, award ₹amount */
 export type SalesmanDiscountRule = {
   id: string;
@@ -24,6 +53,12 @@ export type Salesman = {
   lastInvoiceAt: string | null;
   /** Purchase discount rules used when creating invoices */
   discountRules: SalesmanDiscountRule[];
+  /** Customer market day (empty when unset / salesman) */
+  marketDay: MarketDay | "";
+  /** Geographic / route area label */
+  area: string;
+  /** Flagged as payment defaulter */
+  isDefaulter: boolean;
 };
 
 export const ENTITY_TYPE_LABELS: Record<SalesmanEntityType, string> = {
