@@ -38,11 +38,13 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/payments") ||
     pathname.startsWith("/expenses") ||
     pathname.startsWith("/inventory") ||
+    pathname.startsWith("/raw-stock-status") ||
     pathname.startsWith("/picker-queue") ||
     pathname.startsWith("/dyeing-jobs") ||
     pathname.startsWith("/api/admin") ||
     pathname.startsWith("/api/price-list") ||
-    pathname.startsWith("/api/bank-accounts");
+    pathname.startsWith("/api/bank-accounts") ||
+    pathname.startsWith("/api/raw-stock");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();

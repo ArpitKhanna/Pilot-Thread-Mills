@@ -44,6 +44,14 @@ export function NavIcon({
           <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" />
         </svg>
       );
+    case "warehouse":
+      return (
+        <svg {...props}>
+          <path d="M3 21V9l9-6 9 6v12" />
+          <path d="M9 21v-8h6v8" />
+          <path d="M3 9h18" />
+        </svg>
+      );
     case "list-checks":
       return (
         <svg {...props}>

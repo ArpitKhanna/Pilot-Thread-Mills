@@ -5,6 +5,7 @@ export const MODULE_ICONS: Record<string, string> = {
   payments: "wallet",
   expenses: "receipt",
   inventory: "package",
+  "raw-stock-status": "warehouse",
   "picker-queue": "list-checks",
   "dyeing-jobs": "palette",
   "order-customers": "users",
