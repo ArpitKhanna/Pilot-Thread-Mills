@@ -328,14 +328,17 @@ export function PriceListClient({
               No items found
             </div>
           ) : (
-            displayedItems.map((item) => (
+            displayedItems.map((item, index) => (
               <article
                 key={item.id}
                 className="rounded-xl border border-border bg-surface p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-medium leading-snug">{item.item_name}</h3>
+                    <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+                      S.No. {index + 1}
+                    </p>
+                    <h3 className="mt-1 font-medium leading-snug">{item.item_name}</h3>
                     <p className="mt-1 text-xs text-muted">
                       {capitalizeType(item.item_type)}
                       {item.count_label ? ` · ${item.count_label}` : ""}
@@ -410,6 +413,9 @@ export function PriceListClient({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-table-header">
+                <th className="w-16 px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
+                  S.No.
+                </th>
                 <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
                   Item Name
                 </th>
@@ -436,18 +442,23 @@ export function PriceListClient({
               {displayedItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={
+                      (editMode || (tab === "pending" && isAdmin) ? 7 : 6)
+                    }
                     className="px-5 py-12 text-center text-muted"
                   >
                     No items found
                   </td>
                 </tr>
               ) : (
-                displayedItems.map((item) => (
+                displayedItems.map((item, index) => (
                   <tr
                     key={item.id}
                     className="border-b border-border last:border-0 hover:bg-sidebar/30"
                   >
+                    <td className="px-5 py-4 font-mono text-muted tabular-nums">
+                      {index + 1}
+                    </td>
                     <td className="px-5 py-4 font-medium">{item.item_name}</td>
                     <td className="px-5 py-4 text-muted">
                       {item.count_label ?? "—"}

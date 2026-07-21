@@ -53,7 +53,7 @@ const RANGE_OPTIONS: { id: RawStockTimeRangePreset; label: string }[] = [
 const ACTION_BUTTONS: { kind: MovementModalKind; label: string }[] = [
   { kind: "purchase", label: "Purchase" },
   { kind: "send_to_narela", label: "Send to Narela" },
-  { kind: "mark_dyed", label: "Mark dyed" },
+  { kind: "mark_dyed", label: "Record dyeing" },
   { kind: "receive_from_narela", label: "Receive" },
   { kind: "opening_balance", label: "Opening" },
 ];
@@ -184,9 +184,6 @@ export function RawStockStatusClient({
               <h1 className="text-xl font-medium tracking-tight">
                 Raw Stock Status
               </h1>
-              <p className="mt-0.5 text-sm text-muted">
-                Track yarn by count (kg) across Rama Road and Narela
-              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {ACTION_BUTTONS.map((btn) => (

@@ -117,7 +117,7 @@ export function validateMovementPayload(
   }
 
   if (movementTypeRaw === "mark_dyed" && !shadeId && !shadeCodeText) {
-    return { error: "Shade / color is required when marking dyed" };
+    return { error: "Shade / color is required when recording dyeing" };
   }
 
   return {

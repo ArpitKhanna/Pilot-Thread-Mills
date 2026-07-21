@@ -104,6 +104,6 @@ export const MOVEMENT_TYPE_LABELS: Record<RawStockMovementType, string> = {
   opening_balance: "Opening balance",
   purchase: "Purchase",
   send_to_narela: "Sent to Narela",
-  mark_dyed: "Marked dyed",
+  mark_dyed: "Dyeing recorded",
   receive_from_narela: "Received from Narela",
 };

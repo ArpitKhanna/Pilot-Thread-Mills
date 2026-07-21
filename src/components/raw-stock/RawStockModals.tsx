@@ -37,7 +37,7 @@ const MOVEMENT_TITLES: Record<MovementModalKind, string> = {
   opening_balance: "Opening balance (Narela undyed)",
   purchase: "Add purchase",
   send_to_narela: "Send to Narela",
-  mark_dyed: "Mark dyed at Narela",
+  mark_dyed: "Record dyeing at Narela",
   receive_from_narela: "Receive from Narela",
 };
 
