@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { CustomerDetailClient } from "@/components/customers/CustomerDetailClient";
 import { getAppContext } from "@/app/(app)/layout";
+import type { PriceListItem } from "@/lib/auth/types";
 import { listBankAccounts } from "@/lib/bank-accounts/queries";
 import { listCustomerOrdersForCustomer } from "@/lib/customer-orders/queries";
 import {
@@ -25,10 +26,15 @@ export default async function CustomerDetailPage({ params }: PageProps) {
   const customer = await getSalesman(supabase, id);
   if (!customer || customer.entityType !== "customer") notFound();
 
-  const [orders, invoices, bankAccounts] = await Promise.all([
+  const [orders, invoices, bankAccounts, priceListResult] = await Promise.all([
     listCustomerOrdersForCustomer(supabase, id),
     listInvoicesForSalesman(supabase, id),
     listBankAccounts(supabase).catch(() => []),
+    supabase
+      .from("price_list_items")
+      .select("*")
+      .eq("status", "approved")
+      .order("item_name"),
   ]);
 
   return (
@@ -38,6 +44,7 @@ export default async function CustomerDetailPage({ params }: PageProps) {
       initialOrders={orders}
       initialInvoices={invoices}
       bankAccounts={bankAccounts}
+      priceList={(priceListResult.data ?? []) as PriceListItem[]}
     />
   );
 }

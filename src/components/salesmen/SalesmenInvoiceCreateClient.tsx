@@ -284,6 +284,21 @@ export function SalesmenInvoiceCreateClient({
     isDefaulter: false,
     tier: "",
     balanceThreshold: null,
+    contactName: "",
+    addressBuilding: "",
+    addressArea: "",
+    addressCity: "",
+    addressState: "",
+    addressPincode: "",
+    mapLat: null,
+    mapLng: null,
+    tierRubric: {
+      orderFrequency: null,
+      orderAmount: null,
+      paymentAmount: null,
+      paymentSpeed: null,
+    },
+    priceRules: [],
   };
 
   function selectSalesman(s: Salesman) {

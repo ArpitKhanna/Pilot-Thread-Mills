@@ -1,5 +1,7 @@
 import type {
+  CustomerPriceRule,
   CustomerTier,
+  CustomerTierRubric,
   Invoice,
   InvoiceLineItem,
   InvoicePaymentEntry,
@@ -8,8 +10,13 @@ import type {
   Salesman,
   SalesmanDiscountRule,
   SalesmanEntityType,
+  TierRubricScore,
 } from "./types";
-import { CUSTOMER_TIERS, MARKET_DAYS } from "./types";
+import {
+  CUSTOMER_TIERS,
+  EMPTY_TIER_RUBRIC,
+  MARKET_DAYS,
+} from "./types";
 
 export type DbSalesmanRow = {
   id: string;
@@ -27,6 +34,16 @@ export type DbSalesmanRow = {
   is_defaulter: boolean | null;
   tier: string | null;
   balance_threshold: number | string | null;
+  contact_name: string | null;
+  address_building: string | null;
+  address_area: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_pincode: string | null;
+  map_lat: number | string | null;
+  map_lng: number | string | null;
+  tier_rubric: unknown;
+  price_rules: unknown;
 };
 
 export type DbInvoiceRow = {
@@ -126,7 +143,70 @@ function parseDiscountRules(raw: unknown): SalesmanDiscountRule[] {
   return rules;
 }
 
+function parseCoord(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseRubricScore(value: unknown): TierRubricScore | null {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 5) return null;
+  return n as TierRubricScore;
+}
+
+function parseTierRubric(raw: unknown): CustomerTierRubric {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ...EMPTY_TIER_RUBRIC };
+  }
+  const row = raw as Record<string, unknown>;
+  return {
+    orderFrequency: parseRubricScore(row.orderFrequency),
+    orderAmount: parseRubricScore(row.orderAmount),
+    paymentAmount: parseRubricScore(row.paymentAmount),
+    paymentSpeed: parseRubricScore(row.paymentSpeed),
+  };
+}
+
+function parsePriceRules(raw: unknown): CustomerPriceRule[] {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const rules: CustomerPriceRule[] = [];
+
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const itemName = String(row.itemName ?? "").trim();
+    const adjustmentPerUnit = Number(row.adjustmentPerUnit);
+    if (
+      !itemName ||
+      !Number.isFinite(adjustmentPerUnit) ||
+      adjustmentPerUnit === 0
+    ) {
+      continue;
+    }
+    const rounded = Math.round(adjustmentPerUnit * 100) / 100;
+    const abs = Math.abs(rounded);
+    rules.push({
+      id: String(row.id ?? crypto.randomUUID()),
+      itemName,
+      priceListItemId: row.priceListItemId
+        ? String(row.priceListItemId)
+        : undefined,
+      adjustmentPerUnit: rounded,
+      description:
+        String(row.description ?? "").trim() ||
+        (rounded > 0
+          ? `₹${abs} upcharge per ${itemName}`
+          : `₹${abs} discount per ${itemName}`),
+    });
+  }
+
+  return rules;
+}
+
 export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
+  const addressArea = row.address_area ?? "";
   return {
     id: row.id,
     name: row.name,
@@ -138,10 +218,20 @@ export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
     lastInvoiceAt: row.last_invoice_at,
     discountRules: parseDiscountRules(row.discount_rules),
     marketDay: parseMarketDay(row.market_day),
-    area: row.area ?? "",
+    area: addressArea || row.area || "",
     isDefaulter: Boolean(row.is_defaulter),
     tier: parseTier(row.tier),
     balanceThreshold: parseBalanceThreshold(row.balance_threshold),
+    contactName: row.contact_name ?? "",
+    addressBuilding: row.address_building ?? "",
+    addressArea,
+    addressCity: row.address_city ?? "",
+    addressState: row.address_state ?? "",
+    addressPincode: row.address_pincode ?? "",
+    mapLat: parseCoord(row.map_lat),
+    mapLng: parseCoord(row.map_lng),
+    tierRubric: parseTierRubric(row.tier_rubric),
+    priceRules: parsePriceRules(row.price_rules),
   };
 }
 

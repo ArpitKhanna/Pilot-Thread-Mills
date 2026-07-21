@@ -17,6 +17,7 @@ import { PendingLink } from "@/components/ui/PendingLink";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
+import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { CustomerOrder } from "@/lib/customer-orders/types";
 import {
@@ -44,6 +45,7 @@ type CustomerDetailClientProps = {
   initialOrders: CustomerOrder[];
   initialInvoices: Invoice[];
   bankAccounts: BankAccount[];
+  priceList: PriceListItem[];
 };
 
 const MONTH_OPTIONS = [
@@ -91,6 +93,7 @@ export function CustomerDetailClient({
   initialOrders,
   initialInvoices,
   bankAccounts,
+  priceList,
 }: CustomerDetailClientProps) {
   const router = useRouter();
   const [editPending, startEditTransition] = useTransition();
@@ -428,6 +431,7 @@ export function CustomerDetailClient({
           ) : (
             <CustomerPersonalDetailsForm
               customer={customer}
+              priceList={priceList}
               onSaved={setCustomer}
             />
           )}

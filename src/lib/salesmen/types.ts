@@ -39,6 +39,48 @@ export const CUSTOMER_TIER_LABELS: Record<CustomerTier, string> = {
   C: "Tier C",
 };
 
+export type TierRubricScore = 1 | 2 | 3 | 4 | 5;
+
+export type CustomerTierRubric = {
+  orderFrequency: TierRubricScore | null;
+  orderAmount: TierRubricScore | null;
+  paymentAmount: TierRubricScore | null;
+  paymentSpeed: TierRubricScore | null;
+};
+
+export const EMPTY_TIER_RUBRIC: CustomerTierRubric = {
+  orderFrequency: null,
+  orderAmount: null,
+  paymentAmount: null,
+  paymentSpeed: null,
+};
+
+export const TIER_RUBRIC_LABELS: Record<keyof CustomerTierRubric, string> = {
+  orderFrequency: "Order Frequency",
+  orderAmount: "Order Amount",
+  paymentAmount: "Payment Amount",
+  paymentSpeed: "Payment Speed",
+};
+
+/** Derive overall tier from rubric averages. Empty if any score is unset. */
+export function deriveCustomerTier(
+  rubric: CustomerTierRubric,
+): CustomerTier | "" {
+  const scores = [
+    rubric.orderFrequency,
+    rubric.orderAmount,
+    rubric.paymentAmount,
+    rubric.paymentSpeed,
+  ];
+  if (scores.some((s) => s == null)) return "";
+  const avg =
+    (scores as TierRubricScore[]).reduce((sum, s) => sum + s, 0) /
+    scores.length;
+  if (avg >= 4) return "A";
+  if (avg >= 2.5) return "B";
+  return "C";
+}
+
 /** Per-unit discount: for every matching item name purchased, award ₹amount */
 export type SalesmanDiscountRule = {
   id: string;
@@ -49,6 +91,16 @@ export type SalesmanDiscountRule = {
   /** Rupees subtracted per matching unit purchased */
   amountPerUnit: number;
   /** Human-readable rule, e.g. "₹1 per Needle Poly Dibbi" */
+  description: string;
+};
+
+/** Customer list-price adjustment: positive = upcharge, negative = discount */
+export type CustomerPriceRule = {
+  id: string;
+  itemName: string;
+  priceListItemId?: string;
+  /** ₹ per unit relative to list price (+ upcharge, − discount) */
+  adjustmentPerUnit: number;
   description: string;
 };
 
@@ -65,7 +117,7 @@ export type Salesman = {
   discountRules: SalesmanDiscountRule[];
   /** Customer market day (empty when unset / salesman) */
   marketDay: MarketDay | "";
-  /** Geographic / route area label */
+  /** Geographic / route area label (legacy; synced from addressArea) */
   area: string;
   /** Flagged as payment defaulter */
   isDefaulter: boolean;
@@ -73,6 +125,17 @@ export type Salesman = {
   tier: CustomerTier | "";
   /** Alert when pending balance reaches/exceeds this amount (null = no alert) */
   balanceThreshold: number | null;
+  /** Person / contact name at the shop */
+  contactName: string;
+  addressBuilding: string;
+  addressArea: string;
+  addressCity: string;
+  addressState: string;
+  addressPincode: string;
+  mapLat: number | null;
+  mapLng: number | null;
+  tierRubric: CustomerTierRubric;
+  priceRules: CustomerPriceRule[];
 };
 
 export const ENTITY_TYPE_LABELS: Record<SalesmanEntityType, string> = {

@@ -128,6 +128,16 @@ export async function createSalesman(
       is_defaulter: false,
       tier: "",
       balance_threshold: null,
+      contact_name: "",
+      address_building: "",
+      address_area: "",
+      address_city: "",
+      address_state: "",
+      address_pincode: "",
+      map_lat: null,
+      map_lng: null,
+      tier_rubric: {},
+      price_rules: [],
     })
     .select("*")
     .single();
@@ -140,6 +150,7 @@ export async function createCustomer(
   input: CreateCustomerInput,
 ): Promise<Salesman> {
   const id = await allocateSalesmanId(supabase, input.name);
+  const addressArea = input.area ?? "";
   const { data, error } = await supabase
     .from("salesmen")
     .insert({
@@ -154,10 +165,20 @@ export async function createCustomer(
       last_invoice_at: null,
       discount_rules: [],
       market_day: input.marketDay ?? "",
-      area: input.area ?? "",
+      area: addressArea,
       is_defaulter: input.isDefaulter ?? false,
       tier: input.tier ?? "",
       balance_threshold: input.balanceThreshold ?? null,
+      contact_name: "",
+      address_building: "",
+      address_area: addressArea,
+      address_city: "",
+      address_state: "",
+      address_pincode: "",
+      map_lat: null,
+      map_lng: null,
+      tier_rubric: {},
+      price_rules: [],
     })
     .select("*")
     .single();
