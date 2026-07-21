@@ -143,6 +143,71 @@ export async function listCustomerOrders(
   });
 }
 
+export async function listCustomerOrdersForCustomer(
+  supabase: SupabaseClient,
+  customerId: string,
+): Promise<CustomerOrder[]> {
+  const { data, error } = await supabase
+    .from("customer_orders")
+    .select(ORDER_SELECT)
+    .eq("customer_id", customerId)
+    .order("order_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const orders = (data ?? []) as DbOrderRow[];
+  if (orders.length === 0) return [];
+
+  const ids = orders.map((o) => o.id);
+  const { data: lineRows, error: linesError } = await supabase
+    .from("customer_order_lines")
+    .select(
+      "order_id, qty, price_list_items:price_list_item_id ( customer_price )",
+    )
+    .in("order_id", ids);
+  if (linesError) throw linesError;
+
+  const counts = new Map<string, number>();
+  const amounts = new Map<string, number>();
+  for (const row of lineRows ?? []) {
+    const line = row as {
+      order_id: string;
+      qty: number | string;
+      price_list_items?:
+        | { customer_price?: number | string }
+        | { customer_price?: number | string }[]
+        | null;
+    };
+    const orderId = String(line.order_id);
+    counts.set(orderId, (counts.get(orderId) ?? 0) + 1);
+
+    const qty =
+      typeof line.qty === "number" ? line.qty : Number(line.qty);
+    const priceRaw = Array.isArray(line.price_list_items)
+      ? line.price_list_items[0]?.customer_price
+      : line.price_list_items?.customer_price;
+    const price =
+      priceRaw === undefined || priceRaw === null
+        ? 0
+        : typeof priceRaw === "number"
+          ? priceRaw
+          : Number(priceRaw);
+    amounts.set(
+      orderId,
+      (amounts.get(orderId) ?? 0) +
+        (Number.isFinite(qty) ? qty : 0) *
+          (Number.isFinite(price) ? price : 0),
+    );
+  }
+
+  return orders.map((row) => {
+    const mapped = mapOrderRow(row);
+    mapped.lineCount = counts.get(row.id) ?? 0;
+    mapped.amount = amounts.get(row.id) ?? 0;
+    return mapped;
+  });
+}
+
 export async function listDeliveryStaff(
   supabase: SupabaseClient,
 ): Promise<DeliveryStaff[]> {

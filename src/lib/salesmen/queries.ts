@@ -101,6 +101,8 @@ export type CreateCustomerInput = {
   marketDay?: string;
   area?: string;
   isDefaulter?: boolean;
+  tier?: string;
+  balanceThreshold?: number | null;
 };
 
 export async function createSalesman(
@@ -124,6 +126,8 @@ export async function createSalesman(
       market_day: "",
       area: "",
       is_defaulter: false,
+      tier: "",
+      balance_threshold: null,
     })
     .select("*")
     .single();
@@ -152,6 +156,8 @@ export async function createCustomer(
       market_day: input.marketDay ?? "",
       area: input.area ?? "",
       is_defaulter: input.isDefaulter ?? false,
+      tier: input.tier ?? "",
+      balance_threshold: input.balanceThreshold ?? null,
     })
     .select("*")
     .single();

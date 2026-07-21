@@ -282,6 +282,8 @@ export function SalesmenInvoiceCreateClient({
     marketDay: "",
     area: "",
     isDefaulter: false,
+    tier: "",
+    balanceThreshold: null,
   };
 
   function selectSalesman(s: Salesman) {

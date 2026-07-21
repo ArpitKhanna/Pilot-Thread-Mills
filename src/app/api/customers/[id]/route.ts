@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
 import { getSalesman } from "@/lib/salesmen/queries";
-import { MARKET_DAYS } from "@/lib/salesmen/types";
+import {
+  CUSTOMER_TIERS,
+  MARKET_DAYS,
+} from "@/lib/salesmen/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -99,6 +102,35 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (typeof body.isDefaulter === "boolean") {
     updates.is_defaulter = body.isDefaulter;
+  }
+
+  if (body.tier !== undefined) {
+    const tierRaw = String(body.tier ?? "").trim().toUpperCase();
+    if (
+      tierRaw &&
+      !(CUSTOMER_TIERS as readonly string[]).includes(tierRaw)
+    ) {
+      return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
+    }
+    updates.tier = tierRaw;
+  }
+
+  if (body.balanceThreshold !== undefined) {
+    if (
+      body.balanceThreshold === null ||
+      String(body.balanceThreshold).trim() === ""
+    ) {
+      updates.balance_threshold = null;
+    } else {
+      const threshold = Number(body.balanceThreshold);
+      if (!Number.isFinite(threshold) || threshold < 0) {
+        return NextResponse.json(
+          { error: "Balance threshold must be a valid non-negative amount" },
+          { status: 400 },
+        );
+      }
+      updates.balance_threshold = Math.round(threshold * 100) / 100;
+    }
   }
 
   if (body.pendingBalance !== undefined) {

@@ -29,6 +29,16 @@ export const MARKET_DAY_LABELS: Record<MarketDay, string> = {
   sunday: "Sunday",
 };
 
+export type CustomerTier = "A" | "B" | "C";
+
+export const CUSTOMER_TIERS: CustomerTier[] = ["A", "B", "C"];
+
+export const CUSTOMER_TIER_LABELS: Record<CustomerTier, string> = {
+  A: "Tier A",
+  B: "Tier B",
+  C: "Tier C",
+};
+
 /** Per-unit discount: for every matching item name purchased, award ₹amount */
 export type SalesmanDiscountRule = {
   id: string;
@@ -59,6 +69,10 @@ export type Salesman = {
   area: string;
   /** Flagged as payment defaulter */
   isDefaulter: boolean;
+  /** Customer tier (empty when unset) */
+  tier: CustomerTier | "";
+  /** Alert when pending balance reaches/exceeds this amount (null = no alert) */
+  balanceThreshold: number | null;
 };
 
 export const ENTITY_TYPE_LABELS: Record<SalesmanEntityType, string> = {

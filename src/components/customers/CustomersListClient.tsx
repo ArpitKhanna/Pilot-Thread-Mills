@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
+import { PendingLink } from "@/components/ui/PendingLink";
 import type { AppContext } from "@/app/(app)/layout";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { MarketDay, Salesman } from "@/lib/salesmen/types";
@@ -377,6 +378,10 @@ export function CustomersListClient({
                 key={customer.id}
                 className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-foreground/20 hover:bg-sidebar/40"
               >
+                <PendingLink
+                  href={`/entities/customers/${customer.id}`}
+                  className="block"
+                >
                 <div className="flex items-start justify-between gap-3">
                   <h2 className="truncate text-base font-medium">
                     {customer.name}
@@ -444,6 +449,7 @@ export function CustomersListClient({
                     </p>
                   </div>
                 </div>
+                </PendingLink>
 
                 {editMode && (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">

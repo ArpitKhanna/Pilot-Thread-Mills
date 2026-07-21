@@ -1,4 +1,5 @@
 import type {
+  CustomerTier,
   Invoice,
   InvoiceLineItem,
   InvoicePaymentEntry,
@@ -8,7 +9,7 @@ import type {
   SalesmanDiscountRule,
   SalesmanEntityType,
 } from "./types";
-import { MARKET_DAYS } from "./types";
+import { CUSTOMER_TIERS, MARKET_DAYS } from "./types";
 
 export type DbSalesmanRow = {
   id: string;
@@ -24,6 +25,8 @@ export type DbSalesmanRow = {
   market_day: string | null;
   area: string | null;
   is_defaulter: boolean | null;
+  tier: string | null;
+  balance_threshold: number | string | null;
 };
 
 export type DbInvoiceRow = {
@@ -76,6 +79,22 @@ function parseMarketDay(value: string | null | undefined): MarketDay | "" {
     : "";
 }
 
+function parseTier(value: string | null | undefined): CustomerTier | "" {
+  if (!value) return "";
+  return (CUSTOMER_TIERS as readonly string[]).includes(value)
+    ? (value as CustomerTier)
+    : "";
+}
+
+function parseBalanceThreshold(
+  value: number | string | null | undefined,
+): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
 function parseDiscountRules(raw: unknown): SalesmanDiscountRule[] {
   if (!raw) return [];
   const list = Array.isArray(raw) ? raw : [raw];
@@ -121,6 +140,8 @@ export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
     marketDay: parseMarketDay(row.market_day),
     area: row.area ?? "",
     isDefaulter: Boolean(row.is_defaulter),
+    tier: parseTier(row.tier),
+    balanceThreshold: parseBalanceThreshold(row.balance_threshold),
   };
 }
 
