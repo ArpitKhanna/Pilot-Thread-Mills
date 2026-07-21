@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { CustomerPastOrdersTab } from "@/components/customers/CustomerPastOrdersTab";
 import { CustomerPersonalDetailsForm } from "@/components/customers/CustomerPersonalDetailsForm";
+import { CustomerTimelineTab } from "@/components/customers/CustomerTimelineTab";
 import { TopBar } from "@/components/layout/AppShell";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import type { PriceListItem } from "@/lib/auth/types";
@@ -18,7 +19,7 @@ import {
   MARKET_DAY_LABELS,
 } from "@/lib/salesmen/types";
 
-type DetailTab = "orders" | "payments" | "pending" | "details";
+type DetailTab = "timeline" | "orders" | "payments" | "pending" | "details";
 
 type CustomerDetailClientProps = {
   context: AppContext;
@@ -64,7 +65,7 @@ export function CustomerDetailClient({
   const [customer, setCustomer] = useState(initialCustomer);
   const [orders, setOrders] = useState(initialOrders);
   const [invoices, setInvoices] = useState(initialInvoices);
-  const [tab, setTab] = useState<DetailTab>("orders");
+  const [tab, setTab] = useState<DetailTab>("timeline");
 
   useEffect(() => {
     setCustomer(initialCustomer);
@@ -222,6 +223,11 @@ export function CustomerDetailClient({
 
           <div className="mb-5 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 sm:mb-6">
             <TabButton
+              active={tab === "timeline"}
+              onClick={() => setTab("timeline")}
+              label="Timeline"
+            />
+            <TabButton
               active={tab === "orders"}
               onClick={() => setTab("orders")}
               label={`Past Orders (${orders.length})`}
@@ -243,7 +249,9 @@ export function CustomerDetailClient({
             />
           </div>
 
-          {tab === "orders" ? (
+          {tab === "timeline" ? (
+            <CustomerTimelineTab orders={orders} invoices={invoices} />
+          ) : tab === "orders" ? (
             <CustomerPastOrdersTab
               orders={orders}
               invoices={invoices}

@@ -187,31 +187,6 @@ function PastOrderRow({
             </p>
           </PendingLink>
 
-          {(slips.length > 0 || patches.length > 0) && (
-            <div className="flex flex-wrap items-start gap-2">
-              {slips.map((slip) => (
-                <div key={slip.id} className="space-y-1">
-                  <AttachmentThumb
-                    attachment={slip}
-                    label="WhatsApp"
-                    onOpen={() => setPreview(slip)}
-                  />
-                  <p className="text-[10px] text-muted">Order slip</p>
-                </div>
-              ))}
-              {patches.map((patch) => (
-                <div key={patch.id} className="space-y-1">
-                  <AttachmentThumb
-                    attachment={patch}
-                    label="Patch"
-                    onOpen={() => setPreview(patch)}
-                  />
-                  <p className="text-[10px] text-muted">Sample / patch</p>
-                </div>
-              ))}
-            </div>
-          )}
-
           {hasCustomPatch && (
             <div className="space-y-2 rounded-lg border border-border bg-sidebar/40 px-3 py-2">
               <p className="text-xs font-medium text-muted">
@@ -286,32 +261,59 @@ function PastOrderRow({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-          <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
-            <span
-              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status)}`}
-            >
-              {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
-            </span>
-            <span className="text-sm font-medium">
-              {formatINR(order.amount)}
-            </span>
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+          {(slips.length > 0 || patches.length > 0) && (
+            <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+              {slips.map((slip) => (
+                <div key={slip.id} className="space-y-1 text-center">
+                  <AttachmentThumb
+                    attachment={slip}
+                    label="WhatsApp"
+                    onOpen={() => setPreview(slip)}
+                  />
+                  <p className="text-[10px] text-muted">Order slip</p>
+                </div>
+              ))}
+              {patches.map((patch) => (
+                <div key={patch.id} className="space-y-1 text-center">
+                  <AttachmentThumb
+                    attachment={patch}
+                    label="Patch"
+                    onOpen={() => setPreview(patch)}
+                  />
+                  <p className="text-[10px] text-muted">Sample / patch</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col items-stretch gap-2 sm:min-w-[7.5rem] sm:items-end">
+            <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status)}`}
+              >
+                {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+              </span>
+              <span className="text-sm font-medium">
+                {formatINR(order.amount)}
+              </span>
+            </div>
+            {showViewInvoice ? (
+              <PendingLink
+                href={`/orders/salesmen/${order.invoiceId}/edit`}
+                className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+              >
+                View Invoice
+              </PendingLink>
+            ) : order.status !== "draft" && order.status !== "cancelled" ? (
+              <PendingLink
+                href={`/orders/customers/${order.id}`}
+                className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+              >
+                Open order
+              </PendingLink>
+            ) : null}
           </div>
-          {showViewInvoice ? (
-            <PendingLink
-              href={`/orders/salesmen/${order.invoiceId}/edit`}
-              className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
-            >
-              View Invoice
-            </PendingLink>
-          ) : order.status !== "draft" && order.status !== "cancelled" ? (
-            <PendingLink
-              href={`/orders/customers/${order.id}`}
-              className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
-            >
-              Open order
-            </PendingLink>
-          ) : null}
         </div>
       </div>
 
