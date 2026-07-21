@@ -2,13 +2,9 @@
 
 import { useMemo } from "react";
 import { PendingLink } from "@/components/ui/PendingLink";
-import {
-  CUSTOMER_ORDER_STATUS_LABELS,
-  type CustomerOrder,
-} from "@/lib/customer-orders/types";
+import type { CustomerOrder } from "@/lib/customer-orders/types";
 import {
   formatINR,
-  formatInvoiceDate,
   formatShortDate,
 } from "@/lib/salesmen/mock-data";
 import type {
@@ -21,18 +17,23 @@ type CustomerTimelineTabProps = {
   invoices: Invoice[];
 };
 
-type TimelineKind = "order" | "payment" | "invoice";
+type TimelineKind = "order" | "payment";
+
+type TimelineChild = {
+  id: string;
+  label: string;
+  detail?: string;
+};
 
 type TimelineEvent = {
   id: string;
   kind: TimelineKind;
   at: number;
-  dateLabel: string;
   title: string;
   subtitle: string;
-  amount: number | null;
-  href: string | null;
-  tone: string;
+  href: string;
+  tag: string;
+  children: TimelineChild[];
 };
 
 const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
@@ -42,33 +43,38 @@ const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
   imps: "IMPS",
 };
 
-function kindLabel(kind: TimelineKind): string {
-  switch (kind) {
-    case "order":
-      return "Order";
-    case "payment":
-      return "Payment";
-    case "invoice":
-      return "Invoice";
-  }
-}
-
-function kindTone(kind: TimelineKind): string {
-  switch (kind) {
-    case "order":
-      return "bg-sky-50 text-sky-900";
-    case "payment":
-      return "bg-emerald-50 text-emerald-900";
-    case "invoice":
-      return "bg-amber-50 text-amber-900";
-  }
-}
+const CONFIRMED_STATUSES = new Set([
+  "confirmed",
+  "picking",
+  "invoiced",
+]);
 
 function orderTimestamp(order: CustomerOrder): number {
   const created = Date.parse(order.createdAt);
   if (Number.isFinite(created)) return created;
   const day = Date.parse(order.orderDate);
   return Number.isFinite(day) ? day : 0;
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden
+      className="text-surface"
+    >
+      <path
+        d="M2.5 6.2L4.8 8.5L9.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function buildTimeline(
@@ -78,42 +84,39 @@ function buildTimeline(
   const events: TimelineEvent[] = [];
 
   for (const order of orders) {
-    if (order.status === "cancelled") continue;
+    if (!CONFIRMED_STATUSES.has(order.status)) continue;
     const at = orderTimestamp(order);
     events.push({
       id: `order-${order.id}`,
       kind: "order",
       at,
-      dateLabel: formatShortDate(order.orderDate),
-      title: `Order · ${CUSTOMER_ORDER_STATUS_LABELS[order.status]}`,
+      title: "Confirmed order",
       subtitle: [
+        formatShortDate(order.orderDate),
         `${order.lineCount} item${order.lineCount === 1 ? "" : "s"}`,
+        order.amount > 0 ? formatINR(order.amount) : null,
         order.deliveryByName ? `Delivery: ${order.deliveryByName}` : null,
       ]
         .filter(Boolean)
         .join(" · "),
-      amount: order.amount,
       href: `/orders/customers/${order.id}`,
-      tone: kindTone("order"),
+      tag: "Confirmed Order",
+      children: order.lines.slice(0, 6).map((line) => ({
+        id: line.id,
+        label: line.itemName?.trim() || "Item",
+        detail: [
+          line.shadeCode.trim() ? `Shade ${line.shadeCode.trim()}` : null,
+          `${line.qty}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
     });
   }
 
   for (const invoice of invoices) {
     const issued = Date.parse(invoice.issuedAt);
     const at = Number.isFinite(issued) ? issued : 0;
-    const date = formatInvoiceDate(invoice.issuedAt);
-
-    events.push({
-      id: `invoice-${invoice.id}`,
-      kind: "invoice",
-      at,
-      dateLabel: formatShortDate(invoice.issuedAt),
-      title: `Invoice ${invoice.number}`,
-      subtitle: `${date.time} · ${invoice.itemCount} item${invoice.itemCount === 1 ? "" : "s"}`,
-      amount: invoice.totalAmount,
-      href: `/orders/salesmen/${invoice.id}/edit`,
-      tone: kindTone("invoice"),
-    });
 
     const entries =
       invoice.paymentEntries && invoice.paymentEntries.length > 0
@@ -124,6 +127,8 @@ function buildTimeline(
                 id: `${invoice.id}-paid`,
                 method: "cash" as const,
                 amount: invoice.amountPaid,
+                senderName: undefined as string | undefined,
+                chequeNumber: undefined as string | undefined,
               },
             ]
           : [];
@@ -133,34 +138,34 @@ function buildTimeline(
       events.push({
         id: `payment-${invoice.id}-${entry.id}`,
         kind: "payment",
-        at: at + 1,
-        dateLabel: formatShortDate(invoice.issuedAt),
-        title: `Payment · ${METHOD_LABELS[entry.method] ?? entry.method}`,
-        subtitle: `Against ${invoice.number}${
-          entry.senderName ? ` · ${entry.senderName}` : ""
-        }${entry.chequeNumber ? ` · Chq ${entry.chequeNumber}` : ""}`,
-        amount: entry.amount,
+        at,
+        title: "Payment received",
+        subtitle: [
+          formatShortDate(invoice.issuedAt),
+          formatINR(entry.amount),
+          METHOD_LABELS[entry.method] ?? entry.method,
+          `Invoice ${invoice.number}`,
+        ].join(" · "),
         href: `/orders/salesmen/${invoice.id}/edit`,
-        tone: kindTone("payment"),
+        tag: "Payment",
+        children: [
+          ...(entry.senderName
+            ? [{ id: `${entry.id}-sender`, label: entry.senderName, detail: "Sender" }]
+            : []),
+          ...(entry.chequeNumber
+            ? [
+                {
+                  id: `${entry.id}-chq`,
+                  label: `Cheque ${entry.chequeNumber}`,
+                },
+              ]
+            : []),
+        ],
       });
     }
   }
 
   return events.sort((a, b) => b.at - a.at || a.id.localeCompare(b.id));
-}
-
-function groupByMonth(events: TimelineEvent[]) {
-  const groups: { label: string; items: TimelineEvent[] }[] = [];
-  for (const event of events) {
-    const label = new Date(event.at).toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
-    const existing = groups.find((g) => g.label === label);
-    if (existing) existing.items.push(event);
-    else groups.push({ label, items: [event] });
-  }
-  return groups;
 }
 
 export function CustomerTimelineTab({
@@ -171,96 +176,97 @@ export function CustomerTimelineTab({
     () => buildTimeline(orders, invoices),
     [orders, invoices],
   );
-  const groups = useMemo(() => groupByMonth(events), [events]);
 
   if (events.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-        No activity yet
+        No confirmed orders or payments yet
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h2 className="text-lg font-medium tracking-tight">Timeline</h2>
         <p className="mt-1 text-sm text-muted">
-          Orders, invoices, and payments — newest first
+          Confirmed orders and payments — newest first
         </p>
       </div>
 
-      {groups.map((group) => (
-        <section key={group.label}>
-          <h3 className="mb-2 px-1 text-xs font-medium tracking-wide text-muted uppercase">
-            {group.label}
-          </h3>
-          <ul className="relative space-y-0 overflow-hidden rounded-xl border border-border bg-surface">
-            {group.items.map((event, index) => {
-              const body = (
-                <div className="flex items-start gap-3 px-4 py-3 sm:gap-4">
-                  <div className="relative flex w-11 shrink-0 flex-col items-center pt-0.5 sm:w-12">
-                    {index < group.items.length - 1 ? (
-                      <span
-                        className="absolute top-7 bottom-[-0.75rem] left-1/2 w-px -translate-x-1/2 bg-border"
-                        aria-hidden
-                      />
-                    ) : null}
-                    <span
-                      className={`relative z-[1] rounded-full px-1.5 py-0.5 text-[10px] font-medium ${event.tone}`}
-                    >
-                      {kindLabel(event.kind).slice(0, 3)}
-                    </span>
-                    <span className="mt-1 text-center text-[11px] leading-tight text-muted">
-                      {event.dateLabel}
-                    </span>
-                  </div>
+      <div className="rounded-xl border border-border bg-surface px-4 py-2 sm:px-5">
+        <ul>
+          {events.map((event, index) => {
+            const isLast = index === events.length - 1;
+            const tagDot =
+              event.kind === "payment" ? "bg-emerald-500" : "bg-sky-500";
 
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{event.title}</p>
-                    {event.subtitle ? (
-                      <p className="mt-0.5 truncate text-xs text-muted">
+            return (
+              <li key={event.id} className="relative flex gap-3 sm:gap-4">
+                {/* Rail */}
+                <div className="relative flex w-5 shrink-0 flex-col items-center">
+                  {!isLast ? (
+                    <span
+                      className="absolute top-5 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span className="relative z-[1] mt-3 flex h-5 w-5 items-center justify-center rounded-full bg-foreground/55">
+                    <CheckIcon />
+                  </span>
+                </div>
+
+                <PendingLink
+                  href={event.href}
+                  className={`min-w-0 flex-1 py-3 transition-colors hover:opacity-90 ${
+                    isLast ? "" : "border-b border-border/70"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold tracking-tight text-foreground">
+                        {event.title}
+                      </p>
+                      <p className="mt-0.5 text-sm text-muted">
                         {event.subtitle}
                       </p>
-                    ) : null}
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${tagDot}`}
+                        aria-hidden
+                      />
+                      {event.tag}
+                    </span>
                   </div>
 
-                  {event.amount != null ? (
-                    <p
-                      className={`shrink-0 text-sm font-medium tabular-nums ${
-                        event.kind === "payment"
-                          ? "text-emerald-700"
-                          : "text-foreground"
-                      }`}
-                    >
-                      {event.kind === "payment" ? "+" : ""}
-                      {formatINR(event.amount)}
-                    </p>
+                  {event.children.length > 0 ? (
+                    <ul className="mt-3 space-y-2 border-l border-border pl-4 ml-0.5">
+                      {event.children.map((child) => (
+                        <li
+                          key={child.id}
+                          className="relative text-sm text-muted"
+                        >
+                          <span
+                            className="absolute top-2.5 -left-4 h-px w-3 bg-border"
+                            aria-hidden
+                          />
+                          <span className="font-medium text-foreground/90">
+                            {child.label}
+                          </span>
+                          {child.detail ? (
+                            <span className="text-muted"> · {child.detail}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
-                </div>
-              );
-
-              return (
-                <li
-                  key={event.id}
-                  className="border-b border-border last:border-0"
-                >
-                  {event.href ? (
-                    <PendingLink
-                      href={event.href}
-                      className="block transition-colors hover:bg-sidebar/50"
-                    >
-                      {body}
-                    </PendingLink>
-                  ) : (
-                    body
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                </PendingLink>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
