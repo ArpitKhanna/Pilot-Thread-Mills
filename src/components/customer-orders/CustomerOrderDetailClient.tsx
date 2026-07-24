@@ -549,16 +549,6 @@ export function CustomerOrderDetailClient({
                 >
                   {busy === "lines" ? "Saving…" : "Save lines"}
                 </button>
-                {order.status === "draft" ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => setStatus("picking")}
-                    className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
-                  >
-                    Mark picking
-                  </button>
-                ) : null}
                 {order.status === "picking" ? (
                   <button
                     type="button"

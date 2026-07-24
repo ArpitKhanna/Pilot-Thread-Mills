@@ -118,7 +118,6 @@ export function CustomerOrdersListClient({
   const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
-  const [draftsOpen, setDraftsOpen] = useState(false);
   const [missingOpen, setMissingOpen] = useState(false);
   const [missingCustomerId, setMissingCustomerId] = useState("");
   const [missingDate, setMissingDate] = useState(todayLocalDate);
@@ -160,11 +159,6 @@ export function CustomerOrdersListClient({
       );
     });
   }, [orders, dateFilter, areaFilter, search]);
-
-  const drafts = useMemo(
-    () => filtered.filter((o) => o.status === "draft").sort(sortOrders),
-    [filtered],
-  );
 
   const columns = useMemo(() => {
     const map = Object.fromEntries(
@@ -364,13 +358,6 @@ export function CustomerOrdersListClient({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setDraftsOpen(true)}
-              className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
-            >
-              Drafts ({drafts.length})
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -601,46 +588,6 @@ export function CustomerOrdersListClient({
         priceList={priceList}
         initialCustomerId={initialCustomerId}
       />
-
-      <Modal
-        open={draftsOpen}
-        onClose={() => setDraftsOpen(false)}
-        title={`Drafts (${drafts.length})`}
-      >
-        <div className="space-y-3">
-          {drafts.length === 0 ? (
-            <p className="text-sm text-muted">No draft orders match filters.</p>
-          ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto">
-              {drafts.map((order) => (
-                <li key={order.id}>
-                  <PendingLink
-                    href={`/orders/customers/${order.id}`}
-                    className="block rounded-lg border border-border px-3 py-2 text-sm hover:bg-sidebar"
-                  >
-                    <div className="font-medium">
-                      {order.customerName ?? "Customer"}
-                    </div>
-                    <div className="text-xs text-muted">
-                      {formatShortDate(order.orderDate)} ·{" "}
-                      {formatINR(order.amount)}
-                    </div>
-                  </PendingLink>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setDraftsOpen(false)}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       <Modal
         open={runOpen}

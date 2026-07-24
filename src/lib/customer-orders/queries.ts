@@ -286,7 +286,7 @@ export async function createCustomerOrder(
       customer_id: input.customerId,
       order_date: input.orderDate ?? new Date().toISOString().slice(0, 10),
       notes: input.notes ?? null,
-      status: "draft",
+      status: "picking",
       is_urgent: Boolean(input.isUrgent),
       area_snapshot: areaSnapshot,
       created_by: input.createdBy ?? null,
@@ -309,12 +309,12 @@ export type UpdateCustomerOrderInput = {
 
 const STATUS_TRANSITIONS: Record<CustomerOrderStatus, CustomerOrderStatus[]> = {
   draft: ["picking", "cancelled"],
-  picking: ["packed", "draft", "cancelled"],
+  picking: ["packed", "cancelled"],
   packed: ["invoiced", "picking", "cancelled"],
   invoiced: ["out_for_delivery"],
   out_for_delivery: ["delivered", "invoiced"],
   delivered: [],
-  cancelled: ["draft"],
+  cancelled: ["picking"],
 };
 
 export function canTransitionStatus(
