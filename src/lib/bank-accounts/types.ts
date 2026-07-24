@@ -3,5 +3,6 @@ export type BankAccount = {
   name: string;
   bankName: string;
   accountNumber: string;
+  ifscCode: string;
   isActive: boolean;
 };

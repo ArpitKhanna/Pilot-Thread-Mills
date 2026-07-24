@@ -27,6 +27,10 @@ export function validateBankAccountPayload(body: Record<string, unknown>) {
   )
     .replace(/\s+/g, "")
     .trim();
+  const ifscCode = String(body.ifscCode ?? body.ifsc_code ?? "")
+    .replace(/\s+/g, "")
+    .trim()
+    .toUpperCase();
   const isActive =
     body.isActive === undefined && body.is_active === undefined
       ? true
@@ -38,12 +42,18 @@ export function validateBankAccountPayload(body: Record<string, unknown>) {
   if (!bankName) {
     return { error: "Bank name is required" };
   }
+  if (ifscCode && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode)) {
+    return {
+      error: "IFSC must be 11 characters (e.g. HDFC0001234)",
+    };
+  }
 
   return {
     data: {
       name,
       bank_name: bankName,
       account_number: accountNumber,
+      ifsc_code: ifscCode,
       is_active: isActive,
     },
   };
