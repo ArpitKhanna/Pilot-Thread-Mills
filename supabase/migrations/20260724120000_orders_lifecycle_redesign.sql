@@ -439,7 +439,7 @@ update public.modules
 set section = 'orders',
     sort_order = 8,
     href = '/dyeing-jobs',
-    label = 'Dyeing Jobs'
+    name = 'Dyeing Jobs'
 where id = 'dyeing-jobs';
 
 update public.modules
