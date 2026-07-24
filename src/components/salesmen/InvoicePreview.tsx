@@ -9,7 +9,6 @@ import {
   getInvoiceEditRemainingMs,
 } from "@/lib/salesmen/mock-data";
 import {
-  ENTITY_TYPE_LABELS,
   type Invoice,
   type InvoiceLineItem,
   type Salesman,
@@ -109,6 +108,7 @@ function renderPageContent(
       ) : (
         <ContinuationHeader
           invoice={invoice}
+          salesman={salesman}
           pageNumber={index + 1}
           totalPages={pages.length}
         />
@@ -407,33 +407,10 @@ function PageHeader({
           <p className="font-logo-serif text-lg tracking-wide">
             Pilot Thread Mills
           </p>
-          <p className="mt-1 text-xs text-muted">Tax Invoice</p>
         </div>
         <div className="text-right text-xs text-muted">
-          <p className="font-medium text-foreground">{invoice.number}</p>
+          <p className="font-medium text-foreground">{salesman.name}</p>
           <p className="mt-1">Issued {formatShortDate(invoice.issuedAt)}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div>
-          <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-            Billed by
-          </p>
-          <p className="mt-1 text-sm font-medium">Pilot Thread Mills</p>
-          <p className="mt-0.5 text-xs text-muted leading-relaxed">
-            Textile wholesale &amp; dyeing
-          </p>
-        </div>
-        <div>
-          <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-            Billed to
-          </p>
-          <p className="mt-1 text-sm font-medium">{salesman.name}</p>
-          <p className="mt-0.5 text-xs text-muted">
-            {ENTITY_TYPE_LABELS[salesman.entityType]}
-          </p>
-          <p className="mt-0.5 text-xs text-muted">+{salesman.phone}</p>
         </div>
       </div>
     </>
@@ -442,18 +419,20 @@ function PageHeader({
 
 function ContinuationHeader({
   invoice,
+  salesman,
   pageNumber,
   totalPages,
 }: {
   invoice: Invoice;
+  salesman: Salesman;
   pageNumber: number;
   totalPages: number;
 }) {
   return (
     <div className="mb-3 flex items-baseline justify-between border-b border-border pb-2">
-      <p className="text-sm font-medium">{invoice.number}</p>
+      <p className="text-sm font-medium">{salesman.name}</p>
       <p className="text-xs text-muted">
-        Continued · {pageNumber}/{totalPages}
+        {invoice.number} · Continued · {pageNumber}/{totalPages}
       </p>
     </div>
   );
