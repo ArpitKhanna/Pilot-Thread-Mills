@@ -291,19 +291,41 @@ export function BankAccountsClient({
                     <h2 className="truncate text-base font-medium">
                       {account.name}
                     </h2>
-                    <p className="mt-0.5 truncate text-sm text-muted">
-                      {account.bankName}
-                    </p>
+                    <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm text-muted">
+                        {account.bankName}
+                      </p>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          account.isActive
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-sidebar text-muted"
+                        }`}
+                      >
+                        {account.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      account.isActive
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-sidebar text-muted"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareWhatsApp(account);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
                   >
-                    {account.isActive ? "Active" : "Inactive"}
-                  </span>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden
+                      className="text-[#25D366]"
+                    >
+                      <path d="M17.472 14.382c-.297-.139-1.633-.797-1.885-.887-.252-.09-.435-.139-.618.14-.183.278-.708.886-.867 1.068-.159.182-.318.205-.591.069-.272-.14-1.15-.424-2.19-1.353-.81-.722-1.357-1.614-1.516-1.886-.159-.272-.017-.419.121-.557.124-.123.278-.318.417-.477.139-.159.185-.272.278-.454.093-.182.047-.34-.023-.478-.07-.139-.618-1.49-.847-2.043-.223-.536-.45-.463-.618-.472-.159-.008-.34-.01-.522-.01-.182 0-.478.069-.728.34-.252.272-.96.938-.96 2.29 0 1.352.984 2.66 1.121 2.845.139.182 2.17 3.312 5.26 4.645.735.318 1.31.508 1.757.65.739.296 1.412.254 1.944.154.593-.112 1.633-.667 1.864-1.312.23-.645.23-1.197.161-1.312-.069-.114-.252-.182-.53-.32zM12.05 21.75h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982 1.004-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884zm8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
+                    </svg>
+                    WhatsApp
+                  </button>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3">
                   <div>
@@ -323,54 +345,32 @@ export function BankAccountsClient({
                     </p>
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleShareWhatsApp(account);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-hidden
-                      className="text-[#25D366]"
+                {editMode && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busyId === account.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(account);
+                      }}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                     >
-                      <path d="M17.472 14.382c-.297-.139-1.633-.797-1.885-.887-.252-.09-.435-.139-.618.14-.183.278-.708.886-.867 1.068-.159.182-.318.205-.591.069-.272-.14-1.15-.424-2.19-1.353-.81-.722-1.357-1.614-1.516-1.886-.159-.272-.017-.419.121-.557.124-.123.278-.318.417-.477.139-.159.185-.272.278-.454.093-.182.047-.34-.023-.478-.07-.139-.618-1.49-.847-2.043-.223-.536-.45-.463-.618-.472-.159-.008-.34-.01-.522-.01-.182 0-.478.069-.728.34-.252.272-.96.938-.96 2.29 0 1.352.984 2.66 1.121 2.845.139.182 2.17 3.312 5.26 4.645.735.318 1.31.508 1.757.65.739.296 1.412.254 1.944.154.593-.112 1.633-.667 1.864-1.312.23-.645.23-1.197.161-1.312-.069-.114-.252-.182-.53-.32zM12.05 21.75h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982 1.004-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884zm8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
-                    </svg>
-                    WhatsApp
-                  </button>
-                  {editMode && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busyId === account.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditModal(account);
-                        }}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === account.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDelete(account.id);
-                        }}
-                        className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
-                      >
-                        {busyId === account.id ? "Deleting…" : "Delete"}
-                      </button>
-                    </>
-                  )}
-                </div>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === account.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(account.id);
+                      }}
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    >
+                      {busyId === account.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>
