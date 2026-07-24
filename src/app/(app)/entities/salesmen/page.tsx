@@ -4,6 +4,8 @@ import { getAppContext } from "@/app/(app)/layout";
 import { listSalesmen } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export default async function SalesmenPage() {
   const context = await getAppContext();
   if (!context) redirect("/login");

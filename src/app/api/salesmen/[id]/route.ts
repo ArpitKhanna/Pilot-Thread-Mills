@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
-import { getSalesman } from "@/lib/salesmen/queries";
+import { getSalesman, refreshSalesmanTotals } from "@/lib/salesmen/queries";
 import type { SalesmanDiscountRule, SalesmanEntityType } from "@/lib/salesmen/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -128,7 +128,19 @@ export async function PATCH(request: Request, context: RouteContext) {
         { status: 400 },
       );
     }
-    updates.pending_balance = Math.round(pendingBalance * 100) / 100;
+    // "Last balance" edits the opening carry-forward; pending is recomputed below.
+    updates.opening_balance = Math.round(pendingBalance * 100) / 100;
+  }
+
+  if (body.openingBalance !== undefined) {
+    const openingBalance = Number(body.openingBalance);
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      return NextResponse.json(
+        { error: "Last balance must be a valid non-negative amount" },
+        { status: 400 },
+      );
+    }
+    updates.opening_balance = Math.round(openingBalance * 100) / 100;
   }
 
   if (body.marketDay !== undefined) {
@@ -171,6 +183,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       { error: updateError.message || "Failed to save details" },
       { status: 500 },
     );
+  }
+
+  try {
+    await refreshSalesmanTotals(supabase, id);
+  } catch (e) {
+    console.error(e);
   }
 
   const salesman = await getSalesman(supabase, id);

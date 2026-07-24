@@ -120,6 +120,7 @@ export async function createSalesman(
       entity_type: "salesman",
       category: "Salesmen",
       is_active: true,
+      opening_balance: input.pendingBalance ?? 0,
       pending_balance: input.pendingBalance ?? 0,
       last_invoice_at: null,
       discount_rules: [],
@@ -161,6 +162,7 @@ export async function createCustomer(
       entity_type: "customer",
       category: "Customer",
       is_active: true,
+      opening_balance: input.pendingBalance ?? 0,
       pending_balance: input.pendingBalance ?? 0,
       last_invoice_at: null,
       discount_rules: [],
@@ -252,25 +254,35 @@ export async function getInvoiceById(
   return invoice ?? null;
 }
 
-/** Recompute salesman pending balance + last invoice timestamp from all invoices */
+/** Recompute salesman pending balance + last invoice timestamp from opening + invoices */
 export async function refreshSalesmanTotals(
   supabase: SupabaseClient,
   salesmanId: string,
 ): Promise<void> {
-  const { data, error } = await supabase
-    .from("salesmen_invoices")
-    .select("total_amount, amount_paid, issued_at")
-    .eq("salesman_id", salesmanId);
+  const [{ data: salesman, error: salesmanError }, { data, error }] =
+    await Promise.all([
+      supabase
+        .from("salesmen")
+        .select("opening_balance")
+        .eq("id", salesmanId)
+        .maybeSingle(),
+      supabase
+        .from("salesmen_invoices")
+        .select("total_amount, amount_paid, issued_at")
+        .eq("salesman_id", salesmanId),
+    ]);
+  if (salesmanError) throw salesmanError;
   if (error) throw error;
 
+  const opening = Number(salesman?.opening_balance ?? 0);
   const rows = data ?? [];
-  let pending = 0;
+  let invoiceNet = 0;
   let lastInvoiceAt: string | null = null;
 
   for (const row of rows) {
     const total = Number(row.total_amount);
     const paid = Number(row.amount_paid);
-    pending += Math.max(0, total - paid);
+    invoiceNet += total - paid;
     if (
       !lastInvoiceAt ||
       new Date(row.issued_at).getTime() > new Date(lastInvoiceAt).getTime()
@@ -279,10 +291,12 @@ export async function refreshSalesmanTotals(
     }
   }
 
+  const pending = Math.max(0, Math.round((opening + invoiceNet) * 100) / 100);
+
   const { error: updateError } = await supabase
     .from("salesmen")
     .update({
-      pending_balance: Math.round(pending * 100) / 100,
+      pending_balance: pending,
       last_invoice_at: lastInvoiceAt,
     })
     .eq("id", salesmanId);

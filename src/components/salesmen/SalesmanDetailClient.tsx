@@ -40,6 +40,7 @@ type SalesmanDetailClientProps = {
   initialItemRequests: ItemRequest[];
   priceList: PriceListItem[];
   bankAccounts: BankAccount[];
+  initialTab?: DetailTab;
 };
 
 const MONTH_OPTIONS = [
@@ -64,6 +65,7 @@ export function SalesmanDetailClient({
   initialItemRequests,
   priceList,
   bankAccounts,
+  initialTab = "overview",
 }: SalesmanDetailClientProps) {
   const router = useRouter();
   const [editPending, startEditTransition] = useTransition();
@@ -86,7 +88,7 @@ export function SalesmanDetailClient({
     [itemRequests],
   );
 
-  const [tab, setTab] = useState<DetailTab>("overview");
+  const [tab, setTab] = useState<DetailTab>(initialTab);
   const [filterMonth, setFilterMonth] = useState<string>("all");
   const [filterYear, setFilterYear] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
@@ -100,6 +102,10 @@ export function SalesmanDetailClient({
     setInvoices(initialInvoices);
     setItemRequests(initialItemRequests);
   }, [initialSalesman, initialInvoices, initialItemRequests]);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   const availableYears = useMemo(() => {
     const years = new Set(

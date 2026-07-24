@@ -10,11 +10,37 @@ import {
 } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
+type DetailTab =
+  | "overview"
+  | "invoices"
+  | "payments"
+  | "requests"
+  | "details";
+
 type PageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 };
 
-export default async function SalesmanDetailPage({ params }: PageProps) {
+function parseTab(raw: string | undefined): DetailTab {
+  if (
+    raw === "overview" ||
+    raw === "invoices" ||
+    raw === "payments" ||
+    raw === "requests" ||
+    raw === "details"
+  ) {
+    return raw;
+  }
+  return "overview";
+}
+
+export default async function SalesmanDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const context = await getAppContext();
   if (!context) redirect("/login");
 
@@ -22,6 +48,7 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
   if (!hasAccess) redirect("/dashboard");
 
   const { id } = await params;
+  const { tab } = await searchParams;
   const supabase = await createClient();
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
@@ -46,6 +73,7 @@ export default async function SalesmanDetailPage({ params }: PageProps) {
       initialItemRequests={itemRequests}
       priceList={(items ?? []) as PriceListItem[]}
       bankAccounts={bankAccounts}
+      initialTab={parseTab(tab)}
     />
   );
 }

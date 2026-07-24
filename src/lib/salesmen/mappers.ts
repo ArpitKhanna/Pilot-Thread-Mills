@@ -27,6 +27,7 @@ export type DbSalesmanRow = {
   category: string;
   is_active: boolean;
   pending_balance: number | string;
+  opening_balance?: number | string | null;
   last_invoice_at: string | null;
   discount_rules: unknown;
   market_day: string | null;
@@ -214,6 +215,7 @@ export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
     alternatePhone: row.alternate_phone ?? "",
     entityType: parseEntityType(row.entity_type),
     isActive: row.is_active,
+    openingBalance: num(row.opening_balance ?? 0),
     pendingBalance: num(row.pending_balance),
     lastInvoiceAt: row.last_invoice_at,
     discountRules: parseDiscountRules(row.discount_rules),

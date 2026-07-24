@@ -276,6 +276,7 @@ export function SalesmenInvoiceCreateClient({
     alternatePhone: "",
     entityType: "salesman",
     isActive: true,
+    openingBalance: 0,
     pendingBalance: 0,
     lastInvoiceAt: null,
     discountRules: [],
@@ -418,9 +419,10 @@ export function SalesmenInvoiceCreateClient({
       }
 
       setConfirmOpen(false);
-      router.push(`/entities/salesmen/${salesman.id}?tab=invoices`);
-      router.refresh();
-      // Keep saving until navigation completes.
+      // Hard navigation so detail header balance / invoices reload from server.
+      window.location.assign(
+        `/entities/salesmen/${salesman.id}?tab=invoices`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save invoice.");
       setSaving(false);

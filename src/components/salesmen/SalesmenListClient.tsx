@@ -78,7 +78,7 @@ export function SalesmenListClient({
       phone: salesman.phone,
       alternatePhone: salesman.alternatePhone,
       lastBalance:
-        salesman.pendingBalance > 0 ? String(salesman.pendingBalance) : "",
+        salesman.openingBalance > 0 ? String(salesman.openingBalance) : "",
     });
     setError("");
     setModalOpen(true);

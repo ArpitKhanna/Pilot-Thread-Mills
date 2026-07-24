@@ -111,6 +111,9 @@ export type Salesman = {
   alternatePhone: string;
   entityType: SalesmanEntityType;
   isActive: boolean;
+  /** Carry-forward balance before invoices (Last Balance on create) */
+  openingBalance: number;
+  /** Current outstanding: opening + invoice totals − payments */
   pendingBalance: number;
   lastInvoiceAt: string | null;
   /** Purchase discount rules used when creating invoices */
