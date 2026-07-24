@@ -23,7 +23,6 @@ import type {
   InvoicePaymentEntry,
   Salesman,
 } from "@/lib/salesmen/types";
-import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
 type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
@@ -105,6 +104,16 @@ export function SalesmenInvoiceCreateClient({
     () => initialInvoice?.paymentEntries ?? [],
   );
   const [error, setError] = useState<string | null>(null);
+  const [paymentFieldErrors, setPaymentFieldErrors] = useState<
+    Record<
+      string,
+      {
+        amount?: string;
+        chequeNumber?: string;
+        depositAccountId?: string;
+      }
+    >
+  >({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hydratedDiscount, setHydratedDiscount] = useState(!isEdit);
@@ -343,34 +352,32 @@ export function SalesmenInvoiceCreateClient({
   }
 
   function validatePayments(): boolean {
+    const next: typeof paymentFieldErrors = {};
     for (const payment of payments) {
+      const field: (typeof next)[string] = {};
       if (!(payment.amount > 0)) {
-        setError("Each payment needs an amount greater than zero.");
-        return false;
+        field.amount = "Enter an amount greater than zero.";
       }
       if (payment.method === "cheque") {
         if (!payment.chequeNumber?.trim()) {
-          setError("Cheque payments need a cheque number.");
-          return false;
+          field.chequeNumber = "Cheque number is required.";
         }
         if (!payment.depositAccountId) {
-          setError("Cheque payments need a deposit account.");
-          return false;
+          field.depositAccountId = "Select a deposit account.";
         }
       }
       if (payment.method === "upi" || payment.method === "imps") {
-        if (!payment.senderName?.trim()) {
-          setError("UPI / IMPS payments need a sender name.");
-          return false;
-        }
         if (!payment.depositAccountId) {
-          setError("UPI / IMPS payments need a deposit account.");
-          return false;
+          field.depositAccountId = "Select a deposit account.";
         }
       }
+      if (Object.keys(field).length > 0) {
+        next[payment.id] = field;
+      }
     }
+    setPaymentFieldErrors(next);
     setError(null);
-    return true;
+    return Object.keys(next).length === 0;
   }
 
   function handleGenerateClick() {
@@ -545,22 +552,10 @@ export function SalesmenInvoiceCreateClient({
                       </div>
                     </div>
 
-                    {salesman && (
-                      <p className="text-xs text-muted">
-                        {salesman.phone ? `+${salesman.phone}` : null}
-                        {salesman.phone ? " · " : null}
-                        {ENTITY_TYPE_LABELS[salesman.entityType]}
-                      </p>
-                    )}
                   </section>
 
                   <section className="space-y-3">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <h2 className="text-base font-medium">Items</h2>
-                      <p className="text-xs text-muted">
-                        Tab through item → qty · Enter for next row
-                      </p>
-                    </div>
+                    <h2 className="text-base font-medium">Items</h2>
                     <InvoiceLineEntry
                       priceList={priceList}
                       lines={lines}
@@ -647,22 +642,22 @@ export function SalesmenInvoiceCreateClient({
                       <span className="mb-1.5 block text-xs font-medium text-muted">
                         Rule discount
                       </span>
-                      <p className="py-2.5 text-sm tabular-nums text-foreground">
-                        {salesman
-                          ? formatINR(ruleDiscount)
-                          : "—"}
-                      </p>
-                      {salesman && salesman.discountRules.length > 0 ? (
-                        <ul className="mt-1 space-y-0.5 text-xs text-muted">
-                          {salesman.discountRules.map((rule) => (
-                            <li key={rule.id}>{rule.description}</li>
-                          ))}
-                        </ul>
-                      ) : salesman ? (
-                        <p className="text-xs text-muted">
-                          No discount rules on this salesman
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5">
+                        <p className="text-sm tabular-nums text-foreground">
+                          {salesman ? formatINR(ruleDiscount) : "—"}
                         </p>
-                      ) : null}
+                        {salesman && salesman.discountRules.length > 0 ? (
+                          <p className="text-xs text-muted">
+                            {salesman.discountRules
+                              .map((rule) => rule.description)
+                              .join(" · ")}
+                          </p>
+                        ) : salesman ? (
+                          <p className="text-xs text-muted">
+                            No discount rules on this salesman
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
                     <label className="block">
@@ -710,33 +705,29 @@ export function SalesmenInvoiceCreateClient({
 
               {step === 2 && (
                 <>
-                  <section className="space-y-1">
+                  <section>
                     <h2 className="text-base font-medium">Payments</h2>
-                    <p className="text-sm text-muted">
-                      {salesman?.name ?? "Salesman"} · Invoice total{" "}
-                      {formatINR(invoiceTotal)}
-                    </p>
                   </section>
 
                   <InvoicePaymentsStep
                     payments={payments}
-                    onChange={setPayments}
+                    onChange={(next) => {
+                      setPayments(next);
+                      setPaymentFieldErrors({});
+                    }}
                     invoiceTotal={invoiceTotal}
+                    previousBalance={salesman ? previousBalance : 0}
                     bankAccounts={bankAccounts}
                     disabled={!salesman}
+                    fieldErrors={paymentFieldErrors}
                   />
-
-                  {error && (
-                    <p className="text-sm text-[#c45c26]" role="alert">
-                      {error}
-                    </p>
-                  )}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
                     <button
                       type="button"
                       onClick={() => {
                         setError(null);
+                        setPaymentFieldErrors({});
                         setStep(1);
                       }}
                       className="rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-sidebar"

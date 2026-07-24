@@ -9,8 +9,17 @@ type InvoicePaymentsStepProps = {
   payments: InvoicePaymentEntry[];
   onChange: (payments: InvoicePaymentEntry[]) => void;
   invoiceTotal: number;
+  previousBalance?: number;
   bankAccounts: BankAccount[];
   disabled?: boolean;
+  fieldErrors?: Record<
+    string,
+    {
+      amount?: string;
+      chequeNumber?: string;
+      depositAccountId?: string;
+    }
+  >;
 };
 
 const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
@@ -38,13 +47,18 @@ export function InvoicePaymentsStep({
   payments,
   onChange,
   invoiceTotal,
+  previousBalance = 0,
   bankAccounts,
   disabled = false,
+  fieldErrors = {},
 }: InvoicePaymentsStepProps) {
   const accounts = bankAccounts.filter((a) => a.isActive);
   const defaultAccountId = accounts[0]?.id;
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const balanceDue = Math.max(0, invoiceTotal - totalPaid);
+  const closingBalance = Math.max(
+    0,
+    Math.round((previousBalance + invoiceTotal - totalPaid) * 100) / 100,
+  );
 
   function addPayment(method: InvoicePaymentMethod) {
     onChange([...payments, emptyPayment(method, defaultAccountId)]);
@@ -66,9 +80,9 @@ export function InvoicePaymentsStep({
         <SummaryTile label="Invoice total" value={formatINR(invoiceTotal)} />
         <SummaryTile label="Total paid" value={formatINR(totalPaid)} />
         <SummaryTile
-          label="Balance due"
-          value={formatINR(balanceDue)}
-          emphasize={balanceDue > 0}
+          label="Closing"
+          value={formatINR(closingBalance)}
+          emphasize={closingBalance > 0}
         />
       </div>
 
@@ -107,7 +121,7 @@ export function InvoicePaymentsStep({
                   type="button"
                   disabled={disabled}
                   onClick={() => removePayment(payment.id)}
-                  className="text-xs text-muted hover:text-foreground disabled:opacity-40"
+                  className="text-xs text-red-600 hover:text-red-700 disabled:opacity-40"
                 >
                   Remove
                 </button>
@@ -117,7 +131,13 @@ export function InvoicePaymentsStep({
                 <span className="mb-1.5 block text-xs font-medium text-muted">
                   Amount
                 </span>
-                <div className="flex overflow-hidden rounded-lg border border-border focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                <div
+                  className={`flex overflow-hidden rounded-lg border focus-within:ring-1 ${
+                    fieldErrors[payment.id]?.amount
+                      ? "border-red-500 focus-within:border-red-500 focus-within:ring-red-500/20"
+                      : "border-border focus-within:border-foreground/40 focus-within:ring-foreground/20"
+                  }`}
+                >
                   <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
                     ₹
                   </span>
@@ -138,6 +158,11 @@ export function InvoicePaymentsStep({
                     }}
                   />
                 </div>
+                {fieldErrors[payment.id]?.amount && (
+                  <p className="mt-1 text-xs text-red-600" role="alert">
+                    {fieldErrors[payment.id]?.amount}
+                  </p>
+                )}
               </label>
 
               {payment.method === "cheque" && (
@@ -151,19 +176,29 @@ export function InvoicePaymentsStep({
                       disabled={disabled}
                       value={payment.chequeNumber ?? ""}
                       placeholder="Cheque no."
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+                      className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+                        fieldErrors[payment.id]?.chequeNumber
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border focus:border-foreground/40"
+                      }`}
                       onChange={(e) =>
                         updatePayment(payment.id, {
                           chequeNumber: e.target.value,
                         })
                       }
                     />
+                    {fieldErrors[payment.id]?.chequeNumber && (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {fieldErrors[payment.id]?.chequeNumber}
+                      </p>
+                    )}
                   </label>
                   <AccountSelect
                     value={payment.depositAccountId ?? ""}
                     disabled={disabled}
                     accounts={accounts}
                     label="Deposit into account"
+                    error={fieldErrors[payment.id]?.depositAccountId}
                     onChange={(depositAccountId) =>
                       updatePayment(payment.id, { depositAccountId })
                     }
@@ -175,7 +210,8 @@ export function InvoicePaymentsStep({
                 <>
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Sender name
+                      Sender name{" "}
+                      <span className="font-normal">(optional)</span>
                     </span>
                     <input
                       type="text"
@@ -195,6 +231,7 @@ export function InvoicePaymentsStep({
                     disabled={disabled}
                     accounts={accounts}
                     label="Deposited to account"
+                    error={fieldErrors[payment.id]?.depositAccountId}
                     onChange={(depositAccountId) =>
                       updatePayment(payment.id, { depositAccountId })
                     }
@@ -205,10 +242,6 @@ export function InvoicePaymentsStep({
           ))}
         </ul>
       )}
-
-      <p className="text-xs text-muted">
-        On the printed invoice, payments appear as one combined “Paid” amount.
-      </p>
     </div>
   );
 }
@@ -242,12 +275,14 @@ function AccountSelect({
   accounts,
   label,
   disabled,
+  error,
 }: {
   value: string;
   onChange: (id: string) => void;
   accounts: BankAccount[];
   label: string;
   disabled?: boolean;
+  error?: string;
 }) {
   return (
     <label className="block">
@@ -258,7 +293,11 @@ function AccountSelect({
         value={value}
         disabled={disabled || accounts.length === 0}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+        className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+          error
+            ? "border-red-500 focus:border-red-500"
+            : "border-border focus:border-foreground/40"
+        }`}
       >
         {accounts.length === 0 ? (
           <option value="">No bank accounts</option>
@@ -270,6 +309,11 @@ function AccountSelect({
           ))
         )}
       </select>
+      {error && (
+        <p className="mt-1 text-xs text-red-600" role="alert">
+          {error}
+        </p>
+      )}
     </label>
   );
 }
