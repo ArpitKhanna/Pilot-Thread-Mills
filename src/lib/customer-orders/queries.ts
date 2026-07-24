@@ -390,6 +390,23 @@ export async function updateCustomerOrder(
   return refreshed;
 }
 
+export async function deleteCustomerOrder(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const existing = await getCustomerOrder(supabase, id);
+  if (!existing) throw new Error("Order not found");
+  if (existing.status !== "picking" && existing.status !== "draft") {
+    throw new Error("Only picking orders can be deleted");
+  }
+  if (existing.invoiceId) {
+    throw new Error("Cannot delete an invoiced order");
+  }
+
+  const { error } = await supabase.from("customer_orders").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export type OrderLineInput = {
   priceListItemId?: string | null;
   shadeId?: string | null;

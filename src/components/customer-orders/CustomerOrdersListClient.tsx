@@ -84,12 +84,14 @@ function emptyMissingLine(): MissingDraft {
   };
 }
 
-function sortOrders(a: CustomerOrder, b: CustomerOrder): number {
+type SortBy = "order_time_desc" | "order_time_asc";
+
+function sortOrders(a: CustomerOrder, b: CustomerOrder, sortBy: SortBy): number {
   if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
-  const areaA = (a.areaSnapshot || a.customerArea || "").toLowerCase();
-  const areaB = (b.areaSnapshot || b.customerArea || "").toLowerCase();
-  if (areaA !== areaB) return areaA.localeCompare(areaB);
-  return b.orderDate.localeCompare(a.orderDate);
+  const timeA = a.createdAt || a.orderDate;
+  const timeB = b.createdAt || b.orderDate;
+  const cmp = timeA.localeCompare(timeB);
+  return sortBy === "order_time_asc" ? cmp : -cmp;
 }
 
 export function CustomerOrdersListClient({
@@ -100,9 +102,10 @@ export function CustomerOrdersListClient({
   deliveryStaff,
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
-  const [orders] = useState(initialOrders);
+  const [orders, setOrders] = useState(initialOrders);
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<SortBy>("order_time_desc");
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [initialCustomerId, setInitialCustomerId] = useState<
@@ -114,6 +117,7 @@ export function CustomerOrdersListClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
@@ -170,10 +174,10 @@ export function CustomerOrdersListClient({
       }
     }
     for (const status of KANBAN_COLUMNS) {
-      map[status].sort(sortOrders);
+      map[status].sort((a, b) => sortOrders(a, b, sortBy));
     }
     return map;
-  }, [filtered]);
+  }, [filtered, sortBy]);
 
   const selectedOrders = useMemo(
     () =>
@@ -242,6 +246,61 @@ export function CustomerOrdersListClient({
       router.refresh();
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : "Bulk update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function deleteOrder(id: string) {
+    if (!window.confirm("Delete this order? This cannot be undone.")) return;
+    setDeletingId(id);
+    setBulkError("");
+    try {
+      const res = await fetch(`/api/customer-orders/${id}`, {
+        method: "DELETE",
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to delete order");
+      setOrders((prev) => prev.filter((o) => o.id !== id));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        if (next.size === 0) setSelectColumn(null);
+        return next;
+      });
+      router.refresh();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Failed to delete order");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function submitBulkDelete() {
+    if (selectColumn !== "picking" || selectedOrders.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${selectedOrders.length} picking order${selectedOrders.length === 1 ? "" : "s"}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      const ids = selectedOrders.map((o) => o.id);
+      for (const id of ids) {
+        const res = await fetch(`/api/customer-orders/${id}`, {
+          method: "DELETE",
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Failed to delete order");
+      }
+      setOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
+      clearSelection();
+      router.refresh();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Failed to delete orders");
     } finally {
       setBulkBusy(false);
     }
@@ -366,7 +425,7 @@ export function CustomerOrdersListClient({
               }}
               className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
             >
-              EOD missing
+              Report Missing Items
             </button>
             <button
               type="button"
@@ -443,6 +502,20 @@ export function CustomerOrdersListClient({
             </select>
           </label>
 
+          <label className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:w-auto">
+            <span className="shrink-0 text-xs font-medium text-muted">
+              Sort by
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortBy)}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none sm:w-44"
+            >
+              <option value="order_time_desc">Order time (newest)</option>
+              <option value="order_time_asc">Order time (oldest)</option>
+            </select>
+          </label>
+
           <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 sm:ml-auto sm:max-w-xs sm:py-2">
             <input
               type="search"
@@ -454,57 +527,15 @@ export function CustomerOrdersListClient({
           </div>
         </div>
 
-        {selectedOrders.length > 0 && selectColumn && bulkLabel ? (
-          <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
-            <span className="text-sm text-muted">
-              {selectedOrders.length} selected in{" "}
-              {CUSTOMER_ORDER_STATUS_LABELS[selectColumn]}
-            </span>
-            {bulkError ? (
-              <span className="text-sm text-red-700">{bulkError}</span>
-            ) : null}
-            <div className="ml-auto flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={clearSelection}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium"
-              >
-                Clear
-              </button>
-              {selectColumn === "packed" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRunError("");
-                    setRunOpen(true);
-                  }}
-                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface"
-                >
-                  {bulkLabel}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={bulkBusy}
-                  onClick={() => void submitBulkStatus()}
-                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-50"
-                >
-                  {bulkBusy ? "Updating…" : bulkLabel}
-                </button>
-              )}
-            </div>
-          </div>
-        ) : null}
-
         <div className="min-h-0 flex-1 overflow-x-auto pb-2">
-          <div className="flex max-h-[calc(100dvh-16rem)] min-w-max gap-3">
+          <div className="flex h-full min-w-max gap-3">
             {KANBAN_COLUMNS.map((status) => {
               const columnOrders = columns[status];
               const selectable = status !== "delivered";
               return (
                 <section
                   key={status}
-                  className="flex max-h-[calc(100dvh-16rem)] w-[280px] shrink-0 flex-col rounded-xl border border-border bg-sidebar/40"
+                  className="flex h-full max-h-full w-[280px] shrink-0 flex-col rounded-xl border border-border bg-sidebar/40"
                 >
                   <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
                     <h2 className="text-sm font-medium">
@@ -544,12 +575,28 @@ export function CustomerOrdersListClient({
                                 />
                               ) : null}
                               <div className="min-w-0 flex-1">
-                                <PendingLink
-                                  href={`/orders/customers/${order.id}`}
-                                  className="block font-medium hover:underline"
-                                >
-                                  {order.customerName ?? "Customer"}
-                                </PendingLink>
+                                <div className="flex items-start justify-between gap-2">
+                                  <PendingLink
+                                    href={`/orders/customers/${order.id}`}
+                                    className="block font-medium hover:underline"
+                                  >
+                                    {order.customerName ?? "Customer"}
+                                  </PendingLink>
+                                  {status === "picking" ? (
+                                    <button
+                                      type="button"
+                                      disabled={deletingId === order.id}
+                                      onClick={() =>
+                                        void deleteOrder(order.id)
+                                      }
+                                      className="shrink-0 text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+                                    >
+                                      {deletingId === order.id
+                                        ? "…"
+                                        : "Delete"}
+                                    </button>
+                                  ) : null}
+                                </div>
                                 {order.isUrgent ? (
                                   <span className="mt-1 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
                                     Urgent
@@ -574,6 +621,75 @@ export function CustomerOrdersListClient({
                 </section>
               );
             })}
+          </div>
+        </div>
+
+        <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+          <span className="text-sm text-muted">
+            {selectedOrders.length > 0 && selectColumn
+              ? `${selectedOrders.length} selected in ${CUSTOMER_ORDER_STATUS_LABELS[selectColumn]}`
+              : "Select orders in a column to act on them"}
+          </span>
+          {bulkError ? (
+            <span className="text-sm text-red-700">{bulkError}</span>
+          ) : null}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={selectedOrders.length === 0}
+              onClick={clearSelection}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+            >
+              Clear
+            </button>
+            {selectColumn === "packed" ? (
+              <button
+                type="button"
+                disabled={selectedOrders.length === 0}
+                onClick={() => {
+                  setRunError("");
+                  setRunOpen(true);
+                }}
+                className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
+              >
+                {bulkLabel ?? "Generate invoices"}
+              </button>
+            ) : selectColumn === "picking" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={bulkBusy || selectedOrders.length === 0}
+                  onClick={() => void submitBulkDelete()}
+                  className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-40"
+                >
+                  {bulkBusy ? "Deleting…" : "Delete"}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || selectedOrders.length === 0}
+                  onClick={() => void submitBulkStatus()}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
+                >
+                  {bulkBusy ? "Updating…" : "Mark packed"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={
+                  bulkBusy ||
+                  selectedOrders.length === 0 ||
+                  !bulkLabel ||
+                  selectColumn === "delivered"
+                }
+                onClick={() => void submitBulkStatus()}
+                className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
+              >
+                {bulkBusy
+                  ? "Updating…"
+                  : (bulkLabel ?? "Mark packed")}
+              </button>
+            )}
           </div>
         </div>
       </main>
@@ -651,7 +767,7 @@ export function CustomerOrdersListClient({
       <Modal
         open={missingOpen}
         onClose={() => setMissingOpen(false)}
-        title="End-of-day missing items"
+        title="Report Missing Items"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">

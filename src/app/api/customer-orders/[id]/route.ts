@@ -4,6 +4,7 @@ import {
   requireOrderCustomersAccess,
 } from "@/lib/customer-orders/access";
 import {
+  deleteCustomerOrder,
   getCustomerOrder,
   updateCustomerOrder,
   type UpdateCustomerOrderInput,
@@ -95,6 +96,24 @@ export async function PATCH(request: Request, context: RouteContext) {
     console.error(e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to update order" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await requireOrderCustomersAccess();
+  if (isAuthError(auth)) return auth.error;
+  const { supabase } = auth;
+  const { id } = await context.params;
+
+  try {
+    await deleteCustomerOrder(supabase, id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to delete order" },
       { status: 400 },
     );
   }
