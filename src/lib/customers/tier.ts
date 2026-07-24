@@ -159,7 +159,7 @@ export function computeCustomerTierInsight(
         speedDays.push(daysBetween(orderDate, now));
       }
     } else if (
-      order.status === "ready" ||
+      order.status === "picking" ||
       order.status === "packed" ||
       order.status === "draft"
     ) {

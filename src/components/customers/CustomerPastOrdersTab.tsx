@@ -23,12 +23,16 @@ function statusTone(status: CustomerOrderStatus): string {
   switch (status) {
     case "draft":
       return "bg-sidebar text-muted";
-    case "ready":
+    case "picking":
       return "bg-amber-50 text-amber-900";
     case "packed":
       return "bg-sky-50 text-sky-900";
     case "invoiced":
       return "bg-emerald-50 text-emerald-900";
+    case "out_for_delivery":
+      return "bg-indigo-50 text-indigo-900";
+    case "delivered":
+      return "bg-teal-50 text-teal-900";
     case "cancelled":
       return "bg-red-50 text-red-800";
     default:

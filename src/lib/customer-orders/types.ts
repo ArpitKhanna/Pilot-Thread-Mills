@@ -1,8 +1,10 @@
 export type CustomerOrderStatus =
   | "draft"
-  | "ready"
+  | "picking"
   | "packed"
   | "invoiced"
+  | "out_for_delivery"
+  | "delivered"
   | "cancelled";
 
 export type CustomerOrderAttachmentKind = "order_slip" | "cloth_patch";
@@ -178,11 +180,21 @@ export type CustomerClothPatch = {
 export const CUSTOMER_ORDER_STATUS_LABELS: Record<CustomerOrderStatus, string> =
   {
     draft: "Drafts",
-    ready: "Ready",
+    picking: "Picking",
     packed: "Packed",
     invoiced: "Invoiced",
+    out_for_delivery: "Out for Delivery",
+    delivered: "Delivered",
     cancelled: "Cancelled",
   };
+
+export const KANBAN_COLUMNS: CustomerOrderStatus[] = [
+  "picking",
+  "packed",
+  "invoiced",
+  "out_for_delivery",
+  "delivered",
+];
 
 export const ORDER_LINE_UNIT_LABELS: Record<CustomerOrderLineUnit, string> = {
   box: "Box",

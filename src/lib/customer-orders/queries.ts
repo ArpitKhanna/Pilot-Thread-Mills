@@ -308,10 +308,12 @@ export type UpdateCustomerOrderInput = {
 };
 
 const STATUS_TRANSITIONS: Record<CustomerOrderStatus, CustomerOrderStatus[]> = {
-  draft: ["ready", "cancelled"],
-  ready: ["packed", "draft", "cancelled"],
-  packed: ["invoiced", "ready", "cancelled"],
-  invoiced: [],
+  draft: ["picking", "cancelled"],
+  picking: ["packed", "draft", "cancelled"],
+  packed: ["invoiced", "picking", "cancelled"],
+  invoiced: ["out_for_delivery"],
+  out_for_delivery: ["delivered", "invoiced"],
+  delivered: [],
   cancelled: ["draft"],
 };
 
@@ -340,7 +342,7 @@ export async function updateCustomerOrder(
   const updates: Record<string, unknown> = {};
   if (input.status !== undefined) {
     updates.status = input.status;
-    if (input.status === "ready" && !existing.areaSnapshot) {
+    if (input.status === "picking" && !existing.areaSnapshot) {
       updates.area_snapshot = await resolveCustomerArea(
         supabase,
         existing.customerId,

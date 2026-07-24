@@ -44,9 +44,11 @@ const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
 };
 
 const CONFIRMED_STATUSES = new Set([
-  "ready",
+  "picking",
   "packed",
   "invoiced",
+  "out_for_delivery",
+  "delivered",
 ]);
 
 function orderTimestamp(order: CustomerOrder): number {

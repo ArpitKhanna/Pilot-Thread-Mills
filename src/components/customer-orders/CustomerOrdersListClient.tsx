@@ -11,6 +11,7 @@ import { PendingLink } from "@/components/ui/PendingLink";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
+  KANBAN_COLUMNS,
   ORDER_LINE_UNIT_LABELS,
   type CustomerOrder,
   type CustomerOrderLineUnit,
@@ -32,15 +33,6 @@ type CustomerOrdersListClientProps = {
   deliveryStaff: DeliveryStaff[];
 };
 
-const STATUS_FILTERS: Array<CustomerOrderStatus | "all"> = [
-  "all",
-  "draft",
-  "ready",
-  "packed",
-  "invoiced",
-  "cancelled",
-];
-
 const WEEKDAY_TO_MARKET: Record<number, MarketDay> = {
   0: "sunday",
   1: "monday",
@@ -51,6 +43,19 @@ const WEEKDAY_TO_MARKET: Record<number, MarketDay> = {
   6: "saturday",
 };
 
+const BULK_TARGET: Partial<Record<CustomerOrderStatus, CustomerOrderStatus>> = {
+  picking: "packed",
+  invoiced: "out_for_delivery",
+  out_for_delivery: "delivered",
+};
+
+const BULK_LABEL: Partial<Record<CustomerOrderStatus, string>> = {
+  picking: "Mark packed",
+  packed: "Generate invoices",
+  invoiced: "Mark out for delivery",
+  out_for_delivery: "Mark delivered",
+};
+
 type MissingDraft = {
   key: string;
   priceListItemId: string | null;
@@ -59,23 +64,6 @@ type MissingDraft = {
   qty: string;
   unit: CustomerOrderLineUnit;
 };
-
-function statusTone(status: CustomerOrderStatus): string {
-  switch (status) {
-    case "draft":
-      return "bg-sidebar text-muted";
-    case "ready":
-      return "bg-amber-50 text-amber-900";
-    case "packed":
-      return "bg-sky-50 text-sky-900";
-    case "invoiced":
-      return "bg-emerald-50 text-emerald-900";
-    case "cancelled":
-      return "bg-red-50 text-red-800";
-    default:
-      return "bg-sidebar text-muted";
-  }
-}
 
 function todayLocalDate(): string {
   const d = new Date();
@@ -96,6 +84,14 @@ function emptyMissingLine(): MissingDraft {
   };
 }
 
+function sortOrders(a: CustomerOrder, b: CustomerOrder): number {
+  if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+  const areaA = (a.areaSnapshot || a.customerArea || "").toLowerCase();
+  const areaB = (b.areaSnapshot || b.customerArea || "").toLowerCase();
+  if (areaA !== areaB) return areaA.localeCompare(areaB);
+  return b.orderDate.localeCompare(a.orderDate);
+}
+
 export function CustomerOrdersListClient({
   context,
   initialOrders,
@@ -105,17 +101,24 @@ export function CustomerOrdersListClient({
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
   const [orders] = useState(initialOrders);
-  const [status, setStatus] = useState<CustomerOrderStatus | "all">("all");
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
-  const [initialCustomerId, setInitialCustomerId] = useState<string | undefined>();
+  const [initialCustomerId, setInitialCustomerId] = useState<
+    string | undefined
+  >();
+  const [selectColumn, setSelectColumn] = useState<CustomerOrderStatus | null>(
+    null,
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState("");
   const [runOpen, setRunOpen] = useState(false);
   const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const [missingOpen, setMissingOpen] = useState(false);
   const [missingCustomerId, setMissingCustomerId] = useState("");
   const [missingDate, setMissingDate] = useState(todayLocalDate);
@@ -137,19 +140,15 @@ export function CustomerOrdersListClient({
 
   const todayMarket = WEEKDAY_TO_MARKET[new Date().getDay()]!;
   const marketCustomers = useMemo(
-    () =>
-      customers.filter(
-        (c) => c.isActive && c.marketDay === todayMarket,
-      ),
+    () => customers.filter((c) => c.isActive && c.marketDay === todayMarket),
     [customers, todayMarket],
   );
 
-  const displayed = useMemo(() => {
-    const filtered = orders.filter((order) => {
+  const filtered = useMemo(() => {
+    return orders.filter((order) => {
       if (dateFilter && order.orderDate.slice(0, 10) !== dateFilter) {
         return false;
       }
-      if (status !== "all" && order.status !== status) return false;
       const area = (order.areaSnapshot || order.customerArea || "").trim();
       if (areaFilter !== "all" && area !== areaFilter) return false;
       if (!search.trim()) return true;
@@ -160,31 +159,58 @@ export function CustomerOrdersListClient({
         order.id.toLowerCase().includes(q)
       );
     });
+  }, [orders, dateFilter, areaFilter, search]);
 
-    return filtered.sort((a, b) => {
-      if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
-      const areaA = (a.areaSnapshot || a.customerArea || "").toLowerCase();
-      const areaB = (b.areaSnapshot || b.customerArea || "").toLowerCase();
-      if (areaA !== areaB) return areaA.localeCompare(areaB);
-      return b.orderDate.localeCompare(a.orderDate);
-    });
-  }, [orders, status, dateFilter, areaFilter, search]);
-
-  const selectedPacked = useMemo(
-    () =>
-      displayed.filter(
-        (o) => selected.has(o.id) && o.status === "packed",
-      ),
-    [displayed, selected],
+  const drafts = useMemo(
+    () => filtered.filter((o) => o.status === "draft").sort(sortOrders),
+    [filtered],
   );
 
-  function toggleSelect(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
+  const columns = useMemo(() => {
+    const map = Object.fromEntries(
+      KANBAN_COLUMNS.map((status) => [status, [] as CustomerOrder[]]),
+    ) as Record<(typeof KANBAN_COLUMNS)[number], CustomerOrder[]>;
+    for (const order of filtered) {
+      if (order.status in map) {
+        map[order.status as (typeof KANBAN_COLUMNS)[number]].push(order);
+      }
+    }
+    for (const status of KANBAN_COLUMNS) {
+      map[status].sort(sortOrders);
+    }
+    return map;
+  }, [filtered]);
+
+  const selectedOrders = useMemo(
+    () =>
+      filtered.filter(
+        (o) =>
+          selected.has(o.id) &&
+          selectColumn != null &&
+          o.status === selectColumn,
+      ),
+    [filtered, selected, selectColumn],
+  );
+
+  function toggleSelect(column: CustomerOrderStatus, id: string) {
+    if (selectColumn !== column) {
+      setSelectColumn(column);
+      setSelected(new Set([id]));
+      return;
+    }
+    setSelected((ids) => {
+      const next = new Set(ids);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      if (next.size === 0) setSelectColumn(null);
       return next;
     });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setSelectColumn(null);
+    setBulkError("");
   }
 
   function openNewOrder(customerId?: string) {
@@ -192,8 +218,43 @@ export function CustomerOrdersListClient({
     setNewOpen(true);
   }
 
+  async function patchStatuses(
+    ids: string[],
+    status: CustomerOrderStatus,
+  ): Promise<void> {
+    for (const id of ids) {
+      const res = await fetch(`/api/customer-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to update order");
+    }
+  }
+
+  async function submitBulkStatus() {
+    if (!selectColumn || selectedOrders.length === 0) return;
+    const target = BULK_TARGET[selectColumn];
+    if (!target) return;
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      await patchStatuses(
+        selectedOrders.map((o) => o.id),
+        target,
+      );
+      clearSelection();
+      router.refresh();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Bulk update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function submitDeliveryRun() {
-    if (selectedPacked.length === 0) {
+    if (selectedOrders.length === 0 || selectColumn !== "packed") {
       setRunError("Select at least one packed order");
       return;
     }
@@ -207,14 +268,14 @@ export function CustomerOrdersListClient({
       const area =
         areaFilter !== "all"
           ? areaFilter
-          : selectedPacked[0]?.customerArea ||
-            selectedPacked[0]?.areaSnapshot ||
+          : selectedOrders[0]?.customerArea ||
+            selectedOrders[0]?.areaSnapshot ||
             null;
       const res = await fetch("/api/delivery-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderIds: selectedPacked.map((o) => o.id),
+          orderIds: selectedOrders.map((o) => o.id),
           deliveryBy,
           area,
         }),
@@ -222,8 +283,8 @@ export function CustomerOrdersListClient({
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Delivery run failed");
       setRunOpen(false);
-      setSelected(new Set());
       setDeliveryBy("");
+      clearSelection();
       router.refresh();
     } catch (e) {
       setRunError(e instanceof Error ? e.message : "Delivery run failed");
@@ -277,6 +338,9 @@ export function CustomerOrdersListClient({
     }
   }
 
+  const bulkLabel =
+    selectColumn != null ? BULK_LABEL[selectColumn] : undefined;
+
   return (
     <>
       <TopBar
@@ -288,17 +352,25 @@ export function CustomerOrdersListClient({
         ]}
       />
 
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mb-5 flex shrink-0 flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               Customer Orders
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Ready → packed → delivery run invoice. Missing shades at end of day.
+              Picking → packed → invoice → out → delivered. Missing shades at
+              end of day.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDraftsOpen(true)}
+              className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
+            >
+              Drafts ({drafts.length})
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -308,17 +380,6 @@ export function CustomerOrdersListClient({
               className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
             >
               EOD missing
-            </button>
-            <button
-              type="button"
-              disabled={selectedPacked.length === 0}
-              onClick={() => {
-                setRunError("");
-                setRunOpen(true);
-              }}
-              className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
-            >
-              Delivery run ({selectedPacked.length})
             </button>
             <button
               type="button"
@@ -332,7 +393,7 @@ export function CustomerOrdersListClient({
         </div>
 
         {marketCustomers.length > 0 ? (
-          <section className="mb-5 rounded-xl border border-border bg-surface p-4">
+          <section className="mb-5 shrink-0 rounded-xl border border-border bg-surface p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-medium">
                 Daily market call list · {MARKET_DAY_LABELS[todayMarket]}
@@ -359,30 +420,9 @@ export function CustomerOrdersListClient({
           </section>
         ) : null}
 
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex w-full gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-0.5 sm:w-auto">
-            {STATUS_FILTERS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setStatus(value)}
-                className={`shrink-0 rounded-md px-3 py-2 text-sm sm:py-1.5 ${
-                  status === value
-                    ? "bg-sidebar font-medium"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {value === "all"
-                  ? "All"
-                  : CUSTOMER_ORDER_STATUS_LABELS[value]}
-              </button>
-            ))}
-          </div>
-
+        <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <label className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:w-auto">
-            <span className="shrink-0 text-xs font-medium text-muted">
-              Date
-            </span>
+            <span className="shrink-0 text-xs font-medium text-muted">Date</span>
             <input
               type="date"
               value={dateFilter}
@@ -401,9 +441,7 @@ export function CustomerOrdersListClient({
           </label>
 
           <label className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:w-auto">
-            <span className="shrink-0 text-xs font-medium text-muted">
-              Area
-            </span>
+            <span className="shrink-0 text-xs font-medium text-muted">Area</span>
             <select
               value={areaFilter}
               onChange={(e) => setAreaFilter(e.target.value)}
@@ -429,87 +467,128 @@ export function CustomerOrdersListClient({
           </div>
         </div>
 
-        {displayed.length === 0 ? (
-          <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-            No orders match these filters.
+        {selectedOrders.length > 0 && selectColumn && bulkLabel ? (
+          <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+            <span className="text-sm text-muted">
+              {selectedOrders.length} selected in{" "}
+              {CUSTOMER_ORDER_STATUS_LABELS[selectColumn]}
+            </span>
+            {bulkError ? (
+              <span className="text-sm text-red-700">{bulkError}</span>
+            ) : null}
+            <div className="ml-auto flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium"
+              >
+                Clear
+              </button>
+              {selectColumn === "packed" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRunError("");
+                    setRunOpen(true);
+                  }}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface"
+                >
+                  {bulkLabel}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void submitBulkStatus()}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-50"
+                >
+                  {bulkBusy ? "Updating…" : bulkLabel}
+                </button>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border bg-sidebar/50 text-muted">
-                <tr>
-                  <th className="w-10 px-3 py-3" />
-                  <th className="px-4 py-3 font-medium">Customer</th>
-                  <th className="hidden px-4 py-3 font-medium md:table-cell">
-                    Area
-                  </th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="hidden px-4 py-3 font-medium lg:table-cell">
-                    Amount
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayed.map((order) => {
-                  const area =
-                    order.areaSnapshot || order.customerArea || "—";
-                  return (
-                    <tr
-                      key={order.id}
-                      className="border-b border-border last:border-0 hover:bg-sidebar/40"
-                    >
-                      <td className="px-3 py-3">
-                        {order.status === "packed" ? (
-                          <input
-                            type="checkbox"
-                            checked={selected.has(order.id)}
-                            onChange={() => toggleSelect(order.id)}
-                            aria-label={`Select ${order.customerName}`}
-                          />
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3">
-                        <PendingLink
-                          href={`/orders/customers/${order.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {order.customerName ?? "Customer"}
-                        </PendingLink>
-                        {order.isUrgent ? (
-                          <span className="ml-2 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                            Urgent
-                          </span>
-                        ) : null}
-                        <div className="mt-0.5 text-xs text-muted md:hidden">
-                          {area} · {formatShortDate(order.orderDate)}
-                        </div>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted md:table-cell">
-                        {area}
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted sm:table-cell">
-                        {formatShortDate(order.orderDate)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${statusTone(order.status)}`}
-                        >
-                          {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
-                        </span>
-                      </td>
-                      <td className="hidden px-4 py-3 tabular-nums text-muted lg:table-cell">
-                        {formatINR(order.amount)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-x-auto pb-2">
+          <div className="flex max-h-[calc(100dvh-16rem)] min-w-max gap-3">
+            {KANBAN_COLUMNS.map((status) => {
+              const columnOrders = columns[status];
+              const selectable = status !== "delivered";
+              return (
+                <section
+                  key={status}
+                  className="flex max-h-[calc(100dvh-16rem)] w-[280px] shrink-0 flex-col rounded-xl border border-border bg-sidebar/40"
+                >
+                  <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+                    <h2 className="text-sm font-medium">
+                      {CUSTOMER_ORDER_STATUS_LABELS[status]}
+                    </h2>
+                    <span className="rounded-md bg-surface px-1.5 py-0.5 text-xs tabular-nums text-muted">
+                      {columnOrders.length}
+                    </span>
+                  </header>
+                  <div className="flex-1 space-y-2 overflow-y-auto p-2">
+                    {columnOrders.length === 0 ? (
+                      <p className="px-2 py-6 text-center text-xs text-muted">
+                        No orders
+                      </p>
+                    ) : (
+                      columnOrders.map((order) => {
+                        const area =
+                          order.areaSnapshot || order.customerArea || "—";
+                        const checked = selected.has(order.id);
+                        return (
+                          <article
+                            key={order.id}
+                            className={`rounded-lg border border-border bg-surface p-3 shadow-sm ${
+                              checked ? "ring-2 ring-foreground/20" : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              {selectable ? (
+                                <input
+                                  type="checkbox"
+                                  className="mt-1"
+                                  checked={checked}
+                                  onChange={() =>
+                                    toggleSelect(status, order.id)
+                                  }
+                                  aria-label={`Select ${order.customerName}`}
+                                />
+                              ) : null}
+                              <div className="min-w-0 flex-1">
+                                <PendingLink
+                                  href={`/orders/customers/${order.id}`}
+                                  className="block font-medium hover:underline"
+                                >
+                                  {order.customerName ?? "Customer"}
+                                </PendingLink>
+                                {order.isUrgent ? (
+                                  <span className="mt-1 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                                    Urgent
+                                  </span>
+                                ) : null}
+                                <div className="mt-1 text-xs text-muted">
+                                  {area} · {formatShortDate(order.orderDate)}
+                                </div>
+                                <div className="mt-1 text-xs tabular-nums text-muted">
+                                  {formatINR(order.amount)}
+                                  {order.lineCount
+                                    ? ` · ${order.lineCount} lines`
+                                    : ""}
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-        )}
+        </div>
       </main>
 
       <NewCustomerOrderModal
@@ -524,18 +603,58 @@ export function CustomerOrdersListClient({
       />
 
       <Modal
+        open={draftsOpen}
+        onClose={() => setDraftsOpen(false)}
+        title={`Drafts (${drafts.length})`}
+      >
+        <div className="space-y-3">
+          {drafts.length === 0 ? (
+            <p className="text-sm text-muted">No draft orders match filters.</p>
+          ) : (
+            <ul className="max-h-80 space-y-2 overflow-y-auto">
+              {drafts.map((order) => (
+                <li key={order.id}>
+                  <PendingLink
+                    href={`/orders/customers/${order.id}`}
+                    className="block rounded-lg border border-border px-3 py-2 text-sm hover:bg-sidebar"
+                  >
+                    <div className="font-medium">
+                      {order.customerName ?? "Customer"}
+                    </div>
+                    <div className="text-xs text-muted">
+                      {formatShortDate(order.orderDate)} ·{" "}
+                      {formatINR(order.amount)}
+                    </div>
+                  </PendingLink>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setDraftsOpen(false)}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         open={runOpen}
         onClose={() => setRunOpen(false)}
-        title="Start delivery run"
+        title="Generate invoices"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Invoice {selectedPacked.length} packed order
-            {selectedPacked.length === 1 ? "" : "s"} and assign one delivery
+            Invoice {selectedOrders.length} packed order
+            {selectedOrders.length === 1 ? "" : "s"} and assign one delivery
             person.
           </p>
           <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
-            {selectedPacked.map((o) => (
+            {selectedOrders.map((o) => (
               <li key={o.id}>
                 {o.customerName}
                 {o.isUrgent ? " · Urgent" : ""}

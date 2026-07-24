@@ -8,15 +8,18 @@ import {
   updateCustomerOrder,
   type UpdateCustomerOrderInput,
 } from "@/lib/customer-orders/queries";
+import { syncDeliveryRunsForOrderStatus } from "@/lib/customer-orders/delivery-runs";
 import type { CustomerOrderStatus } from "@/lib/customer-orders/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 const STATUSES: CustomerOrderStatus[] = [
   "draft",
-  "ready",
+  "picking",
   "packed",
   "invoiced",
+  "out_for_delivery",
+  "delivered",
   "cancelled",
 ];
 
@@ -84,6 +87,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const order = await updateCustomerOrder(supabase, id, input);
+    if (input.status) {
+      await syncDeliveryRunsForOrderStatus(supabase, id, input.status);
+    }
     return NextResponse.json({ order });
   } catch (e) {
     console.error(e);

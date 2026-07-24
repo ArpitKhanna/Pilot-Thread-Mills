@@ -31,8 +31,8 @@ export async function convertOrderToInvoice(
   const order = await getCustomerOrder(supabase, input.orderId);
   if (!order) throw new Error("Order not found");
   if (order.invoiceId) throw new Error("Order already converted to an invoice");
-  if (order.status !== "packed" && order.status !== "ready") {
-    throw new Error("Order must be ready or packed before invoicing");
+  if (order.status !== "packed") {
+    throw new Error("Order must be packed before invoicing");
   }
   if (order.lines.length === 0) {
     throw new Error("Order has no lines to invoice");

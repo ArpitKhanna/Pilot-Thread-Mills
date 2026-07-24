@@ -99,7 +99,11 @@ export function CustomerOrderDetailClient({
   const [discountAmount, setDiscountAmount] = useState("0");
   const [shadeEditorKey, setShadeEditorKey] = useState<string | null>(null);
 
-  const locked = order.status === "invoiced" || order.status === "cancelled";
+  const locked =
+    order.status === "invoiced" ||
+    order.status === "out_for_delivery" ||
+    order.status === "delivered" ||
+    order.status === "cancelled";
   const linesEstimate = useMemo(
     () =>
       estimateCustomerLinesTotal(
@@ -427,20 +431,20 @@ export function CustomerOrderDetailClient({
         const confirmRes = await fetch(`/api/customer-orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "ready" }),
+          body: JSON.stringify({ status: "picking" }),
         });
         const confirmJson = (await confirmRes.json()) as {
           order?: CustomerOrder;
           error?: string;
         };
         if (!confirmRes.ok || !confirmJson.order) {
-          throw new Error(confirmJson.error ?? "Could not mark order ready");
+          throw new Error(confirmJson.error ?? "Could not mark order picking");
         }
         status = confirmJson.order.status;
         setOrder(confirmJson.order);
       }
 
-      if (status === "ready") {
+      if (status === "picking") {
         const packRes = await fetch(`/api/customer-orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -526,7 +530,7 @@ export function CustomerOrderDetailClient({
             >
               {order.isUrgent ? "Clear urgent" : "Mark urgent"}
             </button>
-            {order.status === "ready" || order.status === "packed" ? (
+            {order.status === "picking" || order.status === "packed" ? (
               <button
                 type="button"
                 onClick={printPickSheet}
@@ -549,13 +553,13 @@ export function CustomerOrderDetailClient({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => setStatus("ready")}
+                    onClick={() => setStatus("picking")}
                     className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Mark ready
+                    Mark picking
                   </button>
                 ) : null}
-                {order.status === "ready" ? (
+                {order.status === "picking" ? (
                   <button
                     type="button"
                     disabled={Boolean(busy)}
@@ -565,7 +569,7 @@ export function CustomerOrderDetailClient({
                     Mark packed
                   </button>
                 ) : null}
-                {order.status === "ready" || order.status === "packed" ? (
+                {order.status === "picking" || order.status === "packed" ? (
                   <button
                     type="button"
                     disabled={Boolean(busy)}
@@ -575,7 +579,7 @@ export function CustomerOrderDetailClient({
                     Convert to invoice
                   </button>
                 ) : null}
-                {order.status === "packed" || order.status === "ready" ? (
+                {order.status === "packed" || order.status === "picking" ? (
                   <button
                     type="button"
                     disabled={Boolean(busy)}
@@ -599,6 +603,26 @@ export function CustomerOrderDetailClient({
                   </button>
                 ) : null}
               </>
+            ) : null}
+            {order.status === "invoiced" ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => setStatus("out_for_delivery")}
+                className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
+              >
+                Mark out for delivery
+              </button>
+            ) : null}
+            {order.status === "out_for_delivery" ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => setStatus("delivered")}
+                className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
+              >
+                Mark delivered
+              </button>
             ) : null}
           </div>
         </div>

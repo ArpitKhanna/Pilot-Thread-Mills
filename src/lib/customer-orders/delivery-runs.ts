@@ -7,7 +7,11 @@ import {
   type DbDeliveryRunRow,
 } from "./mappers";
 import { getCustomerOrder, listDeliveryStaff } from "./queries";
-import type { DeliveryRun, DeliveryRunStatus } from "./types";
+import type {
+  CustomerOrderStatus,
+  DeliveryRun,
+  DeliveryRunStatus,
+} from "./types";
 
 export async function listDeliveryRuns(
   supabase: SupabaseClient,
@@ -141,7 +145,7 @@ export async function createDeliveryRunAndInvoice(
       area,
       delivery_by: delivery.id,
       delivery_by_name: delivery.fullName,
-      status: "dispatched" satisfies DeliveryRunStatus,
+      status: "open" satisfies DeliveryRunStatus,
       notes: input.notes ?? null,
       created_by: input.createdBy,
     })
@@ -188,4 +192,51 @@ export async function createDeliveryRunAndInvoice(
   const run = await getDeliveryRun(supabase, runId);
   if (!run) throw new Error("Delivery run not found after create");
   return run;
+}
+
+/** Bump linked delivery run(s) when an order moves to out_for_delivery / delivered. */
+export async function syncDeliveryRunsForOrderStatus(
+  supabase: SupabaseClient,
+  orderId: string,
+  status: CustomerOrderStatus,
+): Promise<void> {
+  if (status !== "out_for_delivery" && status !== "delivered") return;
+
+  const { data: links, error: linkError } = await supabase
+    .from("delivery_run_orders")
+    .select("run_id")
+    .eq("order_id", orderId);
+  if (linkError) throw linkError;
+  if (!links?.length) return;
+
+  const runIds = [...new Set(links.map((l) => l.run_id as string))];
+
+  for (const runId of runIds) {
+    if (status === "out_for_delivery") {
+      await supabase
+        .from("delivery_runs")
+        .update({ status: "dispatched" satisfies DeliveryRunStatus })
+        .eq("id", runId)
+        .in("status", ["open"]);
+      continue;
+    }
+
+    const { data: runLinks, error: runLinkError } = await supabase
+      .from("delivery_run_orders")
+      .select("order_id")
+      .eq("run_id", runId);
+    if (runLinkError) throw runLinkError;
+
+    const siblingIds = (runLinks ?? []).map((l) => l.order_id as string);
+    const siblings = await Promise.all(
+      siblingIds.map((id) => getCustomerOrder(supabase, id)),
+    );
+    const allDelivered = siblings.every((o) => o?.status === "delivered");
+    await supabase
+      .from("delivery_runs")
+      .update({
+        status: (allDelivered ? "done" : "dispatched") satisfies DeliveryRunStatus,
+      })
+      .eq("id", runId);
+  }
 }
