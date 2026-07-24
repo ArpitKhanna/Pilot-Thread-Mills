@@ -24,7 +24,7 @@ export const CUSTOMER_ORDER_FILES_BUCKET = "customer-order-files";
 
 const ORDER_SELECT = `
   *,
-  salesmen:customer_id ( name )
+  salesmen:customer_id ( name, area, address_area, phone, market_day )
 `;
 
 const LINE_SELECT = `
@@ -254,13 +254,32 @@ export type CreateCustomerOrderInput = {
   customerId: string;
   orderDate?: string;
   notes?: string | null;
+  isUrgent?: boolean;
   createdBy?: string | null;
 };
+
+async function resolveCustomerArea(
+  supabase: SupabaseClient,
+  customerId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("salesmen")
+    .select("area, address_area")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const area =
+    String(data.address_area ?? "").trim() ||
+    String(data.area ?? "").trim();
+  return area || null;
+}
 
 export async function createCustomerOrder(
   supabase: SupabaseClient,
   input: CreateCustomerOrderInput,
 ): Promise<CustomerOrder> {
+  const areaSnapshot = await resolveCustomerArea(supabase, input.customerId);
   const { data, error } = await supabase
     .from("customer_orders")
     .insert({
@@ -268,6 +287,8 @@ export async function createCustomerOrder(
       order_date: input.orderDate ?? new Date().toISOString().slice(0, 10),
       notes: input.notes ?? null,
       status: "draft",
+      is_urgent: Boolean(input.isUrgent),
+      area_snapshot: areaSnapshot,
       created_by: input.createdBy ?? null,
     })
     .select(ORDER_SELECT)
@@ -282,12 +303,14 @@ export type UpdateCustomerOrderInput = {
   orderDate?: string;
   invoiceId?: string | null;
   deliveryBy?: string | null;
+  isUrgent?: boolean;
+  areaSnapshot?: string | null;
 };
 
 const STATUS_TRANSITIONS: Record<CustomerOrderStatus, CustomerOrderStatus[]> = {
-  draft: ["confirmed", "cancelled"],
-  confirmed: ["picking", "draft", "cancelled"],
-  picking: ["invoiced", "confirmed", "cancelled"],
+  draft: ["ready", "cancelled"],
+  ready: ["packed", "draft", "cancelled"],
+  packed: ["invoiced", "ready", "cancelled"],
   invoiced: [],
   cancelled: ["draft"],
 };
@@ -315,10 +338,22 @@ export async function updateCustomerOrder(
   }
 
   const updates: Record<string, unknown> = {};
-  if (input.status !== undefined) updates.status = input.status;
+  if (input.status !== undefined) {
+    updates.status = input.status;
+    if (input.status === "ready" && !existing.areaSnapshot) {
+      updates.area_snapshot = await resolveCustomerArea(
+        supabase,
+        existing.customerId,
+      );
+    }
+  }
   if (input.notes !== undefined) updates.notes = input.notes;
   if (input.orderDate !== undefined) updates.order_date = input.orderDate;
   if (input.invoiceId !== undefined) updates.invoice_id = input.invoiceId;
+  if (input.isUrgent !== undefined) updates.is_urgent = input.isUrgent;
+  if (input.areaSnapshot !== undefined) {
+    updates.area_snapshot = input.areaSnapshot;
+  }
 
   if (input.deliveryBy !== undefined) {
     if (input.deliveryBy === null) {
@@ -360,6 +395,7 @@ export type OrderLineInput = {
   qty: number;
   unit?: CustomerOrderLineUnit;
   source?: CustomerOrderLineSource;
+  isUrgent?: boolean;
 };
 
 export async function replaceOrderLines(
@@ -383,6 +419,7 @@ export async function replaceOrderLines(
     qty: line.qty,
     unit: line.unit ?? "box",
     source: line.source ?? "manual",
+    is_urgent: Boolean(line.isUrgent),
     sort_order: index,
   }));
 

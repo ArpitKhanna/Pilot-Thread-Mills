@@ -3,13 +3,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { CustomerPastOrdersTab } from "@/components/customers/CustomerPastOrdersTab";
+import { CustomerPendingPatchesTab } from "@/components/customers/CustomerPendingPatchesTab";
 import { CustomerPersonalDetailsForm } from "@/components/customers/CustomerPersonalDetailsForm";
 import { CustomerTimelineTab } from "@/components/customers/CustomerTimelineTab";
 import { TopBar } from "@/components/layout/AppShell";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
-import type { CustomerOrder } from "@/lib/customer-orders/types";
+import type {
+  CustomerClothPatch,
+  CustomerOrder,
+  CustomerPendingItem,
+} from "@/lib/customer-orders/types";
 import { computeCustomerTierInsight } from "@/lib/customers/tier";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { Invoice, Salesman } from "@/lib/salesmen/types";
@@ -26,6 +31,8 @@ type CustomerDetailClientProps = {
   initialCustomer: Salesman;
   initialOrders: CustomerOrder[];
   initialInvoices: Invoice[];
+  initialPending: CustomerPendingItem[];
+  initialPatches: CustomerClothPatch[];
   bankAccounts: BankAccount[];
   priceList: PriceListItem[];
 };
@@ -59,6 +66,8 @@ export function CustomerDetailClient({
   initialCustomer,
   initialOrders,
   initialInvoices,
+  initialPending,
+  initialPatches,
   bankAccounts,
   priceList,
 }: CustomerDetailClientProps) {
@@ -83,15 +92,15 @@ export function CustomerDetailClient({
     [invoices],
   );
 
-  const pendingOrders = useMemo(
+  const openPendingCount = useMemo(
     () =>
-      orders.filter(
-        (o) =>
-          o.status === "confirmed" ||
-          o.status === "picking" ||
-          o.status === "draft",
-      ),
-    [orders],
+      initialPending.filter(
+        (p) =>
+          p.status === "open" ||
+          p.status === "in_dyeing" ||
+          p.status === "ready",
+      ).length,
+    [initialPending],
   );
 
   const tierInsight = useMemo(
@@ -240,7 +249,7 @@ export function CustomerDetailClient({
             <TabButton
               active={tab === "pending"}
               onClick={() => setTab("pending")}
-              label={`Pending Items (${pendingOrders.length})`}
+              label={`Pending / Patches (${openPendingCount})`}
             />
             <TabButton
               active={tab === "details"}
@@ -264,9 +273,13 @@ export function CustomerDetailClient({
           ) : tab === "payments" ? (
             <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
           ) : tab === "pending" ? (
-            <CustomerPastOrdersTab
-              orders={pendingOrders}
-              title="Pending Items"
+            <CustomerPendingPatchesTab
+              customerId={customer.id}
+              customerName={customer.name}
+              phone={customer.phone}
+              priceList={priceList}
+              initialPending={initialPending}
+              initialPatches={initialPatches}
             />
           ) : (
             <CustomerPersonalDetailsForm

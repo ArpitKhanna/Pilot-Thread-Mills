@@ -37,6 +37,7 @@ type NewCustomerOrderModalProps = {
   onClose: () => void;
   customers: Salesman[];
   priceList: PriceListItem[];
+  initialCustomerId?: string;
 };
 
 function emptyLine(): DraftLine {
@@ -67,6 +68,7 @@ export function NewCustomerOrderModal({
   onClose,
   customers,
   priceList,
+  initialCustomerId,
 }: NewCustomerOrderModalProps) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
@@ -80,6 +82,7 @@ export function NewCustomerOrderModal({
   const customerInputRef = useRef<HTMLInputElement | null>(null);
   const customerMenuRef = useRef<HTMLDivElement | null>(null);
   const [orderDate, setOrderDate] = useState(todayLocalDate);
+  const [isUrgent, setIsUrgent] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -90,6 +93,15 @@ export function NewCustomerOrderModal({
 
   const selectedCustomer =
     customers.find((c) => c.id === customerId) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    if (!initialCustomerId) return;
+    const customer = customers.find((c) => c.id === initialCustomerId);
+    if (!customer) return;
+    setCustomerId(customer.id);
+    setCustomerQuery(customer.name);
+  }, [open, initialCustomerId, customers]);
 
   const filteredCustomers = useMemo(() => {
     const active = customers
@@ -169,6 +181,7 @@ export function NewCustomerOrderModal({
     setCustomerQuery("");
     setCustomerOpen(false);
     setOrderDate(todayLocalDate());
+    setIsUrgent(false);
     setError("");
     setBusy("");
     setSlips([]);
@@ -226,6 +239,7 @@ export function NewCustomerOrderModal({
     await createOrderDraft({
       customerId,
       orderDate,
+      isUrgent,
     });
   }
 
@@ -382,6 +396,15 @@ export function NewCustomerOrderModal({
                 disabled
                 className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2.5 text-sm text-muted"
               />
+            </label>
+
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={isUrgent}
+                onChange={(e) => setIsUrgent(e.target.checked)}
+              />
+              <span className="font-medium">Urgent order</span>
             </label>
 
             <label className="block space-y-1.5">

@@ -34,6 +34,7 @@ type DraftLine = {
   shadeId: string | null;
   colorLabel: string;
   colorHex: string;
+  isUrgent: boolean;
 };
 
 type CustomerOrderDetailClientProps = {
@@ -58,6 +59,7 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
         shadeId: null,
         colorLabel: "",
         colorHex: "",
+        isUrgent: false,
       },
     ];
   }
@@ -71,6 +73,7 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
     shadeId: line.shadeId,
     colorLabel: line.shade?.colorLabel ?? "",
     colorHex: line.shade?.colorHex ?? "",
+    isUrgent: Boolean(line.isUrgent),
   }));
 }
 
@@ -137,6 +140,7 @@ export function CustomerOrderDetailClient({
         shadeId: null,
         colorLabel: "",
         colorHex: "",
+        isUrgent: false,
       },
     ]);
   }
@@ -160,6 +164,7 @@ export function CustomerOrderDetailClient({
           qty: Number(l.qty),
           unit: l.unit,
           source: "manual" as const,
+          isUrgent: l.isUrgent,
         }));
 
       const res = await fetch(`/api/customer-orders/${order.id}/lines`, {
@@ -179,6 +184,34 @@ export function CustomerOrderDetailClient({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save lines");
       throw e;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function printPickSheet() {
+    window.print();
+  }
+
+  async function toggleOrderUrgent() {
+    setBusy("urgent");
+    setError("");
+    try {
+      const res = await fetch(`/api/customer-orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isUrgent: !order.isUrgent }),
+      });
+      const json = (await res.json()) as {
+        order?: CustomerOrder;
+        error?: string;
+      };
+      if (!res.ok || !json.order) {
+        throw new Error(json.error ?? "Could not update urgency");
+      }
+      setOrder(json.order);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update urgency");
     } finally {
       setBusy("");
     }
@@ -276,15 +309,6 @@ export function CustomerOrderDetailClient({
     } finally {
       setBusy("");
     }
-  }
-
-  async function confirmOutForDelivery() {
-    if (!deliveryBy) {
-      setError("Select a delivery person");
-      return;
-    }
-    await setStatus("picking", { deliveryBy });
-    setDeliveryOpen(false);
   }
 
   async function saveDeliveryPerson() {
@@ -403,35 +427,33 @@ export function CustomerOrderDetailClient({
         const confirmRes = await fetch(`/api/customer-orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "confirmed" }),
+          body: JSON.stringify({ status: "ready" }),
         });
         const confirmJson = (await confirmRes.json()) as {
           order?: CustomerOrder;
           error?: string;
         };
         if (!confirmRes.ok || !confirmJson.order) {
-          throw new Error(confirmJson.error ?? "Could not confirm order");
+          throw new Error(confirmJson.error ?? "Could not mark order ready");
         }
         status = confirmJson.order.status;
         setOrder(confirmJson.order);
       }
 
-      if (status === "confirmed") {
-        const pickRes = await fetch(`/api/customer-orders/${order.id}`, {
+      if (status === "ready") {
+        const packRes = await fetch(`/api/customer-orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "picking" }),
+          body: JSON.stringify({ status: "packed" }),
         });
-        const pickJson = (await pickRes.json()) as {
+        const packJson = (await packRes.json()) as {
           order?: CustomerOrder;
           error?: string;
         };
-        if (!pickRes.ok || !pickJson.order) {
-          throw new Error(
-            pickJson.error ?? "Could not mark out for delivery",
-          );
+        if (!packRes.ok || !packJson.order) {
+          throw new Error(packJson.error ?? "Could not mark order packed");
         }
-        setOrder(pickJson.order);
+        setOrder(packJson.order);
       }
 
       const res = await fetch(
@@ -487,13 +509,32 @@ export function CustomerOrderDetailClient({
             </h1>
             <p className="mt-1 text-sm text-muted">
               {order.orderDate} · {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+              {order.customerArea ? ` · ${order.customerArea}` : ""}
+              {order.isUrgent ? " · Urgent" : ""}
               {order.deliveryByName
                 ? ` · Delivery by ${order.deliveryByName}`
                 : ""}
               {order.invoiceId ? " · Invoiced" : ""}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => toggleOrderUrgent()}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+            >
+              {order.isUrgent ? "Clear urgent" : "Mark urgent"}
+            </button>
+            {order.status === "ready" || order.status === "packed" ? (
+              <button
+                type="button"
+                onClick={printPickSheet}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar"
+              >
+                Print pick sheet
+              </button>
+            ) : null}
             {!locked ? (
               <>
                 <button
@@ -508,41 +549,23 @@ export function CustomerOrderDetailClient({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => setStatus("confirmed")}
+                    onClick={() => setStatus("ready")}
                     className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Confirm order
+                    Mark ready
                   </button>
                 ) : null}
-                {order.status === "confirmed" ? (
+                {order.status === "ready" ? (
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => {
-                      setDeliveryBy(order.deliveryBy ?? "");
-                      setDeliveryOpen(true);
-                    }}
+                    onClick={() => setStatus("packed")}
                     className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Out for delivery
+                    Mark packed
                   </button>
                 ) : null}
-                {order.status === "picking" ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => {
-                      setDeliveryBy(order.deliveryBy ?? "");
-                      setDeliveryOpen(true);
-                    }}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
-                  >
-                    {order.deliveryByName
-                      ? "Change delivery"
-                      : "Assign delivery"}
-                  </button>
-                ) : null}
-                {order.status === "confirmed" || order.status === "picking" ? (
+                {order.status === "ready" || order.status === "packed" ? (
                   <button
                     type="button"
                     disabled={Boolean(busy)}
@@ -550,6 +573,19 @@ export function CustomerOrderDetailClient({
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
                   >
                     Convert to invoice
+                  </button>
+                ) : null}
+                {order.status === "packed" || order.status === "ready" ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => {
+                      setDeliveryBy(order.deliveryBy ?? "");
+                      setDeliveryOpen(true);
+                    }}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                  >
+                    {order.deliveryByName ? "Change delivery" : "Assign delivery"}
                   </button>
                 ) : null}
                 {order.status !== "cancelled" ? (
@@ -762,6 +798,18 @@ export function CustomerOrderDetailClient({
                   <div className="flex items-center gap-1">
                     {!locked ? (
                       <>
+                        <label className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={line.isUrgent}
+                            onChange={(e) =>
+                              updateLine(line.key, {
+                                isUrgent: e.target.checked,
+                              })
+                            }
+                          />
+                          Urgent
+                        </label>
                         <button
                           type="button"
                           title="Color / patch"
@@ -778,6 +826,10 @@ export function CustomerOrderDetailClient({
                           ×
                         </button>
                       </>
+                    ) : line.isUrgent ? (
+                      <span className="text-xs font-medium text-amber-800">
+                        Urgent
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -790,15 +842,12 @@ export function CustomerOrderDetailClient({
       <Modal
         open={deliveryOpen}
         onClose={() => setDeliveryOpen(false)}
-        title={
-          order.status === "picking"
-            ? "Delivery person"
-            : "Out for delivery"
-        }
+        title="Assign delivery (optional)"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Choose who will deliver this order.
+            Prefer starting a delivery run from the orders board for area
+            batches. Use this only for a single-order override.
           </p>
           {deliveryStaff.length === 0 ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -836,19 +885,11 @@ export function CustomerOrderDetailClient({
                 Boolean(busy) || !deliveryBy || deliveryStaff.length === 0
               }
               onClick={() => {
-                if (order.status === "picking") {
-                  void saveDeliveryPerson();
-                } else {
-                  void confirmOutForDelivery();
-                }
+                void saveDeliveryPerson();
               }}
               className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
             >
-              {busy === "status" || busy === "delivery"
-                ? "Saving…"
-                : order.status === "picking"
-                  ? "Save"
-                  : "Mark out for delivery"}
+              {busy === "delivery" ? "Saving…" : "Save"}
             </button>
           </div>
         </div>

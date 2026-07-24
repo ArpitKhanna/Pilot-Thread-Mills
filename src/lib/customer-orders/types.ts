@@ -1,7 +1,7 @@
 export type CustomerOrderStatus =
   | "draft"
-  | "confirmed"
-  | "picking"
+  | "ready"
+  | "packed"
   | "invoiced"
   | "cancelled";
 
@@ -47,6 +47,7 @@ export type CustomerOrderLine = {
   unitPrice?: number;
   source: CustomerOrderLineSource;
   sortOrder: number;
+  isUrgent: boolean;
   shade?: ItemShade | null;
 };
 
@@ -59,12 +60,17 @@ export type CustomerOrder = {
   id: string;
   customerId: string;
   customerName?: string;
+  customerArea?: string | null;
+  customerPhone?: string | null;
+  customerMarketDay?: string | null;
   status: CustomerOrderStatus;
   orderDate: string;
   notes: string | null;
   invoiceId: string | null;
   deliveryBy: string | null;
   deliveryByName: string | null;
+  isUrgent: boolean;
+  areaSnapshot: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -74,11 +80,106 @@ export type CustomerOrder = {
   attachments: CustomerOrderAttachment[];
 };
 
+export type DeliveryRunStatus = "open" | "dispatched" | "done";
+
+export type DeliveryRunOrder = {
+  id: string;
+  runId: string;
+  orderId: string;
+  invoiceId: string | null;
+  sortOrder: number;
+  order?: CustomerOrder | null;
+};
+
+export type DeliveryRun = {
+  id: string;
+  runDate: string;
+  area: string | null;
+  deliveryBy: string | null;
+  deliveryByName: string | null;
+  status: DeliveryRunStatus;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  orders: DeliveryRunOrder[];
+};
+
+export type CustomerPendingItemStatus =
+  | "open"
+  | "in_dyeing"
+  | "ready"
+  | "fulfilled"
+  | "cancelled";
+
+export type CustomerPendingItem = {
+  id: string;
+  customerId: string;
+  customerName?: string | null;
+  invoiceId: string | null;
+  invoiceDate: string | null;
+  orderId: string | null;
+  priceListItemId: string | null;
+  itemName?: string | null;
+  shadeId: string | null;
+  shadeCode: string;
+  qty: number;
+  unit: CustomerOrderLineUnit;
+  status: CustomerPendingItemStatus;
+  isUrgent: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DyeingJobStatus = "queued" | "dyeing" | "done" | "cancelled";
+
+export type DyeingJob = {
+  id: string;
+  customerId: string | null;
+  customerName?: string | null;
+  pendingItemId: string | null;
+  clothPatchId: string | null;
+  priceListItemId: string | null;
+  itemName?: string | null;
+  shadeId: string | null;
+  shadeCode: string;
+  qty: number;
+  unit: CustomerOrderLineUnit;
+  status: DyeingJobStatus;
+  isUrgent: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerClothPatchStatus = "awaiting_shade" | "assigned";
+
+export type CustomerClothPatch = {
+  id: string;
+  customerId: string;
+  storagePath: string;
+  fileName: string | null;
+  contentType: string | null;
+  priceListItemId: string | null;
+  itemName?: string | null;
+  shadeId: string | null;
+  shadeCode: string | null;
+  status: CustomerClothPatchStatus;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  signedUrl?: string | null;
+};
+
 export const CUSTOMER_ORDER_STATUS_LABELS: Record<CustomerOrderStatus, string> =
   {
     draft: "Drafts",
-    confirmed: "Confirmed",
-    picking: "Out for Delivery",
+    ready: "Ready",
+    packed: "Packed",
     invoiced: "Invoiced",
     cancelled: "Cancelled",
   };
@@ -88,4 +189,28 @@ export const ORDER_LINE_UNIT_LABELS: Record<CustomerOrderLineUnit, string> = {
   dibbi: "Dibbi",
   cone: "Cone",
   unit: "Unit",
+};
+
+export const DELIVERY_RUN_STATUS_LABELS: Record<DeliveryRunStatus, string> = {
+  open: "Open",
+  dispatched: "Dispatched",
+  done: "Done",
+};
+
+export const PENDING_ITEM_STATUS_LABELS: Record<
+  CustomerPendingItemStatus,
+  string
+> = {
+  open: "Open",
+  in_dyeing: "In dyeing",
+  ready: "Ready",
+  fulfilled: "Fulfilled",
+  cancelled: "Cancelled",
+};
+
+export const DYEING_JOB_STATUS_LABELS: Record<DyeingJobStatus, string> = {
+  queued: "Queued",
+  dyeing: "Dyeing",
+  done: "Done",
+  cancelled: "Cancelled",
 };

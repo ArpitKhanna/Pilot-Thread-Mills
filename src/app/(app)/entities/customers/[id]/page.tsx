@@ -3,7 +3,9 @@ import { CustomerDetailClient } from "@/components/customers/CustomerDetailClien
 import { getAppContext } from "@/app/(app)/layout";
 import type { PriceListItem } from "@/lib/auth/types";
 import { listBankAccounts } from "@/lib/bank-accounts/queries";
+import { listClothPatchesForCustomer } from "@/lib/customer-orders/cloth-patches";
 import { listCustomerOrdersForCustomer } from "@/lib/customer-orders/queries";
+import { listPendingItemsForCustomer } from "@/lib/customer-orders/pending-dyeing";
 import {
   getSalesman,
   listInvoicesForSalesman,
@@ -26,10 +28,19 @@ export default async function CustomerDetailPage({ params }: PageProps) {
   const customer = await getSalesman(supabase, id);
   if (!customer || customer.entityType !== "customer") notFound();
 
-  const [orders, invoices, bankAccounts, priceListResult] = await Promise.all([
+  const [
+    orders,
+    invoices,
+    bankAccounts,
+    pending,
+    patches,
+    priceListResult,
+  ] = await Promise.all([
     listCustomerOrdersForCustomer(supabase, id),
     listInvoicesForSalesman(supabase, id),
     listBankAccounts(supabase).catch(() => []),
+    listPendingItemsForCustomer(supabase, id),
+    listClothPatchesForCustomer(supabase, id),
     supabase
       .from("price_list_items")
       .select("*")
@@ -43,6 +54,8 @@ export default async function CustomerDetailPage({ params }: PageProps) {
       initialCustomer={customer}
       initialOrders={orders}
       initialInvoices={invoices}
+      initialPending={pending}
+      initialPatches={patches}
       bankAccounts={bankAccounts}
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
     />

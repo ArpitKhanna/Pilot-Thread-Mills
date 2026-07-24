@@ -76,6 +76,7 @@ export async function PUT(request: Request, context: RouteContext) {
       qty,
       unit,
       source,
+      isUrgent: Boolean(row.isUrgent),
     });
   }
 

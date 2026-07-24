@@ -123,6 +123,7 @@ export async function POST(request: Request) {
       customerId,
       orderDate: body.orderDate ? String(body.orderDate) : undefined,
       notes: body.notes != null ? String(body.notes) : null,
+      isUrgent: Boolean(body.isUrgent),
       createdBy: profile.id,
     });
     return NextResponse.json({ order }, { status: 201 });

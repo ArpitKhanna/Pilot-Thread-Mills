@@ -159,8 +159,8 @@ export function computeCustomerTierInsight(
         speedDays.push(daysBetween(orderDate, now));
       }
     } else if (
-      order.status === "confirmed" ||
-      order.status === "picking" ||
+      order.status === "ready" ||
+      order.status === "packed" ||
       order.status === "draft"
     ) {
       // Open / not yet invoiced — treat as unpaid since order date

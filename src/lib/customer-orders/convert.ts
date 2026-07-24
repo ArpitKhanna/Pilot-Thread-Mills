@@ -19,6 +19,9 @@ export type ConvertOrderInput = {
   paymentEntries?: InvoicePaymentEntry[];
   discountAmount?: number;
   notes?: string;
+  /** Optional per-line qty overrides keyed by order line id */
+  lineQtyOverrides?: Record<string, number>;
+  deliveryBy?: string | null;
 };
 
 export async function convertOrderToInvoice(
@@ -28,10 +31,8 @@ export async function convertOrderToInvoice(
   const order = await getCustomerOrder(supabase, input.orderId);
   if (!order) throw new Error("Order not found");
   if (order.invoiceId) throw new Error("Order already converted to an invoice");
-  if (order.status !== "picking" && order.status !== "confirmed") {
-    throw new Error(
-      "Order must be confirmed or out for delivery before invoicing",
-    );
+  if (order.status !== "packed" && order.status !== "ready") {
+    throw new Error("Order must be ready or packed before invoicing");
   }
   if (order.lines.length === 0) {
     throw new Error("Order has no lines to invoice");
@@ -60,6 +61,11 @@ export async function convertOrderToInvoice(
   const priceRules = customer?.priceRules ?? [];
 
   const lineItems = order.lines.map((line, index) => {
+    const overrideQty = input.lineQtyOverrides?.[line.id];
+    const qty =
+      overrideQty !== undefined && Number.isFinite(overrideQty) && overrideQty > 0
+        ? overrideQty
+        : line.qty;
     const catalog = line.priceListItemId
       ? priceById.get(line.priceListItemId)
       : undefined;
@@ -74,11 +80,11 @@ export async function convertOrderToInvoice(
     const name = line.shadeCode
       ? `${nameBase} — ${line.shadeCode}`
       : nameBase;
-    const amount = Math.round(unitPrice * line.qty * 100) / 100;
+    const amount = Math.round(unitPrice * qty * 100) / 100;
     return {
       id: line.id,
       name,
-      qty: line.qty,
+      qty,
       unitPrice,
       amount,
       priceListItemId: line.priceListItemId ?? undefined,
@@ -182,6 +188,9 @@ export async function convertOrderToInvoice(
   await updateCustomerOrder(supabase, order.id, {
     status: "invoiced",
     invoiceId,
+    ...(input.deliveryBy !== undefined
+      ? { deliveryBy: input.deliveryBy }
+      : {}),
   });
 
   try {

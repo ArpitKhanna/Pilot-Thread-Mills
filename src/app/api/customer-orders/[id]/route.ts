@@ -14,8 +14,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const STATUSES: CustomerOrderStatus[] = [
   "draft",
-  "confirmed",
-  "picking",
+  "ready",
+  "packed",
   "invoiced",
   "cancelled",
 ];
@@ -67,6 +67,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (body.orderDate !== undefined) {
     input.orderDate = String(body.orderDate);
+  }
+  if (body.isUrgent !== undefined) {
+    input.isUrgent = Boolean(body.isUrgent);
+  }
+  if (body.areaSnapshot !== undefined) {
+    input.areaSnapshot =
+      body.areaSnapshot == null ? null : String(body.areaSnapshot);
   }
   if (body.deliveryBy !== undefined) {
     input.deliveryBy =

@@ -44,8 +44,8 @@ const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
 };
 
 const CONFIRMED_STATUSES = new Set([
-  "confirmed",
-  "picking",
+  "ready",
+  "packed",
   "invoiced",
 ]);
 
