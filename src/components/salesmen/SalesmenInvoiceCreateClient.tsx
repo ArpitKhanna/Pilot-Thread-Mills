@@ -443,7 +443,7 @@ export function SalesmenInvoiceCreateClient({
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Orders" },
-          { label: isEdit ? "Edit invoice" : "Create invoice" },
+          { label: "Salesmen" },
         ]}
       />
 
