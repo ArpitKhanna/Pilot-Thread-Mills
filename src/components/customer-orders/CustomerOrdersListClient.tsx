@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
+import { CustomerOrderSidebar } from "@/components/customer-orders/CustomerOrderSidebar";
 import { TopBar } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
-import { PendingLink } from "@/components/ui/PendingLink";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
@@ -18,7 +18,7 @@ import {
   type CustomerOrderStatus,
   type DeliveryStaff,
 } from "@/lib/customer-orders/types";
-import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
+import { formatShortDate, formatShortTime } from "@/lib/salesmen/mock-data";
 import {
   MARKET_DAY_LABELS,
   type MarketDay,
@@ -58,6 +58,7 @@ const BULK_LABEL: Partial<Record<CustomerOrderStatus, string>> = {
 
 type MissingDraft = {
   key: string;
+  customerId: string;
   priceListItemId: string | null;
   itemName: string;
   shadeCode: string;
@@ -73,9 +74,10 @@ function todayLocalDate(): string {
   return `${y}-${m}-${day}`;
 }
 
-function emptyMissingLine(): MissingDraft {
+function emptyMissingLine(customerId = ""): MissingDraft {
   return {
     key: crypto.randomUUID(),
+    customerId,
     priceListItemId: null,
     itemName: "",
     shadeCode: "",
@@ -117,20 +119,21 @@ export function CustomerOrdersListClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
   const [missingOpen, setMissingOpen] = useState(false);
-  const [missingCustomerId, setMissingCustomerId] = useState("");
   const [missingDate, setMissingDate] = useState(todayLocalDate);
   const [missingLines, setMissingLines] = useState<MissingDraft[]>([
     emptyMissingLine(),
   ]);
   const [missingBusy, setMissingBusy] = useState(false);
   const [missingError, setMissingError] = useState("");
-  const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
+  const [whatsappUrls, setWhatsappUrls] = useState<
+    Array<{ customerName: string; url: string }>
+  >([]);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
 
   const areas = useMemo(() => {
     const set = new Set<string>();
@@ -251,31 +254,6 @@ export function CustomerOrdersListClient({
     }
   }
 
-  async function deleteOrder(id: string) {
-    if (!window.confirm("Delete this order? This cannot be undone.")) return;
-    setDeletingId(id);
-    setBulkError("");
-    try {
-      const res = await fetch(`/api/customer-orders/${id}`, {
-        method: "DELETE",
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to delete order");
-      setOrders((prev) => prev.filter((o) => o.id !== id));
-      setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        if (next.size === 0) setSelectColumn(null);
-        return next;
-      });
-      router.refresh();
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : "Failed to delete order");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
   async function submitBulkDelete() {
     if (selectColumn !== "picking" || selectedOrders.length === 0) return;
     if (
@@ -347,41 +325,48 @@ export function CustomerOrdersListClient({
   }
 
   async function submitMissing() {
-    if (!missingCustomerId) {
-      setMissingError("Select a customer");
-      return;
-    }
     const items = missingLines
-      .filter((l) => l.shadeCode.trim() && Number(l.qty) > 0)
+      .filter(
+        (l) =>
+          l.customerId &&
+          l.shadeCode.trim() &&
+          Number(l.qty) > 0,
+      )
       .map((l) => ({
+        customerId: l.customerId,
         priceListItemId: l.priceListItemId,
         shadeCode: l.shadeCode.trim(),
         qty: Number(l.qty),
         unit: l.unit,
+        invoiceDate: missingDate,
       }));
     if (items.length === 0) {
-      setMissingError("Add at least one missing shade line");
+      setMissingError("Add at least one line with customer, shade, and qty");
       return;
     }
     setMissingBusy(true);
     setMissingError("");
-    setWhatsappUrl(null);
+    setWhatsappUrls([]);
     try {
       const res = await fetch("/api/customer-pending-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: missingCustomerId,
           invoiceDate: missingDate,
           items,
         }),
       });
       const json = (await res.json()) as {
         error?: string;
+        whatsappUrls?: Array<{ customerName: string; url: string }>;
         whatsappUrl?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to save");
-      setWhatsappUrl(json.whatsappUrl ?? null);
+      if (json.whatsappUrls?.length) {
+        setWhatsappUrls(json.whatsappUrls);
+      } else if (json.whatsappUrl) {
+        setWhatsappUrls([{ customerName: "Customer", url: json.whatsappUrl }]);
+      }
       setMissingLines([emptyMissingLine()]);
       router.refresh();
     } catch (e) {
@@ -411,16 +396,14 @@ export function CustomerOrdersListClient({
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               Customer Orders
             </h1>
-            <p className="mt-1 text-sm text-muted">
-              Picking → packed → invoice → out → delivered. Missing shades at
-              end of day.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => {
-                setWhatsappUrl(null);
+                setWhatsappUrls([]);
+                setMissingError("");
+                setMissingLines([emptyMissingLine()]);
                 setMissingOpen(true);
               }}
               className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
@@ -555,12 +538,16 @@ export function CustomerOrdersListClient({
                         const area =
                           order.areaSnapshot || order.customerArea || "—";
                         const checked = selected.has(order.id);
+                        const orderTime = formatShortTime(order.createdAt);
                         return (
                           <article
                             key={order.id}
-                            className={`rounded-lg border border-border bg-surface p-3 shadow-sm ${
-                              checked ? "ring-2 ring-foreground/20" : ""
+                            className={`cursor-pointer rounded-lg border border-border bg-surface p-3 shadow-sm ${
+                              checked || detailOrderId === order.id
+                                ? "ring-2 ring-foreground/20"
+                                : ""
                             }`}
+                            onClick={() => setDetailOrderId(order.id)}
                           >
                             <div className="flex items-start gap-2">
                               {selectable ? (
@@ -568,6 +555,7 @@ export function CustomerOrdersListClient({
                                   type="checkbox"
                                   className="mt-1"
                                   checked={checked}
+                                  onClick={(e) => e.stopPropagation()}
                                   onChange={() =>
                                     toggleSelect(status, order.id)
                                   }
@@ -575,27 +563,8 @@ export function CustomerOrdersListClient({
                                 />
                               ) : null}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <PendingLink
-                                    href={`/orders/customers/${order.id}`}
-                                    className="block font-medium hover:underline"
-                                  >
-                                    {order.customerName ?? "Customer"}
-                                  </PendingLink>
-                                  {status === "picking" ? (
-                                    <button
-                                      type="button"
-                                      disabled={deletingId === order.id}
-                                      onClick={() =>
-                                        void deleteOrder(order.id)
-                                      }
-                                      className="shrink-0 text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
-                                    >
-                                      {deletingId === order.id
-                                        ? "…"
-                                        : "Delete"}
-                                    </button>
-                                  ) : null}
+                                <div className="font-medium">
+                                  {order.customerName ?? "Customer"}
                                 </div>
                                 {order.isUrgent ? (
                                   <span className="mt-1 inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
@@ -604,12 +573,7 @@ export function CustomerOrdersListClient({
                                 ) : null}
                                 <div className="mt-1 text-xs text-muted">
                                   {area} · {formatShortDate(order.orderDate)}
-                                </div>
-                                <div className="mt-1 text-xs tabular-nums text-muted">
-                                  {formatINR(order.amount)}
-                                  {order.lineCount
-                                    ? ` · ${order.lineCount} lines`
-                                    : ""}
+                                  {orderTime ? ` · ${orderTime}` : ""}
                                 </div>
                               </div>
                             </div>
@@ -694,6 +658,29 @@ export function CustomerOrdersListClient({
         </div>
       </main>
 
+      <CustomerOrderSidebar
+        orderId={detailOrderId}
+        priceList={priceList}
+        onClose={() => setDetailOrderId(null)}
+        onOrderChange={(updated) => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === updated.id
+                ? {
+                    ...o,
+                    ...updated,
+                    lineCount:
+                      updated.lines.length ||
+                      updated.lineCount ||
+                      o.lineCount,
+                    amount: updated.amount || o.amount,
+                  }
+                : o,
+            ),
+          );
+        }}
+      />
+
       <NewCustomerOrderModal
         open={newOpen}
         onClose={() => {
@@ -768,43 +755,30 @@ export function CustomerOrdersListClient({
         open={missingOpen}
         onClose={() => setMissingOpen(false)}
         title="Report Missing Items"
+        size="xl"
       >
         <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Upload missing shades from pick sheets. Creates dyeing jobs and a
-            WhatsApp message.
-          </p>
           {missingError ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
               {missingError}
             </p>
           ) : null}
-          {whatsappUrl ? (
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900"
-            >
-              Open WhatsApp missing list →
-            </a>
-          ) : null}
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Customer</span>
-            <select
-              value={missingCustomerId}
-              onChange={(e) => setMissingCustomerId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none"
-            >
-              <option value="">Select…</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+          {whatsappUrls.length > 0 ? (
+            <div className="space-y-2">
+              {whatsappUrls.map((entry) => (
+                <a
+                  key={entry.url + entry.customerName}
+                  href={entry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900"
+                >
+                  WhatsApp {entry.customerName} →
+                </a>
               ))}
-            </select>
-          </label>
-          <label className="block space-y-1.5">
+            </div>
+          ) : null}
+          <label className="block max-w-xs space-y-1.5">
             <span className="text-sm font-medium">Invoice / order date</span>
             <input
               type="date"
@@ -817,8 +791,29 @@ export function CustomerOrdersListClient({
             {missingLines.map((line) => (
               <div
                 key={line.key}
-                className="grid gap-2 sm:grid-cols-[1.4fr_0.8fr_0.5fr_0.6fr]"
+                className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.2fr_1.2fr_0.7fr_0.45fr_0.55fr_auto]"
               >
+                <select
+                  value={line.customerId}
+                  onChange={(e) =>
+                    setMissingLines((prev) =>
+                      prev.map((l) =>
+                        l.key === line.key
+                          ? { ...l, customerId: e.target.value }
+                          : l,
+                      ),
+                    )
+                  }
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                  aria-label="Customer"
+                >
+                  <option value="">Customer…</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
                 <ItemNameCombobox
                   items={priceList}
                   value={line.itemName}
@@ -900,13 +895,30 @@ export function CustomerOrdersListClient({
                     ),
                   )}
                 </select>
+                <button
+                  type="button"
+                  disabled={missingLines.length <= 1}
+                  onClick={() =>
+                    setMissingLines((prev) =>
+                      prev.filter((l) => l.key !== line.key),
+                    )
+                  }
+                  className="px-2 text-sm text-red-700 hover:underline disabled:opacity-30"
+                >
+                  Remove
+                </button>
               </div>
             ))}
             <button
               type="button"
-              onClick={() =>
-                setMissingLines((prev) => [...prev, emptyMissingLine()])
-              }
+              onClick={() => {
+                const lastCustomer =
+                  missingLines[missingLines.length - 1]?.customerId ?? "";
+                setMissingLines((prev) => [
+                  ...prev,
+                  emptyMissingLine(lastCustomer),
+                ]);
+              }}
               className="text-sm font-medium text-muted hover:text-foreground"
             >
               + Add line

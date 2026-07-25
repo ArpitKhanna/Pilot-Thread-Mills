@@ -71,7 +71,6 @@ export function NewCustomerOrderModal({
   initialCustomerId,
 }: NewCustomerOrderModalProps) {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
   const [orderId, setOrderId] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useState("");
@@ -88,7 +87,6 @@ export function NewCustomerOrderModal({
 
   const [slips, setSlips] = useState<CustomerOrderAttachment[]>([]);
   const [patches, setPatches] = useState<CustomerOrderAttachment[]>([]);
-  const [manualOrderOpen, setManualOrderOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>(() => emptyLines(3));
 
   const selectedCustomer =
@@ -175,7 +173,6 @@ export function NewCustomerOrderModal({
   }
 
   function reset() {
-    setStep(1);
     setOrderId(null);
     setCustomerId("");
     setCustomerQuery("");
@@ -186,7 +183,6 @@ export function NewCustomerOrderModal({
     setBusy("");
     setSlips([]);
     setPatches([]);
-    setManualOrderOpen(false);
     setLines(emptyLines(3));
   }
 
@@ -200,14 +196,23 @@ export function NewCustomerOrderModal({
     }
   }
 
-  async function createOrderDraft(payload: Record<string, unknown>) {
+  async function ensureOrder(): Promise<string | null> {
+    if (orderId) return orderId;
+    if (!customerId) {
+      setError("Select a customer");
+      return null;
+    }
     setBusy("create");
     setError("");
     try {
       const res = await fetch("/api/customer-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          customerId,
+          orderDate,
+          isUrgent,
+        }),
       });
       const json = (await res.json()) as {
         order?: CustomerOrder;
@@ -223,31 +228,22 @@ export function NewCustomerOrderModal({
       setPatches(
         json.order.attachments.filter((a) => a.kind === "cloth_patch"),
       );
-      setStep(2);
+      return json.order.id;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create order");
+      return null;
     } finally {
       setBusy("");
     }
-  }
-
-  async function goToStep2() {
-    if (!customerId) {
-      setError("Select a customer");
-      return;
-    }
-    await createOrderDraft({
-      customerId,
-      orderDate,
-      isUrgent,
-    });
   }
 
   async function uploadFiles(
     files: FileList | null,
     kind: "order_slip" | "cloth_patch",
   ) {
-    if (!files?.length || !orderId) return;
+    if (!files?.length) return;
+    const id = await ensureOrder();
+    if (!id) return;
     setBusy("upload");
     setError("");
     try {
@@ -256,10 +252,10 @@ export function NewCustomerOrderModal({
         const form = new FormData();
         form.set("file", file);
         form.set("kind", kind);
-        const res = await fetch(
-          `/api/customer-orders/${orderId}/attachments`,
-          { method: "POST", body: form },
-        );
+        const res = await fetch(`/api/customer-orders/${id}/attachments`, {
+          method: "POST",
+          body: form,
+        });
         const json = (await res.json()) as {
           order?: CustomerOrder;
           error?: string;
@@ -316,10 +312,17 @@ export function NewCustomerOrderModal({
   }
 
   async function finishOrder() {
-    if (!orderId) return;
+    const id = await ensureOrder();
+    if (!id) return;
     setBusy("save");
     setError("");
     try {
+      await fetch(`/api/customer-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isUrgent, orderDate }),
+      });
+
       const payload = lines
         .filter((l) => l.shadeCode.trim() && Number(l.qty) > 0)
         .map((l) => ({
@@ -330,7 +333,7 @@ export function NewCustomerOrderModal({
           source: "manual" as const,
         }));
 
-      const res = await fetch(`/api/customer-orders/${orderId}/lines`, {
+      const res = await fetch(`/api/customer-orders/${id}/lines`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lines: payload, createMissingShades: true }),
@@ -343,7 +346,6 @@ export function NewCustomerOrderModal({
         throw new Error(json.error ?? "Failed to save lines");
       }
 
-      const id = orderId;
       reset();
       onClose();
       router.push(`/orders/customers/${id}`);
@@ -354,355 +356,308 @@ export function NewCustomerOrderModal({
     }
   }
 
-  const title =
-    step === 1
-      ? "New customer order"
-      : "Order slips, patches & shades";
-
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title={title}
-      size={step === 2 ? "xl" : "md"}
+      title="New customer order"
+      size="xl"
     >
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <span
-            className={
-              step === 1 ? "font-medium text-foreground" : undefined
-            }
-          >
-            1. Customer
-          </span>
-          <span aria-hidden>/</span>
-          <span
-            className={
-              step === 2 ? "font-medium text-foreground" : undefined
-            }
-          >
-            2. Slips & shades
-          </span>
-        </div>
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Customer</span>
+            <input
+              ref={customerInputRef}
+              type="text"
+              role="combobox"
+              aria-expanded={customerOpen}
+              aria-controls={customerListId}
+              aria-autocomplete="list"
+              value={customerQuery}
+              placeholder="Search customer…"
+              autoComplete="off"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+              onFocus={() => setCustomerOpen(true)}
+              onChange={(e) => {
+                setCustomerQuery(e.target.value);
+                setCustomerId("");
+                setCustomerOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCustomerOpen(false);
+                  return;
+                }
+                if (e.key === "Enter" && filteredCustomers[0]) {
+                  e.preventDefault();
+                  selectCustomer(filteredCustomers[0]);
+                }
+              }}
+            />
+            {customerOpen &&
+            customerMenuPos &&
+            typeof document !== "undefined"
+              ? createPortal(
+                  <div
+                    ref={customerMenuRef}
+                    id={customerListId}
+                    role="listbox"
+                    style={{
+                      position: "fixed",
+                      top: customerMenuPos.top,
+                      left: customerMenuPos.left,
+                      width: customerMenuPos.width,
+                      transform:
+                        customerMenuPos.top <
+                        (customerInputRef.current?.getBoundingClientRect()
+                          .top ?? 0)
+                          ? "translateY(-100%)"
+                          : undefined,
+                      zIndex: 80,
+                    }}
+                    className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
+                  >
+                    {filteredCustomers.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted">
+                        No matching customers
+                      </div>
+                    ) : (
+                      filteredCustomers.map((customer) => (
+                        <button
+                          key={customer.id}
+                          type="button"
+                          role="option"
+                          aria-selected={customerId === customer.id}
+                          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                            customerId === customer.id
+                              ? "bg-sidebar"
+                              : "hover:bg-sidebar"
+                          }`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            selectCustomer(customer);
+                          }}
+                        >
+                          <span className="min-w-0 truncate">
+                            {customer.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted">
+                            {customer.phone || "No phone"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>,
+                  document.body,
+                )
+              : null}
+          </label>
 
-        {step === 1 ? (
-          <>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Order date</span>
-              <input
-                type="date"
-                value={orderDate}
-                readOnly
-                disabled
-                className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2.5 text-sm text-muted"
-              />
-            </label>
-
-            <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm">
+          <div className="flex flex-col gap-3 sm:pt-6">
+            <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={isUrgent}
                 onChange={(e) => setIsUrgent(e.target.checked)}
               />
-              <span className="font-medium">Urgent order</span>
+              <span className="font-medium">Urgent</span>
             </label>
-
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Customer</span>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-muted">Date</span>
               <input
-                ref={customerInputRef}
-                type="text"
-                role="combobox"
-                aria-expanded={customerOpen}
-                aria-controls={customerListId}
-                aria-autocomplete="list"
-                value={customerQuery}
-                placeholder="Search customer…"
-                autoComplete="off"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-                onFocus={() => setCustomerOpen(true)}
-                onChange={(e) => {
-                  setCustomerQuery(e.target.value);
-                  setCustomerId("");
-                  setCustomerOpen(true);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setCustomerOpen(false);
-                    return;
-                  }
-                  if (e.key === "Enter" && filteredCustomers[0]) {
-                    e.preventDefault();
-                    selectCustomer(filteredCustomers[0]);
-                  }
-                }}
+                type="date"
+                value={orderDate}
+                readOnly
+                disabled
+                className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2 text-sm text-muted"
               />
-              {customerOpen &&
-              customerMenuPos &&
-              typeof document !== "undefined"
-                ? createPortal(
-                    <div
-                      ref={customerMenuRef}
-                      id={customerListId}
-                      role="listbox"
-                      style={{
-                        position: "fixed",
-                        top: customerMenuPos.top,
-                        left: customerMenuPos.left,
-                        width: customerMenuPos.width,
-                        transform:
-                          customerMenuPos.top <
-                          (customerInputRef.current?.getBoundingClientRect()
-                            .top ?? 0)
-                            ? "translateY(-100%)"
-                            : undefined,
-                        zIndex: 80,
-                      }}
-                      className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
-                    >
-                      {filteredCustomers.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-muted">
-                          No matching customers
-                        </div>
-                      ) : (
-                        filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            role="option"
-                            aria-selected={customerId === customer.id}
-                            className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                              customerId === customer.id
-                                ? "bg-sidebar"
-                                : "hover:bg-sidebar"
-                            }`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              selectCustomer(customer);
-                            }}
-                          >
-                            <span className="min-w-0 truncate">
-                              {customer.name}
-                            </span>
-                            <span className="shrink-0 text-xs text-muted">
-                              {customer.phone || "No phone"}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>,
-                    document.body,
-                  )
-                : null}
             </label>
+          </div>
+        </div>
 
-          </>
-        ) : (
-          <div className="space-y-5">
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Create manual order</h3>
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">Order lines</h3>
+          <div className="space-y-2">
+            {lines.map((line) => (
+              <div
+                key={line.key}
+                className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
+              >
+                <ItemNameCombobox
+                  items={priceList}
+                  value={line.itemName}
+                  onChange={(value) =>
+                    updateLine(line.key, {
+                      itemName: value,
+                      priceListItemId: null,
+                    })
+                  }
+                  onSelect={(item) =>
+                    updateLine(line.key, {
+                      itemName: item.item_name,
+                      priceListItemId: item.id,
+                    })
+                  }
+                  onTabToQty={() => undefined}
+                  showPrice={false}
+                  placeholder="Item"
+                />
+                <input
+                  value={line.shadeCode}
+                  onChange={(e) =>
+                    updateLine(line.key, { shadeCode: e.target.value })
+                  }
+                  placeholder="Shade"
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                />
+                <input
+                  value={line.qty}
+                  onChange={(e) =>
+                    updateLine(line.key, { qty: e.target.value })
+                  }
+                  placeholder="Qty"
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                />
+                <select
+                  value={line.unit}
+                  onChange={(e) =>
+                    updateLine(line.key, {
+                      unit: e.target.value as CustomerOrderLineUnit,
+                    })
+                  }
+                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                >
+                  {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                    ([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
                 <button
                   type="button"
-                  onClick={() => {
-                    setManualOrderOpen(true);
+                  onClick={() =>
                     setLines((prev) =>
-                      prev.length >= 3 ? prev : emptyLines(3),
-                    );
-                  }}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+                      prev.length <= 1
+                        ? prev
+                        : prev.filter((l) => l.key !== line.key),
+                    )
+                  }
+                  className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
                 >
-                  Create
+                  ×
                 </button>
               </div>
-              {manualOrderOpen ? (
-                <div className="space-y-2">
-                  {lines.map((line) => (
-                    <div
-                      key={line.key}
-                      className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
-                    >
-                      <ItemNameCombobox
-                        items={priceList}
-                        value={line.itemName}
-                        onChange={(value) =>
-                          updateLine(line.key, {
-                            itemName: value,
-                            priceListItemId: null,
-                          })
-                        }
-                        onSelect={(item) =>
-                          updateLine(line.key, {
-                            itemName: item.item_name,
-                            priceListItemId: item.id,
-                          })
-                        }
-                        onTabToQty={() => undefined}
-                        showPrice={false}
-                        placeholder="Item"
-                      />
-                      <input
-                        value={line.shadeCode}
-                        onChange={(e) =>
-                          updateLine(line.key, { shadeCode: e.target.value })
-                        }
-                        placeholder="Shade"
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
-                      />
-                      <input
-                        value={line.qty}
-                        onChange={(e) =>
-                          updateLine(line.key, { qty: e.target.value })
-                        }
-                        placeholder="Qty"
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
-                      />
-                      <select
-                        value={line.unit}
-                        onChange={(e) =>
-                          updateLine(line.key, {
-                            unit: e.target.value as CustomerOrderLineUnit,
-                          })
-                        }
-                        className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
-                      >
-                        {Object.entries(ORDER_LINE_UNIT_LABELS).map(
-                          ([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setLines((prev) =>
-                            prev.length <= 1
-                              ? prev
-                              : prev.filter((l) => l.key !== line.key),
-                          )
-                        }
-                        className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+            ))}
+            <button
+              type="button"
+              onClick={() => setLines((prev) => [...prev, emptyLine()])}
+              className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Add items
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Order slips</h3>
+            <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
+              Upload
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void uploadFiles(e.target.files, "order_slip");
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {slips.length > 0 ? (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {slips.map((slip) => (
+                <li
+                  key={slip.id}
+                  className="rounded-lg border border-border p-2"
+                >
+                  {slip.signedUrl &&
+                  slip.contentType?.startsWith("image/") ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={slip.signedUrl}
+                      alt={slip.fileName ?? "Order slip"}
+                      className="mb-2 max-h-36 w-full rounded-md object-contain bg-sidebar"
+                    />
+                  ) : (
+                    <p className="mb-2 text-sm">{slip.fileName ?? "File"}</p>
+                  )}
                   <button
                     type="button"
-                    onClick={() =>
-                      setLines((prev) => [...prev, emptyLine()])
-                    }
-                    className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+                    disabled={Boolean(busy)}
+                    onClick={() => removeAttachment(slip.id)}
+                    className="rounded-md border border-border px-2 py-1 text-xs"
                   >
-                    Add items
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Cloth patches</h3>
+            <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
+              Upload
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void uploadFiles(e.target.files, "cloth_patch");
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {patches.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {patches.map((patch) => (
+                <div
+                  key={patch.id}
+                  className="rounded-lg border border-border p-1"
+                >
+                  {patch.signedUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={patch.signedUrl}
+                      alt={patch.fileName ?? "Cloth patch"}
+                      className="mb-1 h-20 w-full rounded object-cover"
+                    />
+                  ) : (
+                    <p className="p-1 text-xs">{patch.fileName}</p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => removeAttachment(patch.id)}
+                    className="w-full rounded-md border border-border px-1 py-0.5 text-[10px]"
+                  >
+                    Remove
                   </button>
                 </div>
-              ) : null}
-            </section>
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Order slips</h3>
-                <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      void uploadFiles(e.target.files, "order_slip");
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-              {slips.length > 0 ? (
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {slips.map((slip) => (
-                    <li
-                      key={slip.id}
-                      className="rounded-lg border border-border p-2"
-                    >
-                      {slip.signedUrl &&
-                      slip.contentType?.startsWith("image/") ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={slip.signedUrl}
-                          alt={slip.fileName ?? "Order slip"}
-                          className="mb-2 max-h-36 w-full rounded-md object-contain bg-sidebar"
-                        />
-                      ) : (
-                        <p className="mb-2 text-sm">
-                          {slip.fileName ?? "File"}
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        disabled={Boolean(busy)}
-                        onClick={() => removeAttachment(slip.id)}
-                        className="rounded-md border border-border px-2 py-1 text-xs"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </section>
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Cloth patches</h3>
-                <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      void uploadFiles(e.target.files, "cloth_patch");
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-              {patches.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {patches.map((patch) => (
-                    <div
-                      key={patch.id}
-                      className="rounded-lg border border-border p-1"
-                    >
-                      {patch.signedUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={patch.signedUrl}
-                          alt={patch.fileName ?? "Cloth patch"}
-                          className="mb-1 h-20 w-full rounded object-cover"
-                        />
-                      ) : (
-                        <p className="p-1 text-xs">{patch.fileName}</p>
-                      )}
-                      <button
-                        type="button"
-                        disabled={Boolean(busy)}
-                        onClick={() => removeAttachment(patch.id)}
-                        className="w-full rounded-md border border-border px-1 py-0.5 text-[10px]"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          </div>
-        )}
+              ))}
+            </div>
+          ) : null}
+        </section>
 
         {error ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -711,35 +666,24 @@ export function NewCustomerOrderModal({
         ) : null}
 
         <div className="flex gap-3 pt-1">
-          {step === 1 ? (
-            <>
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={handleClose}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(busy) || !customerId}
-                onClick={goToStep2}
-                className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
-              >
-                {busy === "create" ? "Creating…" : "Continue"}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={Boolean(busy)}
-              onClick={finishOrder}
-              className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
-            >
-              {busy === "save" ? "Saving…" : "Save and create order"}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={handleClose}
+            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(busy) || !customerId}
+            onClick={() => void finishOrder()}
+            className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
+          >
+            {busy === "save" || busy === "create"
+              ? "Saving…"
+              : "Save and create order"}
+          </button>
         </div>
       </div>
     </Modal>

@@ -49,14 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const customerId = String(body.customerId ?? "").trim();
-  if (!customerId) {
-    return NextResponse.json(
-      { error: "Customer is required" },
-      { status: 400 },
-    );
-  }
-
+  const fallbackCustomerId = String(body.customerId ?? "").trim();
   const rawItems = Array.isArray(body.items) ? body.items : null;
   if (!rawItems || rawItems.length === 0) {
     return NextResponse.json(
@@ -71,6 +64,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid item" }, { status: 400 });
     }
     const row = raw as Record<string, unknown>;
+    const customerId =
+      String(row.customerId ?? "").trim() || fallbackCustomerId;
+    if (!customerId) {
+      return NextResponse.json(
+        { error: "Each item needs a customer" },
+        { status: 400 },
+      );
+    }
     const unit = String(row.unit ?? "box") as CustomerOrderLineUnit;
     if (!UNITS.includes(unit)) {
       return NextResponse.json({ error: "Invalid unit" }, { status: 400 });
@@ -103,23 +104,55 @@ export async function POST(request: Request) {
       profile.id,
     );
 
-    const customer = await getSalesman(supabase, customerId);
-    const whatsappUrl = buildMissingItemsWhatsAppUrl({
-      customerName: customer?.name ?? "Customer",
-      phone: customer?.phone,
-      invoiceDate:
-        items[0]?.invoiceDate ??
-        (body.invoiceDate ? String(body.invoiceDate) : null),
-      items: result.pending.map((p) => ({
-        itemName: p.itemName,
-        shadeCode: p.shadeCode,
-        qty: p.qty,
-        unit: p.unit,
-      })),
-    });
+    const byCustomer = new Map<
+      string,
+      {
+        customerId: string;
+        invoiceDate: string | null;
+        items: Array<{
+          itemName?: string | null;
+          shadeCode: string;
+          qty: number;
+          unit: string;
+        }>;
+      }
+    >();
+
+    for (const pending of result.pending) {
+      const group = byCustomer.get(pending.customerId) ?? {
+        customerId: pending.customerId,
+        invoiceDate: pending.invoiceDate,
+        items: [],
+      };
+      group.items.push({
+        itemName: pending.itemName,
+        shadeCode: pending.shadeCode,
+        qty: pending.qty,
+        unit: pending.unit,
+      });
+      byCustomer.set(pending.customerId, group);
+    }
+
+    const whatsappUrls: Array<{ customerName: string; url: string }> = [];
+    for (const group of byCustomer.values()) {
+      const customer = await getSalesman(supabase, group.customerId);
+      whatsappUrls.push({
+        customerName: customer?.name ?? "Customer",
+        url: buildMissingItemsWhatsAppUrl({
+          customerName: customer?.name ?? "Customer",
+          phone: customer?.phone,
+          invoiceDate: group.invoiceDate,
+          items: group.items,
+        }),
+      });
+    }
 
     return NextResponse.json(
-      { ...result, whatsappUrl },
+      {
+        ...result,
+        whatsappUrls,
+        whatsappUrl: whatsappUrls[0]?.url ?? null,
+      },
       { status: 201 },
     );
   } catch (e) {
