@@ -22,6 +22,7 @@ import type {
   RawStockSupplier,
   RawStockTimeRangePreset,
 } from "@/lib/raw-stock/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 import { MOVEMENT_TYPE_LABELS } from "@/lib/raw-stock/types";
 
 type TabId = "stock" | "timeline" | "analytics" | "suppliers";
@@ -68,12 +69,13 @@ export function RawStockStatusClient({
   initialBalances,
 }: RawStockStatusClientProps) {
   const [tab, setTab] = useState<TabId>("stock");
-  const [movements, setMovements] = useState(initialMovements);
-  const [suppliers, setSuppliers] = useState(initialSuppliers);
-  const [counts, setCounts] = useState(initialCounts);
-  const [balances, setBalances] = useState(initialBalances);
   const [modalKind, setModalKind] = useState<MovementModalKind | null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const pauseSync = modalKind != null || supplierModalOpen;
+  const [movements, setMovements] = useSyncedState(initialMovements, !pauseSync);
+  const [suppliers, setSuppliers] = useSyncedState(initialSuppliers, !pauseSync);
+  const [counts, setCounts] = useSyncedState(initialCounts, !pauseSync);
+  const [balances, setBalances] = useSyncedState(initialBalances, !pauseSync);
   const [editingSupplier, setEditingSupplier] = useState<RawStockSupplier | null>(
     null,
   );

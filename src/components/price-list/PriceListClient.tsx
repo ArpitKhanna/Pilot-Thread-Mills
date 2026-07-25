@@ -13,6 +13,7 @@ import {
   type ItemType,
   type PriceListItem,
 } from "@/lib/auth/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 
 type PriceListClientProps = {
   context: AppContext;
@@ -50,13 +51,14 @@ export function PriceListClient({
   pendingCount,
 }: PriceListClientProps) {
   const isAdmin = context.profile.role === "admin";
-  const [items, setItems] = useState(initialItems);
+  const [modalOpen, setModalOpen] = useState(false);
+  // Pause list sync while editing so a live refresh doesn't clobber the form.
+  const [items, setItems] = useSyncedState(initialItems, !modalOpen);
   const [tab, setTab] = useState<"approved" | "pending">("approved");
   const [editMode, setEditMode] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [countFilter, setCountFilter] = useState<string>("all");
-  const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PriceListItem | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);

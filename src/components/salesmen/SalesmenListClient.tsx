@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PendingLink } from "@/components/ui/PendingLink";
 import type { AppContext } from "@/app/(app)/layout";
 import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 import type { Salesman } from "@/lib/salesmen/types";
 
 type SalesmenListClientProps = {
@@ -31,11 +32,11 @@ export function SalesmenListClient({
   context,
   initialSalesmen,
 }: SalesmenListClientProps) {
-  const [salesmen, setSalesmen] = useState<Salesman[]>(initialSalesmen);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [salesmen, setSalesmen] = useSyncedState(initialSalesmen, !modalOpen);
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [search, setSearch] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Salesman | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);

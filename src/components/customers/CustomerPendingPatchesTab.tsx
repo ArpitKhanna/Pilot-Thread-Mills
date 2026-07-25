@@ -11,6 +11,7 @@ import {
   type CustomerOrderLineUnit,
   type CustomerPendingItem,
 } from "@/lib/customer-orders/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 
 type CustomerPendingPatchesTabProps = {
   customerId: string;
@@ -29,8 +30,6 @@ export function CustomerPendingPatchesTab({
   initialPatches,
 }: CustomerPendingPatchesTabProps) {
   const router = useRouter();
-  const [pending, setPending] = useState(initialPending);
-  const [patches, setPatches] = useState(initialPatches);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
@@ -41,6 +40,9 @@ export function CustomerPendingPatchesTab({
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState<CustomerOrderLineUnit>("box");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const pauseSync = Boolean(busy) || editingId != null;
+  const [pending, setPending] = useSyncedState(initialPending, !pauseSync);
+  const [patches, setPatches] = useSyncedState(initialPatches, !pauseSync);
   const [editItemName, setEditItemName] = useState("");
   const [editPriceListItemId, setEditPriceListItemId] = useState<string | null>(
     null,

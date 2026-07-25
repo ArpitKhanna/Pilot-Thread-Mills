@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
@@ -98,6 +98,16 @@ export function CustomerOrderDetailClient({
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [discountAmount, setDiscountAmount] = useState("0");
   const [shadeEditorKey, setShadeEditorKey] = useState<string | null>(null);
+
+  const pauseSync =
+    Boolean(busy) || convertOpen || deliveryOpen || shadeEditorKey != null;
+
+  useEffect(() => {
+    if (pauseSync) return;
+    setOrder(initialOrder);
+    setLines(linesFromOrder(initialOrder));
+    setDeliveryBy(initialOrder.deliveryBy ?? "");
+  }, [initialOrder, pauseSync]);
 
   const locked =
     order.status === "invoiced" ||

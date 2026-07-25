@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppContext } from "@/app/(app)/layout";
+import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 import { MobileNavProvider } from "./MobileNavContext";
 import { Sidebar } from "./Sidebar";
 
@@ -10,6 +11,8 @@ type AppShellProps = {
 };
 
 export function AppShell({ context, children }: AppShellProps) {
+  useRealtimeRefresh();
+
   return (
     <MobileNavProvider>
       <div className="flex h-[100dvh] overflow-hidden bg-background">

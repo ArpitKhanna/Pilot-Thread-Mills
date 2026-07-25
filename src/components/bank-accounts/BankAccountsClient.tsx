@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import { buildBankAccountWhatsAppShareUrl } from "@/lib/bank-accounts/mappers";
 import type { BankAccount } from "@/lib/bank-accounts/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 
 type BankAccountsClientProps = {
   context: AppContext;
@@ -39,11 +40,11 @@ export function BankAccountsClient({
   context,
   initialAccounts,
 }: BankAccountsClientProps) {
-  const [accounts, setAccounts] = useState(initialAccounts);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [accounts, setAccounts] = useSyncedState(initialAccounts, !modalOpen);
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [editMode, setEditMode] = useState(false);
   const [search, setSearch] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);

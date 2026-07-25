@@ -24,6 +24,7 @@ import {
   type DeliveryStaff,
 } from "@/lib/customer-orders/types";
 import { formatShortDate, formatShortTime } from "@/lib/salesmen/mock-data";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 import {
   MARKET_DAY_LABELS,
   type Invoice,
@@ -131,7 +132,6 @@ export function CustomerOrdersListClient({
   deliveryStaff,
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
-  const [orders, setOrders] = useState(initialOrders);
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("order_time_desc");
@@ -171,6 +171,15 @@ export function CustomerOrdersListClient({
     Array<{ customerName: string; url: string }>
   >([]);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+
+  const pauseOrdersSync =
+    Boolean(draggingId) ||
+    bulkBusy ||
+    runBusy ||
+    outBusy ||
+    missingBusy ||
+    invoiceOrders.length > 0;
+  const [orders, setOrders] = useSyncedState(initialOrders, !pauseOrdersSync);
 
   const actionOrders = useMemo(
     () => orders.filter((o) => actionOrderIds.includes(o.id)),

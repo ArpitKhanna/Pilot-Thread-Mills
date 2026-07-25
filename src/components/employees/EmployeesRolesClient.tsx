@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -13,6 +13,7 @@ import {
   type RoleAccessPayload,
 } from "@/lib/employees/types";
 import { groupModulesBySection } from "@/lib/modules/navigation";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 
 type EmployeesRolesClientProps = {
   context: AppContext;
@@ -47,7 +48,6 @@ export function EmployeesRolesClient({
   initialEmployees,
   initialRoleAccess,
 }: EmployeesRolesClientProps) {
-  const [employees, setEmployees] = useState(initialEmployees);
   const [modules] = useState<AppModule[]>(initialRoleAccess.modules);
   const [grantSet, setGrantSet] = useState(() =>
     grantsToSet(initialRoleAccess.grants),
@@ -61,6 +61,16 @@ export function EmployeesRolesClient({
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [pinModalOpen, setPinModalOpen] = useState(false);
+  const pauseEmployeeSync = modalOpen || pinModalOpen;
+  const [employees, setEmployees] = useSyncedState(
+    initialEmployees,
+    !pauseEmployeeSync,
+  );
+
+  useEffect(() => {
+    if (accessDirty) return;
+    setGrantSet(grantsToSet(initialRoleAccess.grants));
+  }, [initialRoleAccess.grants, accessDirty]);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [pinTarget, setPinTarget] = useState<Employee | null>(null);
   const [form, setForm] = useState<EmployeeForm>(emptyForm);

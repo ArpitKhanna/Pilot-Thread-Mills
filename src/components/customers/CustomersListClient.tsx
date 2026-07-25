@@ -7,6 +7,7 @@ import { PendingLink } from "@/components/ui/PendingLink";
 import type { AppContext } from "@/app/(app)/layout";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { MarketDay, Salesman } from "@/lib/salesmen/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 import { MARKET_DAY_LABELS, MARKET_DAYS } from "@/lib/salesmen/types";
 
 type CustomersListClientProps = {
@@ -45,7 +46,11 @@ export function CustomersListClient({
   context,
   initialCustomers,
 }: CustomersListClientProps) {
-  const [customers, setCustomers] = useState<Salesman[]>(initialCustomers);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [customers, setCustomers] = useSyncedState(
+    initialCustomers,
+    !modalOpen,
+  );
   const [tab, setTab] = useState<"active" | "inactive">("active");
   const [search, setSearch] = useState("");
   const [marketDayFilter, setMarketDayFilter] = useState<MarketDay | "">("");
@@ -55,7 +60,6 @@ export function CustomersListClient({
   const [areaFilter, setAreaFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [editMode, setEditMode] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Salesman | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);

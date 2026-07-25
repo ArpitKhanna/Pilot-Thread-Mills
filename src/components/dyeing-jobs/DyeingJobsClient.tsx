@@ -10,6 +10,7 @@ import {
   type DyeingJob,
   type DyeingJobStatus,
 } from "@/lib/customer-orders/types";
+import { useSyncedState } from "@/lib/realtime/use-synced-state";
 
 type DyeingJobsClientProps = {
   context: AppContext;
@@ -43,7 +44,7 @@ export function DyeingJobsClient({
   initialJobs,
 }: DyeingJobsClientProps) {
   const router = useRouter();
-  const [jobs, setJobs] = useState(initialJobs);
+  const [jobs, setJobs] = useSyncedState(initialJobs);
   const [filter, setFilter] = useState<DyeingJobStatus | "open">("open");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
