@@ -3,17 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
+import { InvoicePrintChoiceModal } from "@/components/salesmen/InvoicePrintChoiceModal";
 import { Modal } from "@/components/ui/Modal";
+import { PendingLink } from "@/components/ui/PendingLink";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
   ORDER_LINE_UNIT_LABELS,
   PENDING_ITEM_STATUS_LABELS,
   type CustomerOrder,
+  type CustomerOrderEvent,
   type CustomerOrderLineUnit,
   type CustomerOrderStatus,
   type CustomerPendingItem,
 } from "@/lib/customer-orders/types";
+import {
+  formatINR,
+  formatShortDate,
+  formatShortTime,
+} from "@/lib/salesmen/mock-data";
+import type { Invoice, Salesman } from "@/lib/salesmen/types";
 
 /** Forward-only next column on the board. */
 const NEXT_STATUS: Partial<
@@ -24,12 +33,6 @@ const NEXT_STATUS: Partial<
   invoiced: "out_for_delivery",
   out_for_delivery: "delivered",
 };
-import {
-  formatINR,
-  formatShortDate,
-  formatShortTime,
-} from "@/lib/salesmen/mock-data";
-import type { Salesman } from "@/lib/salesmen/types";
 
 type DraftLine = {
   key: string;
@@ -41,13 +44,7 @@ type DraftLine = {
   isUrgent: boolean;
 };
 
-type SidebarTab = "timeline" | "details" | "pending";
-
-type ActivityEvent = {
-  id: string;
-  text: string;
-  at: string | null;
-};
+type SidebarTab = "timeline" | "details" | "pending" | "invoices";
 
 type CustomerOrderSidebarProps = {
   orderId: string | null;
@@ -119,61 +116,36 @@ function formatRelativeTime(iso: string | null): string {
   return formatShortDate(iso);
 }
 
-function buildOrderActivity(order: CustomerOrder): ActivityEvent[] {
-  const events: ActivityEvent[] = [];
-  const name = order.customerName ?? "customer";
-  const lineBit =
-    order.lineCount > 0
-      ? ` with ${order.lineCount} line${order.lineCount === 1 ? "" : "s"}`
-      : "";
-
-  events.push({
-    id: "created",
-    text: `Order was created for ${name}${lineBit}.`,
-    at: order.createdAt,
-  });
-
-  if (order.isUrgent) {
-    events.push({
-      id: "urgent",
-      text: "Order was marked urgent.",
-      at: null,
-    });
-  }
-
+function fallbackEvents(order: CustomerOrder): CustomerOrderEvent[] {
+  const events: CustomerOrderEvent[] = [
+    {
+      id: `created-${order.id}`,
+      orderId: order.id,
+      kind: "created",
+      message: `Order was created for ${order.customerName ?? "customer"}.`,
+      fromStatus: null,
+      toStatus: order.status,
+      actorId: order.createdBy,
+      actorName: null,
+      createdAt: order.createdAt,
+    },
+  ];
   if (order.status !== "picking" && order.status !== "draft") {
     events.push({
-      id: "status",
-      text: `Moved to ${CUSTOMER_ORDER_STATUS_LABELS[order.status]}.`,
-      at: order.updatedAt !== order.createdAt ? order.updatedAt : null,
+      id: `status-${order.id}`,
+      orderId: order.id,
+      kind: "status_changed",
+      message: `Moved to ${CUSTOMER_ORDER_STATUS_LABELS[order.status]}.`,
+      fromStatus: null,
+      toStatus: order.status,
+      actorId: null,
+      actorName: null,
+      createdAt: order.updatedAt,
     });
   }
-
-  if (order.invoiceId) {
-    events.push({
-      id: "invoice",
-      text: "Invoice was generated for this order.",
-      at: order.updatedAt,
-    });
-  }
-
-  if (order.deliveryByName) {
-    events.push({
-      id: "delivery",
-      text: `Delivery assigned to ${order.deliveryByName}.`,
-      at: null,
-    });
-  }
-
-  if (order.status === "cancelled") {
-    events.push({
-      id: "cancelled",
-      text: "Order was cancelled.",
-      at: order.updatedAt,
-    });
-  }
-
-  return events;
+  return events.sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+  );
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -224,6 +196,7 @@ export function CustomerOrderSidebar({
   const router = useRouter();
   const open = Boolean(orderId);
   const [order, setOrder] = useState<CustomerOrder | null>(null);
+  const [events, setEvents] = useState<CustomerOrderEvent[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -250,10 +223,15 @@ export function CustomerOrderSidebar({
   const [editMissingQty, setEditMissingQty] = useState("1");
   const [editMissingUnit, setEditMissingUnit] =
     useState<CustomerOrderLineUnit>("box");
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
+  const [printOpen, setPrintOpen] = useState(false);
 
   useEffect(() => {
     if (!orderId) {
       setOrder(null);
+      setEvents([]);
       setLines([]);
       setError("");
       setTab("timeline");
@@ -265,6 +243,9 @@ export function CustomerOrderSidebar({
       setMissingQty("1");
       setMissingItemName("");
       setMissingPriceListItemId(null);
+      setInvoice(null);
+      setInvoiceError("");
+      setPrintOpen(false);
       return;
     }
     let cancelled = false;
@@ -278,6 +259,7 @@ export function CustomerOrderSidebar({
         const res = await fetch(`/api/customer-orders/${orderId}`);
         const json = (await res.json()) as {
           order?: CustomerOrder;
+          events?: CustomerOrderEvent[];
           error?: string;
         };
         if (!res.ok || !json.order) {
@@ -285,11 +267,13 @@ export function CustomerOrderSidebar({
         }
         if (cancelled) return;
         setOrder(json.order);
+        setEvents(json.events ?? []);
         setLines(linesFromOrder(json.order));
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load order");
           setOrder(null);
+          setEvents([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -338,6 +322,44 @@ export function CustomerOrderSidebar({
       cancelled = true;
     };
   }, [order?.customerId]);
+
+  useEffect(() => {
+    const invoiceId = order?.invoiceId;
+    if (!invoiceId) {
+      setInvoice(null);
+      setInvoiceError("");
+      setInvoiceLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setInvoiceLoading(true);
+    setInvoiceError("");
+    void (async () => {
+      try {
+        const res = await fetch(`/api/salesmen-invoices/${invoiceId}`);
+        const json = (await res.json()) as {
+          invoice?: Invoice;
+          error?: string;
+        };
+        if (!res.ok || !json.invoice) {
+          throw new Error(json.error ?? "Failed to load invoice");
+        }
+        if (!cancelled) setInvoice(json.invoice);
+      } catch (e) {
+        if (!cancelled) {
+          setInvoice(null);
+          setInvoiceError(
+            e instanceof Error ? e.message : "Failed to load invoice",
+          );
+        }
+      } finally {
+        if (!cancelled) setInvoiceLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order?.invoiceId]);
 
   async function addMissingItem() {
     if (!order) return;
@@ -464,9 +486,13 @@ export function CustomerOrderSidebar({
     }
   }
 
-  function applyOrder(next: CustomerOrder) {
+  function applyOrder(
+    next: CustomerOrder,
+    nextEvents?: CustomerOrderEvent[],
+  ) {
     setOrder(next);
     setLines(linesFromOrder(next));
+    if (nextEvents) setEvents(nextEvents);
     onOrderChange?.(next);
   }
 
@@ -478,10 +504,11 @@ export function CustomerOrderSidebar({
     [customers, order],
   );
 
-  const activity = useMemo(
-    () => (order ? buildOrderActivity(order) : []),
-    [order],
-  );
+  const activity = useMemo(() => {
+    if (!order) return [];
+    if (events.length > 0) return events;
+    return fallbackEvents(order);
+  }, [order, events]);
 
   const locked =
     order != null &&
@@ -632,12 +659,13 @@ export function CustomerOrderSidebar({
       });
       const json = (await res.json()) as {
         order?: CustomerOrder;
+        events?: CustomerOrderEvent[];
         error?: string;
       };
       if (!res.ok || !json.order) {
         throw new Error(json.error ?? "Failed to update status");
       }
-      applyOrder(json.order);
+      applyOrder(json.order, json.events);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update status");
     } finally {
@@ -657,12 +685,13 @@ export function CustomerOrderSidebar({
       });
       const json = (await res.json()) as {
         order?: CustomerOrder;
+        events?: CustomerOrderEvent[];
         error?: string;
       };
       if (!res.ok || !json.order) {
         throw new Error(json.error ?? "Could not update urgency");
       }
-      applyOrder(json.order);
+      applyOrder(json.order, json.events);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update urgency");
     } finally {
@@ -810,6 +839,11 @@ export function CustomerOrderSidebar({
                     pendingCount > 0 ? `Missing ${pendingCount}` : "Missing"
                   }
                 />
+                <TabButton
+                  active={tab === "invoices"}
+                  onClick={() => setTab("invoices")}
+                  label="Invoice"
+                />
               </div>
             </div>
 
@@ -821,25 +855,164 @@ export function CustomerOrderSidebar({
               ) : null}
 
               {tab === "timeline" ? (
-                <div className="space-y-3">
-                  {activity.length === 0 ? (
+                activity.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted">
+                    No activity yet
+                  </p>
+                ) : (
+                  <ol className="relative">
+                    {activity.map((event, index) => {
+                      const isLast = index === activity.length - 1;
+                      const isLatest = index === 0;
+                      return (
+                        <li
+                          key={event.id}
+                          className="relative flex gap-3"
+                        >
+                          <div className="relative flex w-3 shrink-0 flex-col items-center">
+                            <span
+                              className={`relative z-10 mt-1.5 h-2.5 w-2.5 rounded-full border-2 ${
+                                isLatest
+                                  ? "border-foreground bg-foreground"
+                                  : "border-border bg-surface"
+                              }`}
+                              aria-hidden
+                            />
+                            {!isLast ? (
+                              <span
+                                className="absolute top-4 bottom-0 w-px bg-border"
+                                aria-hidden
+                              />
+                            ) : null}
+                          </div>
+                          <div
+                            className={`min-w-0 flex-1 overflow-hidden rounded-xl border border-border ${
+                              isLast ? "" : "mb-3"
+                            }`}
+                          >
+                            <div className="px-3.5 py-3">
+                              <p className="text-sm text-foreground">
+                                {event.message}
+                              </p>
+                              <p className="mt-2 text-xs text-muted">
+                                {formatRelativeTime(event.createdAt)}
+                              </p>
+                            </div>
+                            {event.actorName ? (
+                              <div className="border-t border-border bg-sidebar/40 px-3.5 py-2 text-xs text-muted">
+                                By{" "}
+                                <span className="font-medium text-sky-700">
+                                  @{event.actorName}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )
+              ) : null}
+
+              {tab === "invoices" ? (
+                <div className="space-y-4">
+                  {!order.invoiceId ? (
+                    <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
+                      <p className="text-sm text-muted">
+                        No invoice yet for this order.
+                      </p>
+                      {order.status === "packed" && onRequestInvoice ? (
+                        <button
+                          type="button"
+                          onClick={() => onRequestInvoice(order.id)}
+                          className="mt-3 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface"
+                        >
+                          Generate invoice
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : invoiceLoading ? (
                     <p className="py-8 text-center text-sm text-muted">
-                      No activity yet
+                      Loading invoice…
                     </p>
-                  ) : (
-                    activity.map((event) => (
-                      <div
-                        key={event.id}
-                        className="rounded-xl border border-border px-3.5 py-3"
-                      >
-                        <p className="text-sm text-foreground">{event.text}</p>
-                        {event.at ? (
-                          <p className="mt-2 text-xs text-muted">
-                            {formatRelativeTime(event.at)}
+                  ) : invoiceError ? (
+                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                      {invoiceError}
+                    </p>
+                  ) : invoice ? (
+                    <>
+                      <div className="rounded-xl border border-border px-3.5 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">
+                              {invoice.number}
+                            </p>
+                            <p className="mt-1 text-xs text-muted">
+                              {formatShortDate(invoice.issuedAt)}
+                              {invoice.itemCount > 0
+                                ? ` · ${invoice.itemCount} item${
+                                    invoice.itemCount === 1 ? "" : "s"
+                                  }`
+                                : ""}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-sm font-medium tabular-nums">
+                            {formatINR(invoice.totalAmount)}
                           </p>
-                        ) : null}
+                        </div>
                       </div>
-                    ))
+
+                      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                        {invoice.lineItems.map((line) => (
+                          <li
+                            key={line.id}
+                            className="flex items-start justify-between gap-3 px-3.5 py-2.5 text-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{line.name}</p>
+                              <p className="mt-0.5 text-xs text-muted">
+                                Qty {line.qty}
+                                {line.unitPrice > 0
+                                  ? ` · ${formatINR(line.unitPrice)}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <span className="shrink-0 tabular-nums">
+                              {formatINR(line.amount)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {(invoice.discountAmount ?? 0) > 0 ? (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted">Discount</span>
+                          <span className="tabular-nums">
+                            −{formatINR(invoice.discountAmount!)}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPrintOpen(true)}
+                          className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface"
+                        >
+                          Print invoice
+                        </button>
+                        <PendingLink
+                          href={`/orders/salesmen/${invoice.id}/edit`}
+                          className="inline-flex items-center justify-center rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
+                        >
+                          View / edit invoice
+                        </PendingLink>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="py-8 text-center text-sm text-muted">
+                      Invoice not found
+                    </p>
                   )}
                 </div>
               ) : null}
@@ -1433,6 +1606,52 @@ export function CustomerOrderSidebar({
           </div>
         </div>
       </Modal>
+
+      <InvoicePrintChoiceModal
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        invoice={invoice}
+        party={
+          customer ??
+          (order
+            ? {
+                id: order.customerId ?? "unknown",
+                name: order.customerName ?? "Customer",
+                phone: "",
+                alternatePhone: "",
+                entityType: "customer",
+                isActive: true,
+                openingBalance: 0,
+                pendingBalance: 0,
+                lastInvoiceAt: null,
+                discountRules: [],
+                marketDay: "",
+                area: order.customerArea ?? order.areaSnapshot ?? "",
+                isDefaulter: false,
+                tier: "",
+                balanceThreshold: null,
+                contactName: "",
+                addressBuilding: "",
+                addressArea: "",
+                addressCity: "",
+                addressState: "",
+                addressPincode: "",
+                mapLat: null,
+                mapLng: null,
+                tierRubric: {
+                  orderFrequency: null,
+                  orderAmount: null,
+                  paymentAmount: null,
+                  paymentSpeed: null,
+                },
+                priceRules: [],
+              }
+            : null)
+        }
+        previousBalance={customer?.pendingBalance}
+        title="Print invoice"
+        description="Choose how the copy should look, then print. The preview updates live."
+      />
     </div>
   );
 }

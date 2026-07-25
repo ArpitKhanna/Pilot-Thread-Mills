@@ -38,7 +38,9 @@ export async function GET(_request: Request, context: RouteContext) {
   if (
     profile.role !== "admin" &&
     !allowed.has("order-salesmen") &&
-    !allowed.has("entity-salesmen")
+    !allowed.has("entity-salesmen") &&
+    !allowed.has("order-customers") &&
+    !allowed.has("entity-customers")
   ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

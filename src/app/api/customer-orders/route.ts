@@ -3,6 +3,7 @@ import {
   isAuthError,
   requireOrderCustomersAccess,
 } from "@/lib/customer-orders/access";
+import { logCustomerOrderEvent } from "@/lib/customer-orders/events";
 import {
   createCustomerOrder,
   listCustomerOrders,
@@ -131,6 +132,21 @@ export async function POST(request: Request) {
       isUrgent: Boolean(body.isUrgent),
       createdBy: profile.id,
     });
+    await logCustomerOrderEvent(supabase, {
+      orderId: order.id,
+      kind: "created",
+      message: "Order was created.",
+      actorId: profile.id,
+      toStatus: order.status,
+    });
+    if (order.isUrgent) {
+      await logCustomerOrderEvent(supabase, {
+        orderId: order.id,
+        kind: "urgent_set",
+        message: "Order was marked urgent.",
+        actorId: profile.id,
+      });
+    }
     return NextResponse.json({ order }, { status: 201 });
   } catch (e) {
     console.error(e);

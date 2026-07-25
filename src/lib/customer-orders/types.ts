@@ -82,6 +82,27 @@ export type CustomerOrder = {
   attachments: CustomerOrderAttachment[];
 };
 
+export type CustomerOrderEventKind =
+  | "created"
+  | "status_changed"
+  | "urgent_set"
+  | "urgent_cleared"
+  | "invoice_generated"
+  | "delivery_assigned"
+  | "note";
+
+export type CustomerOrderEvent = {
+  id: string;
+  orderId: string;
+  kind: CustomerOrderEventKind;
+  message: string;
+  fromStatus: CustomerOrderStatus | null;
+  toStatus: CustomerOrderStatus | null;
+  actorId: string | null;
+  actorName: string | null;
+  createdAt: string;
+};
+
 export type DeliveryRunStatus = "open" | "dispatched" | "done";
 
 export type DeliveryRunOrder = {

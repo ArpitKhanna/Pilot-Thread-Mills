@@ -227,6 +227,43 @@ function emptyDraft(
   };
 }
 
+function PrintToggleRow({
+  label,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onCheckedChange(!checked)}
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-foreground" : "bg-border"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-surface shadow transition-transform ${
+            checked ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 export function CustomerOrderInvoiceModal({
   open,
   onClose,
@@ -247,7 +284,6 @@ export function CustomerOrderInvoiceModal({
   const [draftNumber] = useState(() => `INV-CU-${Date.now()}`);
   const [issuedAt] = useState(() => new Date().toISOString());
   const [created, setCreated] = useState<CustomerOrderInvoiceCreated[]>([]);
-  const [activeInvoiceId, setActiveInvoiceId] = useState("");
   const [hidePrices, setHidePrices] = useState(false);
   const [printRequest, setPrintRequest] = useState<number | null>(null);
   const [printedIds, setPrintedIds] = useState<Set<string>>(new Set());
@@ -262,7 +298,6 @@ export function CustomerOrderInvoiceModal({
       setActiveOrderId("");
       setLocalError("");
       setCreated([]);
-      setActiveInvoiceId("");
       setHidePrices(false);
       setPrintRequest(null);
       setPrintedIds(new Set());
@@ -325,18 +360,6 @@ export function CustomerOrderInvoiceModal({
     };
   }, [open, orderIdsKey, customers, priceList, phase, orders]);
 
-  useEffect(() => {
-    if (printRequest == null || phase !== "print") return;
-    const id = window.setTimeout(() => {
-      window.print();
-      if (activeInvoiceId) {
-        setPrintedIds((prev) => new Set(prev).add(activeInvoiceId));
-      }
-      setPrintRequest(null);
-    }, 80);
-    return () => window.clearTimeout(id);
-  }, [printRequest, phase, activeInvoiceId, hidePrices]);
-
   const workingOrders = loadedOrders.length > 0 ? loadedOrders : [];
   const activeOrder =
     workingOrders.find((o) => o.id === activeOrderId) ??
@@ -349,6 +372,30 @@ export function CustomerOrderInvoiceModal({
     customer?.name ?? activeOrder?.customerName ?? "Customer";
   const priceRules = customer?.priceRules ?? [];
   const draft = activeOrder ? drafts[activeOrder.id] : undefined;
+
+  const createdByOrderId = useMemo(() => {
+    const map = new Map<string, CustomerOrderInvoiceCreated>();
+    for (const item of created) map.set(item.orderId, item);
+    return map;
+  }, [created]);
+
+  const activeCreated = activeOrder
+    ? (createdByOrderId.get(activeOrder.id) ?? null)
+    : null;
+  const activeInvoiceId = activeCreated?.invoice.id ?? null;
+
+  useEffect(() => {
+    if (printRequest == null || phase !== "print") return;
+    const invoiceId = activeInvoiceId;
+    const id = window.setTimeout(() => {
+      window.print();
+      if (invoiceId) {
+        setPrintedIds((prev) => new Set(prev).add(invoiceId));
+      }
+      setPrintRequest(null);
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [printRequest, phase, activeInvoiceId, hidePrices]);
 
   const filledLines = useMemo(
     () =>
@@ -413,14 +460,9 @@ export function CustomerOrderInvoiceModal({
         id: activeOrder?.customerId ?? "preview-placeholder",
       };
 
-  const activeCreated =
-    created.find((c) => c.invoice.id === activeInvoiceId) ?? created[0] ?? null;
   const printParty = activeCreated
     ? (customers.find((c) => c.id === activeCreated.customerId) ??
-      placeholderCustomer(
-        workingOrders.find((o) => o.id === activeCreated.orderId)
-          ?.customerName ?? "Customer",
-      ))
+      previewCustomer)
     : null;
 
   function updateActiveDraft(patch: Partial<OrderDraft>) {
@@ -593,9 +635,11 @@ export function CustomerOrderInvoiceModal({
       }
 
       setCreated(results);
-      setActiveInvoiceId(results[0]!.invoice.id);
       setPrintedIds(new Set());
       setHidePrices(false);
+      const preferred =
+        results.find((r) => r.orderId === activeOrderId) ?? results[0];
+      if (preferred) setActiveOrderId(preferred.orderId);
       setPhase("print");
     } catch (e) {
       setLocalError(
@@ -606,26 +650,41 @@ export function CustomerOrderInvoiceModal({
     }
   }
 
-  function printWithPrices() {
-    setHidePrices(false);
-    setPrintRequest(Date.now());
-  }
-
-  function printWithoutPrices() {
-    setHidePrices(true);
+  function handlePrint() {
     setPrintRequest(Date.now());
   }
 
   function selectNextUnprinted() {
-    const next = created.find((c) => !printedIds.has(c.invoice.id));
-    if (next) setActiveInvoiceId(next.invoice.id);
+    const next = workingOrders.find((order) => {
+      const item = createdByOrderId.get(order.id);
+      return item != null && !printedIds.has(item.invoice.id);
+    });
+    if (next) setActiveOrderId(next.id);
+  }
+
+  function setShowPrices(on: boolean) {
+    setHidePrices(!on);
+  }
+
+  function setMaskPrices(on: boolean) {
+    setHidePrices(on);
   }
 
   const displayError = localError || error || "";
   const actionBusy = busy || syncing || loadingOrders;
-  const showOrderRail = workingOrders.length > 1;
   const allPrinted =
     created.length > 0 && created.every((c) => printedIds.has(c.invoice.id));
+
+  const previewInvoice =
+    phase === "print" && activeCreated ? activeCreated.invoice : liveInvoice;
+  const previewParty =
+    phase === "print" && printParty ? printParty : previewCustomer;
+  const previewPreviousBalance =
+    phase === "print"
+      ? hidePrices
+        ? undefined
+        : (printParty?.pendingBalance ?? previousBalance)
+      : previousBalance;
 
   return (
     <>
@@ -636,7 +695,7 @@ export function CustomerOrderInvoiceModal({
         }}
         title={
           phase === "print"
-            ? created.length > 1
+            ? workingOrders.length > 1
               ? "Print invoices"
               : "Invoice generated"
             : workingOrders.length > 1
@@ -646,37 +705,36 @@ export function CustomerOrderInvoiceModal({
         size="2xl"
         bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
       >
-        {phase === "edit" ? (
-          <div
-            className={`grid min-h-0 flex-1 overflow-hidden ${
-              showOrderRail
-                ? "lg:grid-cols-[13.5rem_minmax(0,1fr)_minmax(0,1.05fr)]"
-                : "lg:grid-cols-2"
-            }`}
-          >
-            {showOrderRail ? (
-              <aside className="min-h-0 overflow-y-auto border-b border-border bg-sidebar/20 lg:border-b-0 lg:border-r">
-                <div className="px-3 py-3">
-                  <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">
-                    Orders ({workingOrders.length})
-                  </p>
-                  <ul className="space-y-1">
-                    {workingOrders.map((order, index) => {
-                      const active = order.id === activeOrder?.id;
-                      return (
-                        <li key={order.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveOrderId(order.id);
-                              setLocalError("");
-                            }}
-                            className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
-                              active
-                                ? "bg-foreground text-surface"
-                                : "hover:bg-sidebar"
-                            }`}
-                          >
+        <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[13.5rem_minmax(0,1fr)_minmax(0,1.05fr)]">
+          <aside className="min-h-0 overflow-y-auto border-b border-border bg-sidebar/20 lg:border-b-0 lg:border-r">
+            <div className="px-3 py-3">
+              <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">
+                {phase === "print" ? "Invoices" : "Orders"} (
+                {workingOrders.length})
+              </p>
+              <ul className="space-y-1">
+                {workingOrders.map((order, index) => {
+                  const active = order.id === activeOrder?.id;
+                  const createdItem = createdByOrderId.get(order.id);
+                  const printed = createdItem
+                    ? printedIds.has(createdItem.invoice.id)
+                    : false;
+                  return (
+                    <li key={order.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveOrderId(order.id);
+                          setLocalError("");
+                        }}
+                        className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
+                          active
+                            ? "bg-foreground text-surface"
+                            : "hover:bg-sidebar"
+                        }`}
+                      >
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
                             <span className="block truncate font-medium">
                               {index + 1}. {order.customerName ?? "Order"}
                             </span>
@@ -685,41 +743,57 @@ export function CustomerOrderInvoiceModal({
                                 active ? "text-surface/70" : "text-muted"
                               }`}
                             >
-                              {order.lines.length} line
-                              {order.lines.length === 1 ? "" : "s"}
-                              {order.areaSnapshot || order.customerArea
-                                ? ` · ${order.areaSnapshot || order.customerArea}`
-                                : ""}
+                              {phase === "print" && createdItem
+                                ? createdItem.invoice.number
+                                : `${order.lines.length} line${
+                                    order.lines.length === 1 ? "" : "s"
+                                  }${
+                                    order.areaSnapshot || order.customerArea
+                                      ? ` · ${order.areaSnapshot || order.customerArea}`
+                                      : ""
+                                  }`}
                             </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </aside>
-            ) : null}
-
-            <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r lg:py-5">
-              <div className="mx-auto max-w-xl space-y-5">
-                {loadingOrders ? (
-                  <p className="text-sm text-muted">Loading order lines…</p>
-                ) : null}
-
-                {!loadingOrders && draft && activeOrder ? (
-                  <>
-                    <section className="space-y-3">
-                      <label className="block min-w-0">
-                        <span className="mb-1.5 block text-xs font-medium text-muted">
-                          Customer
+                          </span>
+                          {phase === "print" && printed ? (
+                            <span
+                              className={`shrink-0 text-[10px] font-medium ${
+                                active ? "text-surface/80" : "text-emerald-700"
+                              }`}
+                            >
+                              Printed
+                            </span>
+                          ) : null}
                         </span>
-                        <input
-                          type="text"
-                          value={customerName}
-                          disabled
-                          className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
-                        />
-                      </label>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r lg:py-5">
+            <div className="mx-auto max-w-xl space-y-5">
+              {phase === "edit" ? (
+                <>
+                  {loadingOrders ? (
+                    <p className="text-sm text-muted">Loading order lines…</p>
+                  ) : null}
+
+                  {!loadingOrders && draft && activeOrder ? (
+                    <>
+                      <section className="space-y-3">
+                        <label className="block min-w-0">
+                          <span className="mb-1.5 block text-xs font-medium text-muted">
+                            Customer
+                          </span>
+                          <input
+                            type="text"
+                            value={customerName}
+                            disabled
+                            className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
+                          />
+                        </label>
 
                       <div className="space-y-2">
                         <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] gap-2 px-0.5 text-[11px] font-medium tracking-wide text-muted uppercase">
@@ -845,177 +919,119 @@ export function CustomerOrderInvoiceModal({
                       </p>
                     ) : null}
 
-                    <div className="flex justify-end gap-2 pb-1">
-                      <button
-                        type="button"
-                        disabled={actionBusy}
-                        onClick={onClose}
-                        className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={actionBusy || workingOrders.length === 0}
-                        onClick={() => void handleSubmit()}
-                        className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
-                      >
-                        {actionBusy
-                          ? syncing
-                            ? "Saving…"
-                            : busy
-                              ? "Invoicing…"
-                              : "Loading…"
-                          : workingOrders.length > 1
-                            ? `Generate ${workingOrders.length} invoices`
-                            : "Generate invoice"}
-                      </button>
-                    </div>
-                  </>
-                ) : null}
-
-                {!loadingOrders && !draft && displayError ? (
-                  <p
-                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                    role="alert"
-                  >
-                    {displayError}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="hidden min-h-0 overflow-y-auto bg-sidebar/30 p-4 lg:block">
-              <InvoicePreview
-                invoice={liveInvoice}
-                salesman={previewCustomer}
-                hideToolbar
-                previousBalance={previousBalance}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[14rem_minmax(0,1fr)]">
-            <aside className="min-h-0 overflow-y-auto border-b border-border bg-sidebar/20 lg:border-b-0 lg:border-r">
-              <div className="px-3 py-3">
-                <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">
-                  Invoices ({created.length})
-                </p>
-                <ul className="space-y-1">
-                  {created.map((item, index) => {
-                    const active = item.invoice.id === activeCreated?.invoice.id;
-                    const printed = printedIds.has(item.invoice.id);
-                    const name =
-                      customers.find((c) => c.id === item.customerId)?.name ??
-                      workingOrders.find((o) => o.id === item.orderId)
-                        ?.customerName ??
-                      "Customer";
-                    return (
-                      <li key={item.invoice.id}>
+                      <div className="flex justify-end gap-2 pb-1">
                         <button
                           type="button"
-                          onClick={() => setActiveInvoiceId(item.invoice.id)}
-                          className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
-                            active
-                              ? "bg-foreground text-surface"
-                              : "hover:bg-sidebar"
-                          }`}
+                          disabled={actionBusy}
+                          onClick={onClose}
+                          className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
                         >
-                          <span className="flex items-start justify-between gap-2">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">
-                                {index + 1}. {name}
-                              </span>
-                              <span
-                                className={`mt-0.5 block truncate text-xs ${
-                                  active ? "text-surface/70" : "text-muted"
-                                }`}
-                              >
-                                {item.invoice.number}
-                              </span>
-                            </span>
-                            {printed ? (
-                              <span
-                                className={`shrink-0 text-[10px] font-medium ${
-                                  active ? "text-surface/80" : "text-emerald-700"
-                                }`}
-                              >
-                                Printed
-                              </span>
-                            ) : null}
-                          </span>
+                          Cancel
                         </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </aside>
+                        <button
+                          type="button"
+                          disabled={actionBusy || workingOrders.length === 0}
+                          onClick={() => void handleSubmit()}
+                          className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
+                        >
+                          {actionBusy
+                            ? syncing
+                              ? "Saving…"
+                              : busy
+                                ? "Invoicing…"
+                                : "Loading…"
+                            : workingOrders.length > 1
+                              ? `Generate ${workingOrders.length} invoices`
+                              : "Generate invoice"}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
 
-            <div className="flex min-h-0 flex-col overflow-hidden">
-              <div className="shrink-0 space-y-3 border-b border-border px-4 py-3 sm:px-5">
-                <p className="text-sm text-muted">
-                  Print a priced copy for records, or a delivery copy without
-                  prices. Select each invoice from the list.
-                </p>
-                {activeCreated ? (
-                  <p className="text-sm font-medium">
-                    {activeCreated.invoice.number}
-                    {" · "}
-                    {formatINR(activeCreated.invoice.totalAmount)}
-                  </p>
-                ) : null}
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                  {!allPrinted && created.length > 1 ? (
+                  {!loadingOrders && !draft && displayError ? (
+                    <p
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                      role="alert"
+                    >
+                      {displayError}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <section className="space-y-3">
+                    <div>
+                      <p className="text-xs font-medium text-muted">Invoice</p>
+                      {activeCreated ? (
+                        <p className="mt-1 text-sm font-medium">
+                          {activeCreated.invoice.number}
+                          {" · "}
+                          {formatINR(activeCreated.invoice.totalAmount)}
+                        </p>
+                      ) : null}
+                      <p className="mt-1.5 text-sm text-muted">
+                        Choose how the copy should look, then print. The preview
+                        updates live.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <PrintToggleRow
+                        label="Show prices"
+                        description="Rates, amounts, and totals visible"
+                        checked={!hidePrices}
+                        onCheckedChange={setShowPrices}
+                      />
+                      <PrintToggleRow
+                        label="Mask prices"
+                        description="Hide rates, amounts, and totals for delivery"
+                        checked={hidePrices}
+                        onCheckedChange={setMaskPrices}
+                      />
+                    </div>
+                  </section>
+
+                  <div className="flex flex-wrap justify-end gap-2 pb-1">
+                    {!allPrinted && created.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={selectNextUnprinted}
+                        className="mr-auto rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
+                      >
+                        Next unprinted
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={selectNextUnprinted}
-                      className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar sm:mr-auto"
+                      onClick={onClose}
+                      className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
                     >
-                      Next unprinted
+                      Done
                     </button>
-                  ) : (
-                    <span className="sm:mr-auto" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-                  >
-                    Done
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!activeCreated}
-                    onClick={printWithoutPrices}
-                    className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
-                  >
-                    Print without prices
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!activeCreated}
-                    onClick={printWithPrices}
-                    className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
-                  >
-                    Print with prices
-                  </button>
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar/30 p-4">
-                {activeCreated && printParty ? (
-                  <InvoicePreview
-                    invoice={activeCreated.invoice}
-                    salesman={printParty}
-                    hideToolbar
-                    previousBalance={printParty.pendingBalance}
-                  />
-                ) : null}
-              </div>
+                    <button
+                      type="button"
+                      disabled={!activeCreated}
+                      onClick={handlePrint}
+                      className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
+                    >
+                      Print
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        )}
+
+          <div className="hidden min-h-0 overflow-y-auto bg-sidebar/30 p-4 lg:block">
+            <InvoicePreview
+              invoice={previewInvoice}
+              salesman={previewParty}
+              hideToolbar
+              hidePrices={phase === "print" ? hidePrices : false}
+              previousBalance={previewPreviousBalance}
+            />
+          </div>
+        </div>
       </Modal>
 
       {phase === "print" && activeCreated && printParty ? (

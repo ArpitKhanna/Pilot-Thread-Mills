@@ -11,6 +11,7 @@ import {
   refreshSalesmanTotals,
 } from "@/lib/salesmen/queries";
 import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
+import { logCustomerOrderEvent } from "./events";
 import { getCustomerOrder, updateCustomerOrder } from "./queries";
 
 export type ConvertOrderInput = {
@@ -237,6 +238,15 @@ export async function convertOrderToInvoice(
     ...(input.deliveryBy !== undefined
       ? { deliveryBy: input.deliveryBy }
       : {}),
+  });
+
+  await logCustomerOrderEvent(supabase, {
+    orderId: order.id,
+    kind: "invoice_generated",
+    message: `Invoice ${number} was generated.`,
+    actorId: input.createdBy,
+    fromStatus: order.status,
+    toStatus: "invoiced",
   });
 
   try {

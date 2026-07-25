@@ -4,6 +4,11 @@ import {
   requireOrderCustomersAccess,
 } from "@/lib/customer-orders/access";
 import {
+  logCustomerOrderEvent,
+  listCustomerOrderEvents,
+  statusChangeMessage,
+} from "@/lib/customer-orders/events";
+import {
   deleteCustomerOrder,
   getCustomerOrder,
   updateCustomerOrder,
@@ -35,7 +40,8 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
-    return NextResponse.json({ order });
+    const events = await listCustomerOrderEvents(supabase, id);
+    return NextResponse.json({ order, events });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -48,7 +54,7 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireOrderCustomersAccess();
   if (isAuthError(auth)) return auth.error;
-  const { supabase } = auth;
+  const { supabase, profile } = auth;
   const { id } = await context.params;
 
   let body: Record<string, unknown>;
@@ -87,11 +93,58 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   try {
+    const before = await getCustomerOrder(supabase, id);
+    if (!before) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
     const order = await updateCustomerOrder(supabase, id, input);
     if (input.status) {
       await syncDeliveryRunsForOrderStatus(supabase, id, input.status);
     }
-    return NextResponse.json({ order });
+
+    if (input.status && input.status !== before.status) {
+      await logCustomerOrderEvent(supabase, {
+        orderId: id,
+        kind: "status_changed",
+        message: statusChangeMessage(before.status, input.status),
+        actorId: profile.id,
+        fromStatus: before.status,
+        toStatus: input.status,
+      });
+    }
+
+    if (
+      input.isUrgent !== undefined &&
+      input.isUrgent !== before.isUrgent
+    ) {
+      await logCustomerOrderEvent(supabase, {
+        orderId: id,
+        kind: input.isUrgent ? "urgent_set" : "urgent_cleared",
+        message: input.isUrgent
+          ? "Order was marked urgent."
+          : "Urgent flag was cleared.",
+        actorId: profile.id,
+      });
+    }
+
+    if (
+      input.deliveryBy !== undefined &&
+      input.deliveryBy !== before.deliveryBy
+    ) {
+      const name = order.deliveryByName?.trim();
+      await logCustomerOrderEvent(supabase, {
+        orderId: id,
+        kind: "delivery_assigned",
+        message: name
+          ? `Delivery assigned to ${name}.`
+          : "Delivery assignment updated.",
+        actorId: profile.id,
+      });
+    }
+
+    const events = await listCustomerOrderEvents(supabase, id);
+    return NextResponse.json({ order, events });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
