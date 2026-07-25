@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
@@ -24,6 +24,15 @@ import {
   type MarketDay,
   type Salesman,
 } from "@/lib/salesmen/types";
+
+/** Direct status drops (no modal). Special cases: packed→invoiced, invoiced→out. */
+const DIRECT_DROP_TARGET: Partial<
+  Record<CustomerOrderStatus, CustomerOrderStatus[]>
+> = {
+  picking: ["packed"],
+  packed: ["picking"],
+  out_for_delivery: ["invoiced", "delivered"],
+};
 
 type CustomerOrdersListClientProps = {
   context: AppContext;
@@ -135,6 +144,16 @@ export function CustomerOrdersListClient({
   const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
+  const [outOpen, setOutOpen] = useState(false);
+  const [outDeliveryBy, setOutDeliveryBy] = useState("");
+  const [outBusy, setOutBusy] = useState(false);
+  const [outError, setOutError] = useState("");
+  const [actionOrderIds, setActionOrderIds] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<CustomerOrderStatus | null>(
+    null,
+  );
+  const suppressCardClickRef = useRef(false);
   const [missingOpen, setMissingOpen] = useState(false);
   const [missingDate, setMissingDate] = useState(todayLocalDate);
   const [missingLines, setMissingLines] = useState<MissingDraft[]>([
@@ -146,6 +165,11 @@ export function CustomerOrdersListClient({
     Array<{ customerName: string; url: string }>
   >([]);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+
+  const actionOrders = useMemo(
+    () => orders.filter((o) => actionOrderIds.includes(o.id)),
+    [orders, actionOrderIds],
+  );
 
   const areas = useMemo(() => {
     const set = new Set<string>();
@@ -231,18 +255,56 @@ export function CustomerOrdersListClient({
     setNewOpen(true);
   }
 
+  function applyLocalStatus(
+    ids: string[],
+    status: CustomerOrderStatus,
+    extras?: Partial<Pick<CustomerOrder, "deliveryBy" | "deliveryByName">>,
+  ) {
+    const idSet = new Set(ids);
+    setOrders((prev) =>
+      prev.map((o) =>
+        idSet.has(o.id)
+          ? {
+              ...o,
+              status,
+              ...(extras?.deliveryBy !== undefined
+                ? { deliveryBy: extras.deliveryBy }
+                : {}),
+              ...(extras?.deliveryByName !== undefined
+                ? { deliveryByName: extras.deliveryByName }
+                : {}),
+            }
+          : o,
+      ),
+    );
+  }
+
   async function patchStatuses(
     ids: string[],
     status: CustomerOrderStatus,
+    extras?: { deliveryBy?: string | null },
   ): Promise<void> {
     for (const id of ids) {
       const res = await fetch(`/api/customer-orders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          ...(extras?.deliveryBy !== undefined
+            ? { deliveryBy: extras.deliveryBy }
+            : {}),
+        }),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as {
+        error?: string;
+        order?: CustomerOrder;
+      };
       if (!res.ok) throw new Error(json.error ?? "Failed to update order");
+      if (json.order) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === json.order!.id ? { ...o, ...json.order! } : o)),
+        );
+      }
     }
   }
 
@@ -250,17 +312,91 @@ export function CustomerOrdersListClient({
     if (!selectColumn || selectedOrders.length === 0) return;
     const target = targetOverride ?? BULK_TARGET[selectColumn];
     if (!target) return;
+    if (selectColumn === "invoiced" && target === "out_for_delivery") {
+      openAssignOutModal(selectedOrders.map((o) => o.id));
+      return;
+    }
+    const ids = selectedOrders.map((o) => o.id);
     setBulkBusy(true);
     setBulkError("");
     try {
-      await patchStatuses(
-        selectedOrders.map((o) => o.id),
-        target,
-      );
+      await patchStatuses(ids, target);
+      applyLocalStatus(ids, target);
       clearSelection();
       router.refresh();
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : "Bulk update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function openInvoiceModal(ids: string[]) {
+    setActionOrderIds(ids);
+    setRunError("");
+    setDeliveryBy("");
+    setRunOpen(true);
+  }
+
+  function openAssignOutModal(ids: string[]) {
+    setActionOrderIds(ids);
+    setOutError("");
+    setOutDeliveryBy("");
+    setOutOpen(true);
+  }
+
+  function idsForDrag(order: CustomerOrder): string[] {
+    if (
+      selectColumn === order.status &&
+      selected.has(order.id) &&
+      selected.size > 0
+    ) {
+      return [...selected];
+    }
+    return [order.id];
+  }
+
+  function canDropOnColumn(
+    from: CustomerOrderStatus,
+    to: CustomerOrderStatus,
+  ): boolean {
+    if (from === to) return false;
+    if (from === "packed" && to === "invoiced") return true;
+    if (from === "invoiced" && to === "out_for_delivery") return true;
+    return DIRECT_DROP_TARGET[from]?.includes(to) ?? false;
+  }
+
+  async function handleDropOnColumn(
+    toStatus: CustomerOrderStatus,
+    orderId: string,
+  ) {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || !canDropOnColumn(order.status, toStatus)) return;
+
+    const ids = idsForDrag(order).filter((id) => {
+      const o = orders.find((x) => x.id === id);
+      return o != null && o.status === order.status;
+    });
+    if (ids.length === 0) return;
+
+    if (order.status === "packed" && toStatus === "invoiced") {
+      openInvoiceModal(ids);
+      return;
+    }
+    if (order.status === "invoiced" && toStatus === "out_for_delivery") {
+      openAssignOutModal(ids);
+      return;
+    }
+
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      await patchStatuses(ids, toStatus);
+      applyLocalStatus(ids, toStatus);
+      clearSelection();
+      router.refresh();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Could not move order");
     } finally {
       setBulkBusy(false);
     }
@@ -297,7 +433,8 @@ export function CustomerOrdersListClient({
   }
 
   async function submitDeliveryRun() {
-    if (selectedOrders.length === 0 || selectColumn !== "packed") {
+    const packed = actionOrders.filter((o) => o.status === "packed");
+    if (packed.length === 0) {
       setRunError("Select at least one packed order");
       return;
     }
@@ -311,28 +448,69 @@ export function CustomerOrdersListClient({
       const area =
         areaFilter !== "all"
           ? areaFilter
-          : selectedOrders[0]?.customerArea ||
-            selectedOrders[0]?.areaSnapshot ||
-            null;
+          : packed[0]?.customerArea || packed[0]?.areaSnapshot || null;
+      const ids = packed.map((o) => o.id);
       const res = await fetch("/api/delivery-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderIds: selectedOrders.map((o) => o.id),
+          orderIds: ids,
           deliveryBy,
           area,
         }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Delivery run failed");
+      const person = deliveryStaff.find((p) => p.id === deliveryBy);
+      applyLocalStatus(ids, "invoiced", {
+        deliveryBy,
+        deliveryByName: person?.fullName ?? null,
+      });
       setRunOpen(false);
       setDeliveryBy("");
+      setActionOrderIds([]);
       clearSelection();
       router.refresh();
     } catch (e) {
       setRunError(e instanceof Error ? e.message : "Delivery run failed");
     } finally {
       setRunBusy(false);
+    }
+  }
+
+  async function submitAssignOut() {
+    const invoiced = actionOrders.filter((o) => o.status === "invoiced");
+    if (invoiced.length === 0) {
+      setOutError("Select at least one invoiced order");
+      return;
+    }
+    if (!outDeliveryBy) {
+      setOutError("Select a delivery person");
+      return;
+    }
+    setOutBusy(true);
+    setOutError("");
+    try {
+      const ids = invoiced.map((o) => o.id);
+      await patchStatuses(ids, "out_for_delivery", {
+        deliveryBy: outDeliveryBy,
+      });
+      const person = deliveryStaff.find((p) => p.id === outDeliveryBy);
+      applyLocalStatus(ids, "out_for_delivery", {
+        deliveryBy: outDeliveryBy,
+        deliveryByName: person?.fullName ?? null,
+      });
+      setOutOpen(false);
+      setOutDeliveryBy("");
+      setActionOrderIds([]);
+      clearSelection();
+      router.refresh();
+    } catch (e) {
+      setOutError(
+        e instanceof Error ? e.message : "Could not mark out for delivery",
+      );
+    } finally {
+      setOutBusy(false);
     }
   }
 
@@ -531,10 +709,21 @@ export function CustomerOrdersListClient({
             {KANBAN_COLUMNS.map((status) => {
               const columnOrders = columns[status];
               const selectable = status !== "delivered";
+              const dragFrom = draggingId
+                ? orders.find((o) => o.id === draggingId)?.status
+                : null;
+              const dropActive =
+                dragOverColumn === status &&
+                dragFrom != null &&
+                canDropOnColumn(dragFrom, status);
               return (
                 <section
                   key={status}
-                  className="flex h-full max-h-full w-[280px] shrink-0 flex-col rounded-xl border border-border bg-sidebar/40"
+                  className={`flex h-full max-h-full w-[280px] shrink-0 flex-col rounded-xl border bg-sidebar/40 ${
+                    dropActive
+                      ? "border-foreground ring-2 ring-foreground/15"
+                      : "border-border"
+                  }`}
                 >
                   <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
                     <h2 className="text-sm font-medium">
@@ -544,10 +733,38 @@ export function CustomerOrdersListClient({
                       {columnOrders.length}
                     </span>
                   </header>
-                  <div className="flex-1 space-y-2 overflow-y-auto p-2">
+                  <div
+                    className="flex-1 space-y-2 overflow-y-auto p-2"
+                    onDragOver={(e) => {
+                      if (!dragFrom || !canDropOnColumn(dragFrom, status)) {
+                        return;
+                      }
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverColumn !== status) {
+                        setDragOverColumn(status);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      if (
+                        e.currentTarget.contains(e.relatedTarget as Node | null)
+                      ) {
+                        return;
+                      }
+                      if (dragOverColumn === status) setDragOverColumn(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id =
+                        e.dataTransfer.getData("text/plain") || draggingId;
+                      setDragOverColumn(null);
+                      setDraggingId(null);
+                      if (id) void handleDropOnColumn(status, id);
+                    }}
+                  >
                     {columnOrders.length === 0 ? (
                       <p className="px-2 py-6 text-center text-xs text-muted">
-                        No orders
+                        {dropActive ? "Drop here" : "No orders"}
                       </p>
                     ) : (
                       columnOrders.map((order) => {
@@ -555,15 +772,33 @@ export function CustomerOrdersListClient({
                           order.areaSnapshot || order.customerArea || "—";
                         const checked = selected.has(order.id);
                         const orderTime = formatShortTime(order.createdAt);
+                        const isDragging = draggingId === order.id;
                         return (
                           <article
                             key={order.id}
-                            className={`cursor-pointer rounded-lg border border-border bg-surface p-3 shadow-sm ${
+                            draggable={status !== "delivered"}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", order.id);
+                              e.dataTransfer.effectAllowed = "move";
+                              setDraggingId(order.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingId(null);
+                              setDragOverColumn(null);
+                              suppressCardClickRef.current = true;
+                              window.setTimeout(() => {
+                                suppressCardClickRef.current = false;
+                              }, 0);
+                            }}
+                            className={`cursor-grab rounded-lg border border-border bg-surface p-3 shadow-sm active:cursor-grabbing ${
                               checked || detailOrderId === order.id
                                 ? "ring-2 ring-foreground/20"
                                 : ""
-                            }`}
-                            onClick={() => setDetailOrderId(order.id)}
+                            } ${isDragging ? "opacity-40" : ""}`}
+                            onClick={() => {
+                              if (suppressCardClickRef.current) return;
+                              setDetailOrderId(order.id);
+                            }}
                           >
                             <div className="flex items-start gap-2">
                               {selectable ? (
@@ -588,7 +823,10 @@ export function CustomerOrdersListClient({
                                   </span>
                                 ) : null}
                                 <div className="mt-1 text-xs text-muted">
-                                  {area} · {formatShortDate(order.orderDate)}
+                                  {area}
+                                </div>
+                                <div className="text-xs text-muted">
+                                  {formatShortDate(order.orderDate)}
                                   {orderTime ? ` · ${orderTime}` : ""}
                                 </div>
                               </div>
@@ -635,10 +873,9 @@ export function CustomerOrdersListClient({
                 <button
                   type="button"
                   disabled={selectedOrders.length === 0}
-                  onClick={() => {
-                    setRunError("");
-                    setRunOpen(true);
-                  }}
+                  onClick={() =>
+                    openInvoiceModal(selectedOrders.map((o) => o.id))
+                  }
                   className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
                 >
                   {bulkLabel ?? "Generate invoices"}
@@ -741,17 +978,20 @@ export function CustomerOrdersListClient({
 
       <Modal
         open={runOpen}
-        onClose={() => setRunOpen(false)}
+        onClose={() => {
+          setRunOpen(false);
+          setActionOrderIds([]);
+        }}
         title="Generate invoices"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Invoice {selectedOrders.length} packed order
-            {selectedOrders.length === 1 ? "" : "s"} and assign one delivery
+            Invoice {actionOrders.length} packed order
+            {actionOrders.length === 1 ? "" : "s"} and assign one delivery
             person.
           </p>
           <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
-            {selectedOrders.map((o) => (
+            {actionOrders.map((o) => (
               <li key={o.id}>
                 {o.customerName}
                 {o.isUrgent ? " · Urgent" : ""}
@@ -781,18 +1021,97 @@ export function CustomerOrdersListClient({
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setRunOpen(false)}
+              onClick={() => {
+                setRunOpen(false);
+                setActionOrderIds([]);
+              }}
               className="rounded-lg border border-border px-3 py-2 text-sm font-medium"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={runBusy || !deliveryBy}
+              disabled={runBusy || !deliveryBy || actionOrders.length === 0}
               onClick={() => void submitDeliveryRun()}
               className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
             >
               {runBusy ? "Invoicing…" : "Invoice & assign"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={outOpen}
+        onClose={() => {
+          setOutOpen(false);
+          setActionOrderIds([]);
+        }}
+        title="Assign delivery"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Mark {actionOrders.length} order
+            {actionOrders.length === 1 ? "" : "s"} out for delivery and assign
+            a delivery person.
+          </p>
+          <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+            {actionOrders.map((o) => (
+              <li key={o.id}>
+                {o.customerName}
+                {o.deliveryByName ? ` · was ${o.deliveryByName}` : ""}
+              </li>
+            ))}
+          </ul>
+          {outError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {outError}
+            </p>
+          ) : null}
+          {deliveryStaff.length === 0 ? (
+            <p className="text-sm text-muted">
+              No active delivery staff found. Add a delivery employee in Admin.
+            </p>
+          ) : (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Delivery by</span>
+              <select
+                value={outDeliveryBy}
+                onChange={(e) => setOutDeliveryBy(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none"
+              >
+                <option value="">Select person…</option>
+                {deliveryStaff.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOutOpen(false);
+                setActionOrderIds([]);
+              }}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={
+                outBusy ||
+                !outDeliveryBy ||
+                actionOrders.length === 0 ||
+                deliveryStaff.length === 0
+              }
+              onClick={() => void submitAssignOut()}
+              className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
+            >
+              {outBusy ? "Updating…" : "Mark out for delivery"}
             </button>
           </div>
         </div>
