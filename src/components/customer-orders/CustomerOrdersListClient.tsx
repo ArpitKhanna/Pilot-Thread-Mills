@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import {
   CustomerOrderInvoiceModal,
+  type CustomerOrderInvoiceCreated,
   type CustomerOrderInvoiceSubmitPayload,
 } from "@/components/customer-orders/CustomerOrderInvoiceModal";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
@@ -25,6 +26,7 @@ import {
 import { formatShortDate, formatShortTime } from "@/lib/salesmen/mock-data";
 import {
   MARKET_DAY_LABELS,
+  type Invoice,
   type MarketDay,
   type Salesman,
 } from "@/lib/salesmen/types";
@@ -147,6 +149,7 @@ export function CustomerOrdersListClient({
   const [runOpen, setRunOpen] = useState(false);
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
+  const [invoiceOrders, setInvoiceOrders] = useState<CustomerOrder[]>([]);
   const [outOpen, setOutOpen] = useState(false);
   const [outDeliveryBy, setOutDeliveryBy] = useState("");
   const [outBusy, setOutBusy] = useState(false);
@@ -382,6 +385,9 @@ export function CustomerOrdersListClient({
   function openInvoiceModal(ids: string[]) {
     setActionOrderIds(ids);
     setRunError("");
+    setInvoiceOrders(
+      orders.filter((o) => ids.includes(o.id) && o.status === "packed"),
+    );
     setRunOpen(true);
   }
 
@@ -477,38 +483,53 @@ export function CustomerOrdersListClient({
     }
   }
 
-  async function submitInvoices(payload: CustomerOrderInvoiceSubmitPayload) {
-    const packed = actionOrders.filter((o) => o.status === "packed");
-    if (packed.length === 0) {
-      setRunError("Select at least one packed order");
-      return;
+  async function submitInvoices(
+    payload: CustomerOrderInvoiceSubmitPayload,
+  ): Promise<CustomerOrderInvoiceCreated[]> {
+    if (payload.orderIds.length === 0) {
+      throw new Error("Select at least one packed order");
     }
     setRunBusy(true);
     setRunError("");
     try {
-      const ids = packed.map((o) => o.id);
-      for (const id of ids) {
-        const invoice = payload.invoicesByOrder[id];
+      const created: CustomerOrderInvoiceCreated[] = [];
+      for (const id of payload.orderIds) {
+        const options = payload.invoicesByOrder[id];
+        const order =
+          invoiceOrders.find((o) => o.id === id) ??
+          orders.find((o) => o.id === id);
         const res = await fetch(`/api/customer-orders/${id}/convert-invoice`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            discountAmount: invoice?.discountAmount ?? 0,
-            paymentEntries: invoice?.paymentEntries ?? [],
-            lineQtyOverrides: invoice?.lineQtyOverrides,
-            lineUnitPriceOverrides: invoice?.lineUnitPriceOverrides,
+            discountAmount: options?.discountAmount ?? 0,
+            paymentEntries: options?.paymentEntries ?? [],
+            lineQtyOverrides: options?.lineQtyOverrides,
+            lineUnitPriceOverrides: options?.lineUnitPriceOverrides,
           }),
         });
-        const json = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(json.error ?? "Failed to generate invoice");
+        const json = (await res.json()) as {
+          invoice?: Invoice;
+          error?: string;
+        };
+        if (!res.ok || !json.invoice) {
+          throw new Error(json.error ?? "Failed to generate invoice");
+        }
+        created.push({
+          invoice: json.invoice,
+          customerId: order?.customerId ?? json.invoice.salesmanId,
+          orderId: id,
+        });
       }
-      applyLocalStatus(ids, "invoiced");
-      setRunOpen(false);
-      setActionOrderIds([]);
+      applyLocalStatus(payload.orderIds, "invoiced");
       clearSelection();
       router.refresh();
+      return created;
     } catch (e) {
-      setRunError(e instanceof Error ? e.message : "Failed to generate invoice");
+      const message =
+        e instanceof Error ? e.message : "Failed to generate invoice";
+      setRunError(message);
+      throw e instanceof Error ? e : new Error(message);
     } finally {
       setRunBusy(false);
     }
@@ -1036,9 +1057,10 @@ export function CustomerOrdersListClient({
           if (runBusy) return;
           setRunOpen(false);
           setActionOrderIds([]);
+          setInvoiceOrders([]);
           setRunError("");
         }}
-        orders={actionOrders.filter((o) => o.status === "packed")}
+        orders={invoiceOrders}
         customers={customers}
         priceList={priceList}
         busy={runBusy}

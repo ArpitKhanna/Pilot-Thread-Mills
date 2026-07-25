@@ -26,6 +26,8 @@ type InvoicePreviewProps = {
   forPrint?: boolean;
   hideToolbar?: boolean;
   previousBalance?: number;
+  /** Hide unit rates, line amounts, and invoice totals (packing / delivery copy). */
+  hidePrices?: boolean;
 };
 
 /** Rows that fit on a single A4 page with header + totals */
@@ -100,6 +102,7 @@ function renderPageContent(
   salesman: Salesman,
   previousBalance: number | undefined,
   closingBalance: number,
+  hidePrices: boolean,
 ) {
   return (
     <>
@@ -117,6 +120,7 @@ function renderPageContent(
       <LineItemsTable
         items={page.items}
         empty={invoice.lineItems.length === 0}
+        hidePrices={hidePrices}
       />
 
       {page.showTotals && (
@@ -124,6 +128,7 @@ function renderPageContent(
           invoice={invoice}
           previousBalance={previousBalance}
           closingBalance={closingBalance}
+          hidePrices={hidePrices}
         />
       )}
 
@@ -148,6 +153,7 @@ export function InvoicePreview({
   forPrint = false,
   hideToolbar = false,
   previousBalance,
+  hidePrices = false,
 }: InvoicePreviewProps) {
   const [pageIndex, setPageIndex] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -222,6 +228,7 @@ export function InvoicePreview({
               salesman,
               previousBalance,
               closingBalance,
+              hidePrices,
             )}
           </A4Page>
         ))}
@@ -308,6 +315,7 @@ export function InvoicePreview({
                 salesman,
                 previousBalance,
                 closingBalance,
+                hidePrices,
               )}
             </A4Page>
           )}
@@ -441,10 +449,13 @@ function ContinuationHeader({
 function LineItemsTable({
   items,
   empty,
+  hidePrices = false,
 }: {
   items: InvoiceLineItem[];
   empty: boolean;
+  hidePrices?: boolean;
 }) {
+  const colSpan = hidePrices ? 2 : 4;
   return (
     <div className="mt-4 overflow-hidden rounded-lg border border-border">
       <table className="w-full text-sm">
@@ -452,17 +463,21 @@ function LineItemsTable({
           <tr className="border-b border-border bg-table-header text-left text-xs text-muted">
             <th className="px-3 py-2 font-medium">Item</th>
             <th className="px-3 py-2 font-medium text-right">Qty</th>
-            <th className="hidden px-3 py-2 font-medium text-right sm:table-cell">
-              Rate
-            </th>
-            <th className="px-3 py-2 font-medium text-right">Amount</th>
+            {!hidePrices ? (
+              <>
+                <th className="hidden px-3 py-2 font-medium text-right sm:table-cell">
+                  Rate
+                </th>
+                <th className="px-3 py-2 font-medium text-right">Amount</th>
+              </>
+            ) : null}
           </tr>
         </thead>
         <tbody>
           {empty ? (
             <tr>
               <td
-                colSpan={4}
+                colSpan={colSpan}
                 className="px-3 py-6 text-center text-sm text-muted"
               >
                 No items yet
@@ -478,12 +493,16 @@ function LineItemsTable({
                 <td className="px-3 py-2.5 text-right tabular-nums">
                   {item.qty}
                 </td>
-                <td className="hidden px-3 py-2.5 text-right tabular-nums sm:table-cell">
-                  {formatINR(item.unitPrice)}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums font-medium">
-                  {formatINR(item.amount)}
-                </td>
+                {!hidePrices ? (
+                  <>
+                    <td className="hidden px-3 py-2.5 text-right tabular-nums sm:table-cell">
+                      {formatINR(item.unitPrice)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                      {formatINR(item.amount)}
+                    </td>
+                  </>
+                ) : null}
               </tr>
             ))
           )}
@@ -497,10 +516,12 @@ function PageTotals({
   invoice,
   previousBalance,
   closingBalance,
+  hidePrices = false,
 }: {
   invoice: Invoice;
   previousBalance?: number;
   closingBalance: number;
+  hidePrices?: boolean;
 }) {
   const grossSubtotal = invoice.lineItems.reduce(
     (sum, item) => sum + item.amount,
@@ -509,11 +530,45 @@ function PageTotals({
   const returnsTotal =
     invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const discountAmount = invoice.discountAmount ?? 0;
+  const hasNotes = Boolean(invoice.notes);
+  const hasReturns = (invoice.returnItems?.length ?? 0) > 0;
+
+  if (hidePrices) {
+    if (!hasNotes && !hasReturns) return null;
+    return (
+      <div className="mt-auto pt-5 text-xs text-muted">
+        {hasReturns ? (
+          <div className="mb-3">
+            <p className="font-mono text-[10px] tracking-wider uppercase">
+              Returns
+            </p>
+            <ul className="mt-1 space-y-0.5 text-foreground">
+              {invoice.returnItems!.map((item) => (
+                <li key={item.id}>
+                  {item.name} × {item.qty}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {hasNotes ? (
+          <>
+            <p className="font-mono text-[10px] tracking-wider uppercase">
+              Notes
+            </p>
+            <p className="mt-1 max-w-xs leading-relaxed text-foreground">
+              {invoice.notes}
+            </p>
+          </>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-auto flex flex-col gap-4 pt-5 sm:flex-row sm:justify-between">
       <div className="text-xs text-muted">
-        {(invoice.returnItems?.length ?? 0) > 0 && (
+        {hasReturns && (
           <div className="mb-3">
             <p className="font-mono text-[10px] tracking-wider uppercase">
               Returns
@@ -527,7 +582,7 @@ function PageTotals({
             </ul>
           </div>
         )}
-        {invoice.notes ? (
+        {hasNotes ? (
           <>
             <p className="font-mono text-[10px] tracking-wider uppercase">
               Notes

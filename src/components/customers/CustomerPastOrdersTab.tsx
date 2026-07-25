@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { InvoicePrintChoiceModal } from "@/components/salesmen/InvoicePrintChoiceModal";
 import { Modal } from "@/components/ui/Modal";
 import { PendingLink } from "@/components/ui/PendingLink";
 import {
@@ -10,11 +11,12 @@ import {
   type CustomerOrderStatus,
 } from "@/lib/customer-orders/types";
 import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
-import type { Invoice } from "@/lib/salesmen/types";
+import type { Invoice, Salesman } from "@/lib/salesmen/types";
 
 type CustomerPastOrdersTabProps = {
   orders: CustomerOrder[];
   invoices?: Invoice[];
+  customer: Salesman;
   title?: string;
   onOrderUpdated?: (order: CustomerOrder) => void;
 };
@@ -89,10 +91,12 @@ function AttachmentThumb({
 function PastOrderRow({
   order,
   invoice,
+  onPrintInvoice,
   onOrderUpdated,
 }: {
   order: CustomerOrder;
   invoice?: Invoice;
+  onPrintInvoice?: (invoice: Invoice) => void;
   onOrderUpdated?: (order: CustomerOrder) => void;
 }) {
   const [preview, setPreview] = useState<CustomerOrderAttachment | null>(null);
@@ -302,13 +306,22 @@ function PastOrderRow({
                 {formatINR(order.amount)}
               </span>
             </div>
-            {showViewInvoice ? (
-              <PendingLink
-                href={`/orders/salesmen/${order.invoiceId}/edit`}
-                className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
-              >
-                View Invoice
-              </PendingLink>
+            {showViewInvoice && invoice ? (
+              <div className="flex flex-col gap-1.5 sm:items-end">
+                <button
+                  type="button"
+                  onClick={() => onPrintInvoice?.(invoice)}
+                  className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+                >
+                  Print invoice
+                </button>
+                <PendingLink
+                  href={`/orders/salesmen/${order.invoiceId}/edit`}
+                  className="inline-flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-sidebar"
+                >
+                  View invoice
+                </PendingLink>
+              </div>
             ) : order.status !== "draft" && order.status !== "cancelled" ? (
               <PendingLink
                 href={`/orders/customers/${order.id}`}
@@ -351,10 +364,12 @@ function PastOrderRow({
 export function CustomerPastOrdersTab({
   orders,
   invoices = [],
+  customer,
   title = "Past Orders",
   onOrderUpdated,
 }: CustomerPastOrdersTabProps) {
   const [localOrders, setLocalOrders] = useState(orders);
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const invoiceById = new Map(invoices.map((inv) => [inv.id, inv]));
 
   useEffect(() => {
@@ -391,10 +406,19 @@ export function CustomerPastOrdersTab({
                 ? invoiceById.get(order.invoiceId)
                 : undefined
             }
+            onPrintInvoice={setPrintInvoice}
             onOrderUpdated={handleUpdated}
           />
         ))}
       </ul>
+
+      <InvoicePrintChoiceModal
+        open={Boolean(printInvoice)}
+        onClose={() => setPrintInvoice(null)}
+        invoice={printInvoice}
+        party={customer}
+        previousBalance={customer.pendingBalance}
+      />
     </div>
   );
 }

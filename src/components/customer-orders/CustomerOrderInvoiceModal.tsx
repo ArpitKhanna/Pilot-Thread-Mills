@@ -50,6 +50,14 @@ export type CustomerOrderInvoiceSubmitPayload = {
   >;
 };
 
+export type CustomerOrderInvoiceCreated = {
+  invoice: Invoice;
+  customerId: string;
+  orderId: string;
+};
+
+type ModalPhase = "edit" | "print";
+
 const BLANK_ROWS = 3;
 
 function matchCatalogByName(
@@ -112,7 +120,9 @@ type CustomerOrderInvoiceModalProps = {
   priceList: PriceListItem[];
   busy?: boolean;
   error?: string;
-  onSubmit: (payload: CustomerOrderInvoiceSubmitPayload) => void | Promise<void>;
+  onSubmit: (
+    payload: CustomerOrderInvoiceSubmitPayload,
+  ) => Promise<CustomerOrderInvoiceCreated[]>;
 };
 
 function placeholderCustomer(name = "Customer"): Salesman {
@@ -227,6 +237,7 @@ export function CustomerOrderInvoiceModal({
   error,
   onSubmit,
 }: CustomerOrderInvoiceModalProps) {
+  const [phase, setPhase] = useState<ModalPhase>("edit");
   const [loadedOrders, setLoadedOrders] = useState<CustomerOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState("");
@@ -235,25 +246,43 @@ export function CustomerOrderInvoiceModal({
   const [syncing, setSyncing] = useState(false);
   const [draftNumber] = useState(() => `INV-CU-${Date.now()}`);
   const [issuedAt] = useState(() => new Date().toISOString());
+  const [created, setCreated] = useState<CustomerOrderInvoiceCreated[]>([]);
+  const [activeInvoiceId, setActiveInvoiceId] = useState("");
+  const [hidePrices, setHidePrices] = useState(false);
+  const [printRequest, setPrintRequest] = useState<number | null>(null);
+  const [printedIds, setPrintedIds] = useState<Set<string>>(new Set());
+
+  const orderIdsKey = orders.map((o) => o.id).sort().join(",");
 
   useEffect(() => {
-    if (!open || orders.length === 0) {
-      if (!open) {
-        setLoadedOrders([]);
-        setDrafts({});
-        setActiveOrderId("");
-      }
+    if (!open) {
+      setPhase("edit");
+      setLoadedOrders([]);
+      setDrafts({});
+      setActiveOrderId("");
+      setLocalError("");
+      setCreated([]);
+      setActiveInvoiceId("");
+      setHidePrices(false);
+      setPrintRequest(null);
+      setPrintedIds(new Set());
       return;
     }
+    // Keep print-step state if parent updates order statuses after create.
+    if (phase === "print") return;
+    if (orders.length === 0) return;
 
     let cancelled = false;
     setLoadingOrders(true);
     setLocalError("");
+    setPhase("edit");
+
+    const ordersSnapshot = orders;
 
     void (async () => {
       try {
         const results = await Promise.all(
-          orders.map(async (order) => {
+          ordersSnapshot.map(async (order) => {
             const res = await fetch(`/api/customer-orders/${order.id}`);
             const json = (await res.json()) as {
               order?: CustomerOrder;
@@ -294,7 +323,19 @@ export function CustomerOrderInvoiceModal({
     return () => {
       cancelled = true;
     };
-  }, [open, orders, customers, priceList]);
+  }, [open, orderIdsKey, customers, priceList, phase, orders]);
+
+  useEffect(() => {
+    if (printRequest == null || phase !== "print") return;
+    const id = window.setTimeout(() => {
+      window.print();
+      if (activeInvoiceId) {
+        setPrintedIds((prev) => new Set(prev).add(activeInvoiceId));
+      }
+      setPrintRequest(null);
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [printRequest, phase, activeInvoiceId, hidePrices]);
 
   const workingOrders = loadedOrders.length > 0 ? loadedOrders : [];
   const activeOrder =
@@ -371,6 +412,16 @@ export function CustomerOrderInvoiceModal({
         ...placeholderCustomer(customerName),
         id: activeOrder?.customerId ?? "preview-placeholder",
       };
+
+  const activeCreated =
+    created.find((c) => c.invoice.id === activeInvoiceId) ?? created[0] ?? null;
+  const printParty = activeCreated
+    ? (customers.find((c) => c.id === activeCreated.customerId) ??
+      placeholderCustomer(
+        workingOrders.find((o) => o.id === activeCreated.orderId)
+          ?.customerName ?? "Customer",
+      ))
+    : null;
 
   function updateActiveDraft(patch: Partial<OrderDraft>) {
     if (!activeOrder) return;
@@ -531,10 +582,21 @@ export function CustomerOrderInvoiceModal({
         };
       }
 
-      await onSubmit({
+      const results = await onSubmit({
         orderIds: workingOrders.map((o) => o.id),
         invoicesByOrder,
       });
+
+      if (!results.length) {
+        onClose();
+        return;
+      }
+
+      setCreated(results);
+      setActiveInvoiceId(results[0]!.invoice.id);
+      setPrintedIds(new Set());
+      setHidePrices(false);
+      setPhase("print");
     } catch (e) {
       setLocalError(
         e instanceof Error ? e.message : "Could not prepare invoice",
@@ -544,196 +606,275 @@ export function CustomerOrderInvoiceModal({
     }
   }
 
+  function printWithPrices() {
+    setHidePrices(false);
+    setPrintRequest(Date.now());
+  }
+
+  function printWithoutPrices() {
+    setHidePrices(true);
+    setPrintRequest(Date.now());
+  }
+
+  function selectNextUnprinted() {
+    const next = created.find((c) => !printedIds.has(c.invoice.id));
+    if (next) setActiveInvoiceId(next.invoice.id);
+  }
+
   const displayError = localError || error || "";
   const actionBusy = busy || syncing || loadingOrders;
+  const showOrderRail = workingOrders.length > 1;
+  const allPrinted =
+    created.length > 0 && created.every((c) => printedIds.has(c.invoice.id));
 
   return (
-    <Modal
-      open={open}
-      onClose={() => {
-        if (!actionBusy) onClose();
-      }}
-      title="Generate invoices"
-      size="2xl"
-      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
-    >
-      <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-2">
-        <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r lg:py-5">
-          <div className="mx-auto max-w-xl space-y-5">
-            {workingOrders.length > 1 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {workingOrders.map((order, index) => {
-                  const active = order.id === activeOrder?.id;
-                  return (
-                    <button
-                      key={order.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveOrderId(order.id);
-                        setLocalError("");
-                      }}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
-                        active
-                          ? "border-foreground bg-foreground text-surface"
-                          : "border-border hover:bg-sidebar"
-                      }`}
-                    >
-                      {index + 1}. {order.customerName ?? "Order"}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {loadingOrders ? (
-              <p className="text-sm text-muted">Loading order lines…</p>
-            ) : null}
-
-            {!loadingOrders && draft && activeOrder ? (
-              <>
-                <section className="space-y-3">
-                  <label className="block min-w-0">
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Customer
-                    </span>
-                    <input
-                      type="text"
-                      value={customerName}
-                      disabled
-                      className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
-                    />
-                  </label>
-
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] gap-2 px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
-                      <span>Item</span>
-                      <span className="text-right">Qty</span>
-                      <span className="text-right">Rate</span>
-                      <span className="text-right">Amount</span>
-                      <span />
-                    </div>
-                    {draft.lines.map((line) => {
-                      const blank = isBlankLine(line);
+    <>
+      <Modal
+        open={open}
+        onClose={() => {
+          if (!actionBusy) onClose();
+        }}
+        title={
+          phase === "print"
+            ? created.length > 1
+              ? "Print invoices"
+              : "Invoice generated"
+            : workingOrders.length > 1
+              ? "Generate invoices"
+              : "Generate invoice"
+        }
+        size="2xl"
+        bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+      >
+        {phase === "edit" ? (
+          <div
+            className={`grid min-h-0 flex-1 overflow-hidden ${
+              showOrderRail
+                ? "lg:grid-cols-[13.5rem_minmax(0,1fr)_minmax(0,1.05fr)]"
+                : "lg:grid-cols-2"
+            }`}
+          >
+            {showOrderRail ? (
+              <aside className="min-h-0 overflow-y-auto border-b border-border bg-sidebar/20 lg:border-b-0 lg:border-r">
+                <div className="px-3 py-3">
+                  <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">
+                    Orders ({workingOrders.length})
+                  </p>
+                  <ul className="space-y-1">
+                    {workingOrders.map((order, index) => {
+                      const active = order.id === activeOrder?.id;
                       return (
-                        <div
-                          key={line.key}
-                          className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] items-start gap-2"
-                        >
-                          <div className="min-w-0 space-y-1">
-                            <ItemNameCombobox
-                              items={priceList}
-                              value={line.itemName}
-                              disabled={actionBusy}
-                              showPrice={false}
-                              placeholder="Item"
-                              onChange={(value) =>
-                                updateLine(line.key, {
-                                  itemName: value,
-                                  priceListItemId: null,
-                                  unitPrice: 0,
-                                  listPrice: 0,
-                                  ruleDescription: null,
-                                })
-                              }
-                              onSelect={(item) =>
-                                selectCatalogItem(line.key, item)
-                              }
-                              onTabToQty={() => undefined}
-                            />
-                            {line.shadeCode.trim() ? (
-                              <p className="truncate text-xs text-muted">
-                                Shade {line.shadeCode.trim()}
-                                {line.ruleDescription
-                                  ? ` · ${line.ruleDescription}`
-                                  : ""}
-                              </p>
-                            ) : line.ruleDescription ? (
-                              <p className="truncate text-xs text-muted">
-                                {line.ruleDescription}
-                              </p>
-                            ) : null}
-                          </div>
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            inputMode="decimal"
-                            disabled={actionBusy}
-                            value={line.qty}
-                            placeholder="0"
-                            onChange={(e) =>
-                              updateLine(line.key, { qty: e.target.value })
-                            }
-                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
-                          />
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            inputMode="decimal"
-                            disabled={actionBusy}
-                            value={line.unitPrice || ""}
-                            placeholder="0"
-                            onChange={(e) => {
-                              const priceNum = Number(e.target.value);
-                              updateLine(line.key, {
-                                unitPrice:
-                                  Number.isFinite(priceNum) && priceNum >= 0
-                                    ? Math.round(priceNum * 100) / 100
-                                    : 0,
-                              });
+                        <li key={order.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveOrderId(order.id);
+                              setLocalError("");
                             }}
-                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
-                          />
-                          <span className="py-2 text-right text-sm tabular-nums">
-                            {line.amount > 0 ? formatINR(line.amount) : "—"}
-                          </span>
-                          <div className="flex justify-center pt-2">
-                            {!blank ? (
-                              <button
-                                type="button"
-                                disabled={actionBusy}
-                                onClick={() => removeLine(line.key)}
-                                className="text-sm text-muted hover:text-foreground disabled:opacity-50"
-                                aria-label="Remove line"
-                              >
-                                ×
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
+                            className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
+                              active
+                                ? "bg-foreground text-surface"
+                                : "hover:bg-sidebar"
+                            }`}
+                          >
+                            <span className="block truncate font-medium">
+                              {index + 1}. {order.customerName ?? "Order"}
+                            </span>
+                            <span
+                              className={`mt-0.5 block truncate text-xs ${
+                                active ? "text-surface/70" : "text-muted"
+                              }`}
+                            >
+                              {order.lines.length} line
+                              {order.lines.length === 1 ? "" : "s"}
+                              {order.areaSnapshot || order.customerArea
+                                ? ` · ${order.areaSnapshot || order.customerArea}`
+                                : ""}
+                            </span>
+                          </button>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
+                </div>
+              </aside>
+            ) : null}
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-muted">
-                      Additional discount
-                    </span>
-                    <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
-                      <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
-                        ₹
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        inputMode="decimal"
+            <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r lg:py-5">
+              <div className="mx-auto max-w-xl space-y-5">
+                {loadingOrders ? (
+                  <p className="text-sm text-muted">Loading order lines…</p>
+                ) : null}
+
+                {!loadingOrders && draft && activeOrder ? (
+                  <>
+                    <section className="space-y-3">
+                      <label className="block min-w-0">
+                        <span className="mb-1.5 block text-xs font-medium text-muted">
+                          Customer
+                        </span>
+                        <input
+                          type="text"
+                          value={customerName}
+                          disabled
+                          className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
+                        />
+                      </label>
+
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] gap-2 px-0.5 text-[11px] font-medium tracking-wide text-muted uppercase">
+                          <span>Item</span>
+                          <span className="text-right">Qty</span>
+                          <span className="text-right">Rate</span>
+                          <span className="text-right">Amount</span>
+                          <span />
+                        </div>
+                        {draft.lines.map((line) => {
+                          const blank = isBlankLine(line);
+                          return (
+                            <div
+                              key={line.key}
+                              className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] items-start gap-2"
+                            >
+                              <div className="min-w-0 space-y-1">
+                                <ItemNameCombobox
+                                  items={priceList}
+                                  value={line.itemName}
+                                  disabled={actionBusy}
+                                  showPrice={false}
+                                  placeholder="Item"
+                                  onChange={(value) =>
+                                    updateLine(line.key, {
+                                      itemName: value,
+                                      priceListItemId: null,
+                                      unitPrice: 0,
+                                      listPrice: 0,
+                                      ruleDescription: null,
+                                    })
+                                  }
+                                  onSelect={(item) =>
+                                    selectCatalogItem(line.key, item)
+                                  }
+                                  onTabToQty={() => undefined}
+                                />
+                                {line.shadeCode.trim() ? (
+                                  <p className="truncate text-xs text-muted">
+                                    Shade {line.shadeCode.trim()}
+                                    {line.ruleDescription
+                                      ? ` · ${line.ruleDescription}`
+                                      : ""}
+                                  </p>
+                                ) : line.ruleDescription ? (
+                                  <p className="truncate text-xs text-muted">
+                                    {line.ruleDescription}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                inputMode="decimal"
+                                disabled={actionBusy}
+                                value={line.qty}
+                                placeholder="0"
+                                onChange={(e) =>
+                                  updateLine(line.key, { qty: e.target.value })
+                                }
+                                className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
+                              />
+                              <span className="py-2 text-right text-sm tabular-nums text-muted">
+                                {line.unitPrice > 0
+                                  ? formatINR(line.unitPrice)
+                                  : "—"}
+                              </span>
+                              <span className="py-2 text-right text-sm tabular-nums">
+                                {line.amount > 0 ? formatINR(line.amount) : "—"}
+                              </span>
+                              <div className="flex justify-center pt-2">
+                                {!blank ? (
+                                  <button
+                                    type="button"
+                                    disabled={actionBusy}
+                                    onClick={() => removeLine(line.key)}
+                                    className="text-sm text-muted hover:text-foreground disabled:opacity-50"
+                                    aria-label="Remove line"
+                                  >
+                                    ×
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-medium text-muted">
+                          Additional discount
+                        </span>
+                        <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                          <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            inputMode="decimal"
+                            disabled={actionBusy}
+                            value={draft.additionalDiscount}
+                            placeholder="0"
+                            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
+                            onChange={(e) =>
+                              updateActiveDraft({
+                                additionalDiscount: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </label>
+                    </section>
+
+                    {displayError ? (
+                      <p
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                        role="alert"
+                      >
+                        {displayError}
+                      </p>
+                    ) : null}
+
+                    <div className="flex justify-end gap-2 pb-1">
+                      <button
+                        type="button"
                         disabled={actionBusy}
-                        value={draft.additionalDiscount}
-                        placeholder="0"
-                        className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
-                        onChange={(e) =>
-                          updateActiveDraft({
-                            additionalDiscount: e.target.value,
-                          })
-                        }
-                      />
+                        onClick={onClose}
+                        className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionBusy || workingOrders.length === 0}
+                        onClick={() => void handleSubmit()}
+                        className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
+                      >
+                        {actionBusy
+                          ? syncing
+                            ? "Saving…"
+                            : busy
+                              ? "Invoicing…"
+                              : "Loading…"
+                          : workingOrders.length > 1
+                            ? `Generate ${workingOrders.length} invoices`
+                            : "Generate invoice"}
+                      </button>
                     </div>
-                  </label>
-                </section>
+                  </>
+                ) : null}
 
-                {displayError ? (
+                {!loadingOrders && !draft && displayError ? (
                   <p
                     className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
                     role="alert"
@@ -741,56 +882,153 @@ export function CustomerOrderInvoiceModal({
                     {displayError}
                   </p>
                 ) : null}
+              </div>
+            </div>
 
-                <div className="flex justify-end gap-2 pb-1">
+            <div className="hidden min-h-0 overflow-y-auto bg-sidebar/30 p-4 lg:block">
+              <InvoicePreview
+                invoice={liveInvoice}
+                salesman={previewCustomer}
+                hideToolbar
+                previousBalance={previousBalance}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[14rem_minmax(0,1fr)]">
+            <aside className="min-h-0 overflow-y-auto border-b border-border bg-sidebar/20 lg:border-b-0 lg:border-r">
+              <div className="px-3 py-3">
+                <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">
+                  Invoices ({created.length})
+                </p>
+                <ul className="space-y-1">
+                  {created.map((item, index) => {
+                    const active = item.invoice.id === activeCreated?.invoice.id;
+                    const printed = printedIds.has(item.invoice.id);
+                    const name =
+                      customers.find((c) => c.id === item.customerId)?.name ??
+                      workingOrders.find((o) => o.id === item.orderId)
+                        ?.customerName ??
+                      "Customer";
+                    return (
+                      <li key={item.invoice.id}>
+                        <button
+                          type="button"
+                          onClick={() => setActiveInvoiceId(item.invoice.id)}
+                          className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
+                            active
+                              ? "bg-foreground text-surface"
+                              : "hover:bg-sidebar"
+                          }`}
+                        >
+                          <span className="flex items-start justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">
+                                {index + 1}. {name}
+                              </span>
+                              <span
+                                className={`mt-0.5 block truncate text-xs ${
+                                  active ? "text-surface/70" : "text-muted"
+                                }`}
+                              >
+                                {item.invoice.number}
+                              </span>
+                            </span>
+                            {printed ? (
+                              <span
+                                className={`shrink-0 text-[10px] font-medium ${
+                                  active ? "text-surface/80" : "text-emerald-700"
+                                }`}
+                              >
+                                Printed
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </aside>
+
+            <div className="flex min-h-0 flex-col overflow-hidden">
+              <div className="shrink-0 space-y-3 border-b border-border px-4 py-3 sm:px-5">
+                <p className="text-sm text-muted">
+                  Print a priced copy for records, or a delivery copy without
+                  prices. Select each invoice from the list.
+                </p>
+                {activeCreated ? (
+                  <p className="text-sm font-medium">
+                    {activeCreated.invoice.number}
+                    {" · "}
+                    {formatINR(activeCreated.invoice.totalAmount)}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                  {!allPrinted && created.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={selectNextUnprinted}
+                      className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar sm:mr-auto"
+                    >
+                      Next unprinted
+                    </button>
+                  ) : (
+                    <span className="sm:mr-auto" />
+                  )}
                   <button
                     type="button"
-                    disabled={actionBusy}
                     onClick={onClose}
                     className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
                   >
-                    Cancel
+                    Done
                   </button>
                   <button
                     type="button"
-                    disabled={actionBusy || workingOrders.length === 0}
-                    onClick={() => void handleSubmit()}
+                    disabled={!activeCreated}
+                    onClick={printWithoutPrices}
+                    className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                  >
+                    Print without prices
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!activeCreated}
+                    onClick={printWithPrices}
                     className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    {actionBusy
-                      ? syncing
-                        ? "Saving…"
-                        : busy
-                          ? "Invoicing…"
-                          : "Loading…"
-                      : workingOrders.length > 1
-                        ? `Generate ${workingOrders.length} invoices`
-                        : "Generate invoice"}
+                    Print with prices
                   </button>
                 </div>
-              </>
-            ) : null}
+              </div>
 
-            {!loadingOrders && !draft && displayError ? (
-              <p
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                role="alert"
-              >
-                {displayError}
-              </p>
-            ) : null}
+              <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar/30 p-4">
+                {activeCreated && printParty ? (
+                  <InvoicePreview
+                    invoice={activeCreated.invoice}
+                    salesman={printParty}
+                    hideToolbar
+                    previousBalance={printParty.pendingBalance}
+                  />
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+      </Modal>
 
-        <div className="hidden min-h-0 overflow-y-auto bg-sidebar/30 p-4 lg:block">
+      {phase === "print" && activeCreated && printParty ? (
+        <div className="hidden print:block">
           <InvoicePreview
-            invoice={liveInvoice}
-            salesman={previewCustomer}
-            hideToolbar
-            previousBalance={previousBalance}
+            invoice={activeCreated.invoice}
+            salesman={printParty}
+            forPrint
+            hidePrices={hidePrices}
+            previousBalance={hidePrices ? undefined : printParty.pendingBalance}
           />
         </div>
-      </div>
-    </Modal>
+      ) : null}
+    </>
   );
 }
