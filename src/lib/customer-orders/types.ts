@@ -196,6 +196,20 @@ export const KANBAN_COLUMNS: CustomerOrderStatus[] = [
   "delivered",
 ];
 
+/** Client-safe allowed status moves (mirrors server STATUS_TRANSITIONS). */
+export const ORDER_STATUS_MOVES: Record<
+  CustomerOrderStatus,
+  CustomerOrderStatus[]
+> = {
+  draft: ["picking", "cancelled"],
+  picking: ["packed", "cancelled"],
+  packed: ["invoiced", "picking", "cancelled"],
+  invoiced: ["out_for_delivery"],
+  out_for_delivery: ["delivered", "invoiced"],
+  delivered: [],
+  cancelled: ["picking"],
+};
+
 export const ORDER_LINE_UNIT_LABELS: Record<CustomerOrderLineUnit, string> = {
   box: "Box",
   dibbi: "Dibbi",

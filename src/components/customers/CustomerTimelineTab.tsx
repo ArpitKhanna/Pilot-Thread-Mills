@@ -15,6 +15,8 @@ import type {
 type CustomerTimelineTabProps = {
   orders: CustomerOrder[];
   invoices: Invoice[];
+  /** Hide page-level heading when embedded in a panel. */
+  compact?: boolean;
 };
 
 type TimelineKind = "order" | "payment";
@@ -173,6 +175,7 @@ function buildTimeline(
 export function CustomerTimelineTab({
   orders,
   invoices,
+  compact = false,
 }: CustomerTimelineTabProps) {
   const events = useMemo(
     () => buildTimeline(orders, invoices),
@@ -181,7 +184,13 @@ export function CustomerTimelineTab({
 
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
+      <div
+        className={`text-center text-sm text-muted ${
+          compact
+            ? "py-8"
+            : "rounded-xl border border-border bg-surface px-4 py-12"
+        }`}
+      >
         No confirmed orders or payments yet
       </div>
     );
@@ -189,14 +198,22 @@ export function CustomerTimelineTab({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-medium tracking-tight">Timeline</h2>
-        <p className="mt-1 text-sm text-muted">
-          Confirmed orders and payments — newest first
-        </p>
-      </div>
+      {compact ? null : (
+        <div>
+          <h2 className="text-lg font-medium tracking-tight">Timeline</h2>
+          <p className="mt-1 text-sm text-muted">
+            Confirmed orders and payments — newest first
+          </p>
+        </div>
+      )}
 
-      <div className="rounded-xl border border-border bg-surface px-4 py-2 sm:px-5">
+      <div
+        className={
+          compact
+            ? "px-0 py-0"
+            : "rounded-xl border border-border bg-surface px-4 py-2 sm:px-5"
+        }
+      >
         <ul>
           {events.map((event, index) => {
             const isLast = index === events.length - 1;

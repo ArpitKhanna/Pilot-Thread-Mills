@@ -6,6 +6,7 @@ import {
 import {
   createCustomerOrder,
   listCustomerOrders,
+  listCustomerOrdersForCustomer,
 } from "@/lib/customer-orders/queries";
 import { getSalesman } from "@/lib/salesmen/queries";
 
@@ -33,13 +34,17 @@ async function allocateCustomerId(
   return `sm-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireOrderCustomersAccess();
   if (isAuthError(auth)) return auth.error;
   const { supabase } = auth;
 
+  const customerId = new URL(request.url).searchParams.get("customerId");
+
   try {
-    const orders = await listCustomerOrders(supabase);
+    const orders = customerId
+      ? await listCustomerOrdersForCustomer(supabase, customerId)
+      : await listCustomerOrders(supabase);
     return NextResponse.json({ orders });
   } catch (e) {
     console.error(e);

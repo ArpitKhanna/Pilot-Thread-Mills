@@ -279,33 +279,77 @@ export function CustomerOrdersListClient({
     );
   }
 
+  function snapshotStatuses(ids: string[]) {
+    const idSet = new Set(ids);
+    return orders
+      .filter((o) => idSet.has(o.id))
+      .map((o) => ({
+        id: o.id,
+        status: o.status,
+        deliveryBy: o.deliveryBy,
+        deliveryByName: o.deliveryByName,
+      }));
+  }
+
+  function restoreSnapshots(
+    snapshots: Array<{
+      id: string;
+      status: CustomerOrderStatus;
+      deliveryBy: string | null;
+      deliveryByName: string | null;
+    }>,
+  ) {
+    const byId = new Map(snapshots.map((s) => [s.id, s]));
+    setOrders((prev) =>
+      prev.map((o) => {
+        const snap = byId.get(o.id);
+        return snap
+          ? {
+              ...o,
+              status: snap.status,
+              deliveryBy: snap.deliveryBy,
+              deliveryByName: snap.deliveryByName,
+            }
+          : o;
+      }),
+    );
+  }
+
   async function patchStatuses(
     ids: string[],
     status: CustomerOrderStatus,
     extras?: { deliveryBy?: string | null },
   ): Promise<void> {
-    for (const id of ids) {
-      const res = await fetch(`/api/customer-orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          ...(extras?.deliveryBy !== undefined
-            ? { deliveryBy: extras.deliveryBy }
-            : {}),
-        }),
-      });
-      const json = (await res.json()) as {
-        error?: string;
-        order?: CustomerOrder;
-      };
-      if (!res.ok) throw new Error(json.error ?? "Failed to update order");
-      if (json.order) {
-        setOrders((prev) =>
-          prev.map((o) => (o.id === json.order!.id ? { ...o, ...json.order! } : o)),
-        );
-      }
-    }
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const res = await fetch(`/api/customer-orders/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            ...(extras?.deliveryBy !== undefined
+              ? { deliveryBy: extras.deliveryBy }
+              : {}),
+          }),
+        });
+        const json = (await res.json()) as {
+          error?: string;
+          order?: CustomerOrder;
+        };
+        if (!res.ok) throw new Error(json.error ?? "Failed to update order");
+        return json.order;
+      }),
+    );
+    const byId = new Map(
+      results.filter(Boolean).map((o) => [o!.id, o!] as const),
+    );
+    if (byId.size === 0) return;
+    setOrders((prev) =>
+      prev.map((o) => {
+        const next = byId.get(o.id);
+        return next ? { ...o, ...next } : o;
+      }),
+    );
   }
 
   async function submitBulkStatus(targetOverride?: CustomerOrderStatus) {
@@ -317,14 +361,15 @@ export function CustomerOrdersListClient({
       return;
     }
     const ids = selectedOrders.map((o) => o.id);
-    setBulkBusy(true);
+    const snapshots = snapshotStatuses(ids);
     setBulkError("");
+    applyLocalStatus(ids, target);
+    clearSelection();
+    setBulkBusy(true);
     try {
       await patchStatuses(ids, target);
-      applyLocalStatus(ids, target);
-      clearSelection();
-      router.refresh();
     } catch (e) {
+      restoreSnapshots(snapshots);
       setBulkError(e instanceof Error ? e.message : "Bulk update failed");
     } finally {
       setBulkBusy(false);
@@ -388,17 +433,15 @@ export function CustomerOrdersListClient({
       return;
     }
 
-    setBulkBusy(true);
+    const snapshots = snapshotStatuses(ids);
     setBulkError("");
+    applyLocalStatus(ids, toStatus);
+    clearSelection();
     try {
       await patchStatuses(ids, toStatus);
-      applyLocalStatus(ids, toStatus);
-      clearSelection();
-      router.refresh();
     } catch (e) {
+      restoreSnapshots(snapshots);
       setBulkError(e instanceof Error ? e.message : "Could not move order");
-    } finally {
-      setBulkBusy(false);
     }
   }
 
@@ -488,27 +531,32 @@ export function CustomerOrdersListClient({
       setOutError("Select a delivery person");
       return;
     }
-    setOutBusy(true);
+    const ids = invoiced.map((o) => o.id);
+    const assignedTo = outDeliveryBy;
+    const snapshots = snapshotStatuses(ids);
+    const person = deliveryStaff.find((p) => p.id === assignedTo);
     setOutError("");
+    applyLocalStatus(ids, "out_for_delivery", {
+      deliveryBy: assignedTo,
+      deliveryByName: person?.fullName ?? null,
+    });
+    setOutOpen(false);
+    setOutDeliveryBy("");
+    setActionOrderIds([]);
+    clearSelection();
+    setOutBusy(true);
     try {
-      const ids = invoiced.map((o) => o.id);
       await patchStatuses(ids, "out_for_delivery", {
-        deliveryBy: outDeliveryBy,
+        deliveryBy: assignedTo,
       });
-      const person = deliveryStaff.find((p) => p.id === outDeliveryBy);
-      applyLocalStatus(ids, "out_for_delivery", {
-        deliveryBy: outDeliveryBy,
-        deliveryByName: person?.fullName ?? null,
-      });
-      setOutOpen(false);
-      setOutDeliveryBy("");
-      setActionOrderIds([]);
-      clearSelection();
-      router.refresh();
     } catch (e) {
+      restoreSnapshots(snapshots);
       setOutError(
         e instanceof Error ? e.message : "Could not mark out for delivery",
       );
+      setOutOpen(true);
+      setActionOrderIds(ids);
+      setOutDeliveryBy(assignedTo);
     } finally {
       setOutBusy(false);
     }
@@ -945,6 +993,7 @@ export function CustomerOrdersListClient({
       <CustomerOrderSidebar
         orderId={detailOrderId}
         priceList={priceList}
+        customers={customers}
         onClose={() => setDetailOrderId(null)}
         onOrderChange={(updated) => {
           setOrders((prev) =>
@@ -962,6 +1011,18 @@ export function CustomerOrdersListClient({
                 : o,
             ),
           );
+        }}
+        onDeleted={(id) => {
+          setOrders((prev) => prev.filter((o) => o.id !== id));
+          setDetailOrderId(null);
+        }}
+        onRequestInvoice={(id) => {
+          setDetailOrderId(null);
+          openInvoiceModal([id]);
+        }}
+        onRequestAssignOut={(id) => {
+          setDetailOrderId(null);
+          openAssignOutModal([id]);
         }}
       />
 
