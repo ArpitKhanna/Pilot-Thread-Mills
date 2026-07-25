@@ -13,7 +13,6 @@ import { TopBar } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
-import type { BankAccount } from "@/lib/bank-accounts/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
   KANBAN_COLUMNS,
@@ -45,7 +44,6 @@ type CustomerOrdersListClientProps = {
   customers: Salesman[];
   priceList: PriceListItem[];
   deliveryStaff: DeliveryStaff[];
-  bankAccounts: BankAccount[];
 };
 
 const WEEKDAY_TO_MARKET: Record<number, MarketDay> = {
@@ -129,7 +127,6 @@ export function CustomerOrdersListClient({
   customers,
   priceList,
   deliveryStaff,
-  bankAccounts,
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
@@ -480,7 +477,7 @@ export function CustomerOrdersListClient({
     }
   }
 
-  async function submitDeliveryRun(payload: CustomerOrderInvoiceSubmitPayload) {
+  async function submitInvoices(payload: CustomerOrderInvoiceSubmitPayload) {
     const packed = actionOrders.filter((o) => o.status === "packed");
     if (packed.length === 0) {
       setRunError("Select at least one packed order");
@@ -489,34 +486,29 @@ export function CustomerOrdersListClient({
     setRunBusy(true);
     setRunError("");
     try {
-      const area =
-        areaFilter !== "all"
-          ? areaFilter
-          : packed[0]?.customerArea || packed[0]?.areaSnapshot || null;
       const ids = packed.map((o) => o.id);
-      const res = await fetch("/api/delivery-runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderIds: ids,
-          deliveryBy: payload.deliveryBy,
-          area,
-          invoicesByOrder: payload.invoicesByOrder,
-        }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Delivery run failed");
-      const person = deliveryStaff.find((p) => p.id === payload.deliveryBy);
-      applyLocalStatus(ids, "invoiced", {
-        deliveryBy: payload.deliveryBy,
-        deliveryByName: person?.fullName ?? null,
-      });
+      for (const id of ids) {
+        const invoice = payload.invoicesByOrder[id];
+        const res = await fetch(`/api/customer-orders/${id}/convert-invoice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            discountAmount: invoice?.discountAmount ?? 0,
+            paymentEntries: invoice?.paymentEntries ?? [],
+            lineQtyOverrides: invoice?.lineQtyOverrides,
+            lineUnitPriceOverrides: invoice?.lineUnitPriceOverrides,
+          }),
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Failed to generate invoice");
+      }
+      applyLocalStatus(ids, "invoiced");
       setRunOpen(false);
       setActionOrderIds([]);
       clearSelection();
       router.refresh();
     } catch (e) {
-      setRunError(e instanceof Error ? e.message : "Delivery run failed");
+      setRunError(e instanceof Error ? e.message : "Failed to generate invoice");
     } finally {
       setRunBusy(false);
     }
@@ -1049,11 +1041,9 @@ export function CustomerOrdersListClient({
         orders={actionOrders.filter((o) => o.status === "packed")}
         customers={customers}
         priceList={priceList}
-        deliveryStaff={deliveryStaff}
-        bankAccounts={bankAccounts}
         busy={runBusy}
         error={runError}
-        onSubmit={submitDeliveryRun}
+        onSubmit={submitInvoices}
       />
 
       <Modal

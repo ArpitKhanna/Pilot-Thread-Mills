@@ -63,6 +63,24 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: payments.error }, { status: 400 });
   }
 
+  const lineQtyOverrides =
+    body.lineQtyOverrides && typeof body.lineQtyOverrides === "object"
+      ? Object.fromEntries(
+          Object.entries(body.lineQtyOverrides as Record<string, unknown>).map(
+            ([lineId, qty]) => [lineId, Number(qty)],
+          ),
+        )
+      : undefined;
+  const lineUnitPriceOverrides =
+    body.lineUnitPriceOverrides &&
+    typeof body.lineUnitPriceOverrides === "object"
+      ? Object.fromEntries(
+          Object.entries(
+            body.lineUnitPriceOverrides as Record<string, unknown>,
+          ).map(([lineId, price]) => [lineId, Number(price)]),
+        )
+      : undefined;
+
   try {
     const result = await convertOrderToInvoice(supabase, {
       orderId: id,
@@ -71,6 +89,8 @@ export async function POST(request: Request, context: RouteContext) {
       discountAmount:
         body.discountAmount != null ? Number(body.discountAmount) : 0,
       notes: body.notes != null ? String(body.notes) : undefined,
+      lineQtyOverrides,
+      lineUnitPriceOverrides,
       deliveryBy:
         body.deliveryBy != null && String(body.deliveryBy).trim()
           ? String(body.deliveryBy).trim()

@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getAppContext } from "@/app/(app)/layout";
 import { CustomerOrdersListClient } from "@/components/customer-orders/CustomerOrdersListClient";
 import type { PriceListItem } from "@/lib/auth/types";
-import { listActiveBankAccounts } from "@/lib/bank-accounts/queries";
 import {
   listCustomerOrders,
   listDeliveryStaff,
@@ -18,18 +17,16 @@ export default async function CustomerOrdersPage() {
   if (!hasAccess) redirect("/dashboard");
 
   const supabase = await createClient();
-  const [orders, customers, deliveryStaff, priceListResult, bankAccounts] =
-    await Promise.all([
-      listCustomerOrders(supabase),
-      listCustomers(supabase),
-      listDeliveryStaff(supabase),
-      supabase
-        .from("price_list_items")
-        .select("*")
-        .eq("status", "approved")
-        .order("item_name"),
-      listActiveBankAccounts(supabase),
-    ]);
+  const [orders, customers, deliveryStaff, priceListResult] = await Promise.all([
+    listCustomerOrders(supabase),
+    listCustomers(supabase),
+    listDeliveryStaff(supabase),
+    supabase
+      .from("price_list_items")
+      .select("*")
+      .eq("status", "approved")
+      .order("item_name"),
+  ]);
 
   return (
     <CustomerOrdersListClient
@@ -38,7 +35,6 @@ export default async function CustomerOrdersPage() {
       customers={customers}
       priceList={(priceListResult.data ?? []) as PriceListItem[]}
       deliveryStaff={deliveryStaff}
-      bankAccounts={bankAccounts}
     />
   );
 }

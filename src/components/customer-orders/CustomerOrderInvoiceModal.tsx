@@ -1,19 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
+import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
-import type { BankAccount } from "@/lib/bank-accounts/types";
 import {
   matchCustomerPriceRule,
   resolveCustomerUnitPrice,
 } from "@/lib/customers/price-rules";
-import type {
-  CustomerOrder,
-  DeliveryStaff,
-} from "@/lib/customer-orders/types";
+import type { CustomerOrder } from "@/lib/customer-orders/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type {
   Invoice,
@@ -22,32 +18,27 @@ import type {
   Salesman,
 } from "@/lib/salesmen/types";
 
-type BuilderStep = 1 | 2;
-
 type PricedLine = {
-  orderLineId: string;
+  /** Existing order line id, or null for lines added in this modal */
+  orderLineId: string | null;
   key: string;
   priceListItemId: string | null;
-  name: string;
   itemName: string;
+  shadeCode: string;
   qty: string;
   unitPrice: number;
   amount: number;
   listPrice: number;
   ruleDescription: string | null;
-  /** True when price came from a manual/unmatched line and can be edited */
-  priceEditable: boolean;
 };
 
 type OrderDraft = {
   lines: PricedLine[];
   additionalDiscount: string;
-  payments: InvoicePaymentEntry[];
 };
 
 export type CustomerOrderInvoiceSubmitPayload = {
   orderIds: string[];
-  deliveryBy: string;
   invoicesByOrder: Record<
     string,
     {
@@ -58,6 +49,8 @@ export type CustomerOrderInvoiceSubmitPayload = {
     }
   >;
 };
+
+const BLANK_ROWS = 3;
 
 function matchCatalogByName(
   priceList: PriceListItem[],
@@ -75,14 +68,48 @@ function matchCatalogByName(
   });
 }
 
+function emptyLine(): PricedLine {
+  return {
+    orderLineId: null,
+    key: crypto.randomUUID(),
+    priceListItemId: null,
+    itemName: "",
+    shadeCode: "",
+    qty: "",
+    unitPrice: 0,
+    amount: 0,
+    listPrice: 0,
+    ruleDescription: null,
+  };
+}
+
+function isBlankLine(line: PricedLine): boolean {
+  return (
+    !line.itemName.trim() &&
+    !line.shadeCode.trim() &&
+    !line.qty &&
+    line.priceListItemId == null &&
+    line.unitPrice <= 0
+  );
+}
+
+function withTrailingBlanks(lines: PricedLine[]): PricedLine[] {
+  const filled = lines.filter((l) => !isBlankLine(l));
+  const blanks = Array.from({ length: BLANK_ROWS }, () => emptyLine());
+  return [...filled, ...blanks];
+}
+
+function lineDisplayName(line: PricedLine): string {
+  const base = line.itemName.trim() || "Item";
+  return line.shadeCode.trim() ? `${base} — ${line.shadeCode.trim()}` : base;
+}
+
 type CustomerOrderInvoiceModalProps = {
   open: boolean;
   onClose: () => void;
   orders: CustomerOrder[];
   customers: Salesman[];
   priceList: PriceListItem[];
-  deliveryStaff: DeliveryStaff[];
-  bankAccounts: BankAccount[];
   busy?: boolean;
   error?: string;
   onSubmit: (payload: CustomerOrderInvoiceSubmitPayload) => void | Promise<void>;
@@ -129,7 +156,7 @@ function buildPricedLines(
   priceList: PriceListItem[],
 ): PricedLine[] {
   const rules = customer?.priceRules ?? [];
-  return order.lines
+  const seeded = order.lines
     .filter(
       (line) =>
         line.qty > 0 &&
@@ -144,9 +171,12 @@ function buildPricedLines(
         (line.priceListItemId
           ? priceList.find((p) => p.id === line.priceListItemId)
           : undefined) ??
-        (line.itemName ? matchCatalogByName(priceList, line.itemName) : undefined);
+        (line.itemName
+          ? matchCatalogByName(priceList, line.itemName)
+          : undefined);
       const itemName =
-        (line.itemName?.trim() || catalog?.item_name || "Item").trim() || "Item";
+        (line.itemName?.trim() || catalog?.item_name || "Item").trim() ||
+        "Item";
       const listPrice = catalog ? Number(catalog.customer_price) : 0;
       const priceListItemId = catalog?.id ?? line.priceListItemId ?? null;
       const unitPrice = resolveCustomerUnitPrice(listPrice, rules, {
@@ -160,23 +190,20 @@ function buildPricedLines(
         priceList,
       });
       const qty = line.qty > 0 ? line.qty : 0;
-      const name = line.shadeCode
-        ? `${itemName} — ${line.shadeCode}`
-        : itemName;
       return {
         orderLineId: line.id,
         key: line.id,
         priceListItemId,
-        name,
         itemName,
+        shadeCode: line.shadeCode ?? "",
         qty: String(qty),
         unitPrice,
         amount: Math.round(unitPrice * qty * 100) / 100,
         listPrice,
         ruleDescription: rule?.description ?? null,
-        priceEditable: !catalog || unitPrice <= 0,
       };
     });
+  return withTrailingBlanks(seeded);
 }
 
 function emptyDraft(
@@ -187,7 +214,6 @@ function emptyDraft(
   return {
     lines: buildPricedLines(order, customer, priceList),
     additionalDiscount: "",
-    payments: [],
   };
 }
 
@@ -197,59 +223,99 @@ export function CustomerOrderInvoiceModal({
   orders,
   customers,
   priceList,
-  deliveryStaff,
-  bankAccounts,
   busy = false,
   error,
   onSubmit,
 }: CustomerOrderInvoiceModalProps) {
-  const [step, setStep] = useState<BuilderStep>(1);
+  const [loadedOrders, setLoadedOrders] = useState<CustomerOrder[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, OrderDraft>>({});
-  const [deliveryBy, setDeliveryBy] = useState("");
   const [localError, setLocalError] = useState("");
-  const [paymentFieldErrors, setPaymentFieldErrors] = useState<
-    Record<
-      string,
-      {
-        amount?: string;
-        chequeNumber?: string;
-        depositAccountId?: string;
-      }
-    >
-  >({});
+  const [syncing, setSyncing] = useState(false);
   const [draftNumber] = useState(() => `INV-CU-${Date.now()}`);
   const [issuedAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    if (!open || orders.length === 0) return;
-    const nextDrafts: Record<string, OrderDraft> = {};
-    for (const order of orders) {
-      const customer =
-        customers.find((c) => c.id === order.customerId) ?? null;
-      nextDrafts[order.id] = emptyDraft(order, customer, priceList);
+    if (!open || orders.length === 0) {
+      if (!open) {
+        setLoadedOrders([]);
+        setDrafts({});
+        setActiveOrderId("");
+      }
+      return;
     }
-    setDrafts(nextDrafts);
-    setActiveOrderId(orders[0]!.id);
-    setDeliveryBy("");
-    setStep(1);
+
+    let cancelled = false;
+    setLoadingOrders(true);
     setLocalError("");
-    setPaymentFieldErrors({});
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          orders.map(async (order) => {
+            const res = await fetch(`/api/customer-orders/${order.id}`);
+            const json = (await res.json()) as {
+              order?: CustomerOrder;
+              error?: string;
+            };
+            if (!res.ok || !json.order) {
+              throw new Error(
+                json.error ??
+                  `Could not load order for ${order.customerName ?? "customer"}`,
+              );
+            }
+            return json.order;
+          }),
+        );
+        if (cancelled) return;
+
+        const nextDrafts: Record<string, OrderDraft> = {};
+        for (const order of results) {
+          const customer =
+            customers.find((c) => c.id === order.customerId) ?? null;
+          nextDrafts[order.id] = emptyDraft(order, customer, priceList);
+        }
+        setLoadedOrders(results);
+        setDrafts(nextDrafts);
+        setActiveOrderId(results[0]!.id);
+      } catch (e) {
+        if (cancelled) return;
+        setLocalError(
+          e instanceof Error ? e.message : "Could not load order lines",
+        );
+        setLoadedOrders([]);
+        setDrafts({});
+      } finally {
+        if (!cancelled) setLoadingOrders(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, orders, customers, priceList]);
 
+  const workingOrders = loadedOrders.length > 0 ? loadedOrders : [];
   const activeOrder =
-    orders.find((o) => o.id === activeOrderId) ?? orders[0] ?? null;
+    workingOrders.find((o) => o.id === activeOrderId) ??
+    workingOrders[0] ??
+    null;
   const customer = activeOrder
     ? (customers.find((c) => c.id === activeOrder.customerId) ?? null)
     : null;
   const customerName =
     customer?.name ?? activeOrder?.customerName ?? "Customer";
+  const priceRules = customer?.priceRules ?? [];
   const draft = activeOrder ? drafts[activeOrder.id] : undefined;
 
   const filledLines = useMemo(
     () =>
       (draft?.lines ?? []).filter(
-        (l) => l.name.trim() && Number(l.qty) > 0 && l.unitPrice > 0,
+        (l) =>
+          l.itemName.trim() &&
+          Number(l.qty) > 0 &&
+          l.unitPrice > 0,
       ),
     [draft?.lines],
   );
@@ -262,28 +328,16 @@ export function CustomerOrderInvoiceModal({
   const additionalNum = Number(draft?.additionalDiscount ?? "");
   const discountAmount =
     Number.isFinite(additionalNum) && additionalNum > 0 ? additionalNum : 0;
-  const invoiceTotal = Math.max(0, Math.round((subtotal - discountAmount) * 100) / 100);
-  const amountPaid = useMemo(
-    () => (draft?.payments ?? []).reduce((sum, p) => sum + (p.amount || 0), 0),
-    [draft?.payments],
+  const invoiceTotal = Math.max(
+    0,
+    Math.round((subtotal - discountAmount) * 100) / 100,
   );
   const previousBalance = customer?.pendingBalance ?? 0;
-
-  const appliedRules = useMemo(() => {
-    const seen = new Set<string>();
-    const rules: string[] = [];
-    for (const line of draft?.lines ?? []) {
-      if (!line.ruleDescription || seen.has(line.ruleDescription)) continue;
-      seen.add(line.ruleDescription);
-      rules.push(line.ruleDescription);
-    }
-    return rules;
-  }, [draft?.lines]);
 
   const liveInvoice: Invoice = useMemo(() => {
     const lineItems: InvoiceLineItem[] = filledLines.map((l) => ({
       id: l.key,
-      name: l.name,
+      name: lineDisplayName(l),
       qty: Number(l.qty),
       unitPrice: l.unitPrice,
       amount: l.amount,
@@ -296,11 +350,9 @@ export function CustomerOrderInvoiceModal({
       issuedAt,
       itemCount: lineItems.length,
       totalAmount: invoiceTotal,
-      amountPaid,
+      amountPaid: 0,
       lineItems,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
-      paymentEntries:
-        (draft?.payments.length ?? 0) > 0 ? draft?.payments : undefined,
     };
   }, [
     filledLines,
@@ -310,9 +362,7 @@ export function CustomerOrderInvoiceModal({
     customer?.id,
     issuedAt,
     invoiceTotal,
-    amountPaid,
     discountAmount,
-    draft?.payments,
   ]);
 
   const previewCustomer: Salesman = customer
@@ -327,176 +377,181 @@ export function CustomerOrderInvoiceModal({
     setDrafts((prev) => ({
       ...prev,
       [activeOrder.id]: {
-        ...(prev[activeOrder.id] ?? emptyDraft(activeOrder, customer, priceList)),
+        ...(prev[activeOrder.id] ??
+          emptyDraft(activeOrder, customer, priceList)),
         ...patch,
       },
     }));
   }
 
-  function updateLineQty(key: string, qty: string) {
+  function updateLine(key: string, patch: Partial<PricedLine>) {
     if (!activeOrder || !draft) return;
-    const lines = draft.lines.map((line) => {
-      if (line.key !== key) return line;
-      const qtyNum = Number(qty);
-      const q = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
-      return {
-        ...line,
-        qty,
-        amount: Math.round(line.unitPrice * q * 100) / 100,
-      };
-    });
+    const lines = withTrailingBlanks(
+      draft.lines.map((line) => {
+        if (line.key !== key) return line;
+        const merged = { ...line, ...patch };
+        const qtyNum = Number(merged.qty);
+        const q = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
+        merged.amount = Math.round(merged.unitPrice * q * 100) / 100;
+        return merged;
+      }),
+    );
     updateActiveDraft({ lines });
   }
 
-  function updateLineUnitPrice(key: string, raw: string) {
+  function removeLine(key: string) {
     if (!activeOrder || !draft) return;
-    const priceNum = Number(raw);
-    const unitPrice =
-      Number.isFinite(priceNum) && priceNum >= 0
-        ? Math.round(priceNum * 100) / 100
-        : 0;
-    const lines = draft.lines.map((line) => {
-      if (line.key !== key) return line;
-      const qtyNum = Number(line.qty);
-      const q = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
-      return {
-        ...line,
-        unitPrice,
-        amount: Math.round(unitPrice * q * 100) / 100,
-      };
+    updateActiveDraft({
+      lines: withTrailingBlanks(draft.lines.filter((l) => l.key !== key)),
     });
-    updateActiveDraft({ lines });
   }
 
-  function validateOrderDraft(order: CustomerOrder, orderDraft: OrderDraft): string | null {
+  function selectCatalogItem(key: string, item: PriceListItem) {
+    const unitPrice = resolveCustomerUnitPrice(
+      item.customer_price,
+      priceRules,
+      {
+        priceListItemId: item.id,
+        itemName: item.item_name,
+        priceList,
+      },
+    );
+    const rule = matchCustomerPriceRule(priceRules, {
+      priceListItemId: item.id,
+      itemName: item.item_name,
+      priceList,
+    });
+    updateLine(key, {
+      itemName: item.item_name,
+      priceListItemId: item.id,
+      unitPrice,
+      listPrice: Number(item.customer_price),
+      ruleDescription: rule?.description ?? null,
+    });
+  }
+
+  function validateOrderDraft(
+    order: CustomerOrder,
+    orderDraft: OrderDraft,
+  ): string | null {
     if (!order.customerId) {
       return "Order is missing a customer.";
     }
     const filled = orderDraft.lines.filter(
-      (l) => l.name.trim() && Number(l.qty) > 0 && l.unitPrice > 0,
+      (l) => l.itemName.trim() && Number(l.qty) > 0 && l.unitPrice > 0,
     );
     if (filled.length === 0) {
-      return `Add quantities and prices for ${order.customerName ?? "this order"}.`;
-    }
-    const missingPrice = orderDraft.lines.some(
-      (l) => Number(l.qty) > 0 && (!(l.name.trim()) || l.unitPrice <= 0),
-    );
-    if (missingPrice) {
-      return `Every line for ${order.customerName ?? "this order"} needs a name and customer price.`;
+      return `Add at least one item for ${order.customerName ?? "this order"}.`;
     }
     return null;
   }
 
-  function validatePayments(payments: InvoicePaymentEntry[]): boolean {
-    const next: typeof paymentFieldErrors = {};
-    for (const payment of payments) {
-      const field: (typeof next)[string] = {};
-      if (!(payment.amount > 0)) {
-        field.amount = "Enter an amount greater than zero.";
-      }
-      if (payment.method === "cheque") {
-        if (!payment.chequeNumber?.trim()) {
-          field.chequeNumber = "Cheque number is required.";
-        }
-        if (!payment.depositAccountId) {
-          field.depositAccountId = "Select a deposit account.";
-        }
-      }
-      if (payment.method === "upi" || payment.method === "imps") {
-        if (!payment.depositAccountId) {
-          field.depositAccountId = "Select a deposit account.";
-        }
-      }
-      if (Object.keys(field).length > 0) {
-        next[payment.id] = field;
-      }
-    }
-    setPaymentFieldErrors(next);
-    return Object.keys(next).length === 0;
-  }
+  async function syncOrderLines(
+    order: CustomerOrder,
+    orderDraft: OrderDraft,
+  ): Promise<CustomerOrder> {
+    const filled = orderDraft.lines.filter(
+      (l) => l.itemName.trim() && Number(l.qty) > 0,
+    );
+    const payload = filled.map((l) => ({
+      priceListItemId: l.priceListItemId,
+      itemName: l.itemName.trim(),
+      shadeCode: l.shadeCode.trim(),
+      qty: Number(l.qty),
+      unit: "box" as const,
+      source: "manual" as const,
+    }));
 
-  function goToPayments() {
-    if (!activeOrder || !draft) return;
-    const err = validateOrderDraft(activeOrder, draft);
-    if (err) {
-      setLocalError(err);
-      return;
+    const res = await fetch(`/api/customer-orders/${order.id}/lines`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines: payload, createMissingShades: true }),
+    });
+    const json = (await res.json()) as {
+      order?: CustomerOrder;
+      error?: string;
+    };
+    if (!res.ok || !json.order) {
+      throw new Error(
+        json.error ??
+          `Could not save lines for ${order.customerName ?? "order"}`,
+      );
     }
-    setLocalError("");
-    setStep(2);
+    return json.order;
   }
 
   async function handleSubmit() {
-    if (orders.length === 0) return;
-    if (!deliveryBy) {
-      setLocalError("Select a delivery person.");
-      return;
-    }
+    if (workingOrders.length === 0) return;
 
-    for (const order of orders) {
+    for (const order of workingOrders) {
       const orderDraft = drafts[order.id];
       if (!orderDraft) {
         setLocalError("Invoice draft missing. Close and reopen the modal.");
         setActiveOrderId(order.id);
-        setStep(1);
         return;
       }
       const err = validateOrderDraft(order, orderDraft);
       if (err) {
         setLocalError(err);
         setActiveOrderId(order.id);
-        setStep(1);
-        return;
-      }
-      if (!validatePayments(orderDraft.payments)) {
-        setLocalError("Fix payment details before invoicing.");
-        setActiveOrderId(order.id);
-        setStep(2);
         return;
       }
     }
 
     setLocalError("");
-    const invoicesByOrder: CustomerOrderInvoiceSubmitPayload["invoicesByOrder"] =
-      {};
-    for (const order of orders) {
-      const orderDraft = drafts[order.id]!;
-      const discountNum = Number(orderDraft.additionalDiscount);
-      const discount =
-        Number.isFinite(discountNum) && discountNum > 0 ? discountNum : 0;
-      const lineQtyOverrides: Record<string, number> = {};
-      const lineUnitPriceOverrides: Record<string, number> = {};
-      for (const line of orderDraft.lines) {
-        const qty = Number(line.qty);
-        if (Number.isFinite(qty) && qty > 0) {
-          lineQtyOverrides[line.orderLineId] = qty;
-        }
-        if (line.unitPrice > 0) {
-          lineUnitPriceOverrides[line.orderLineId] = line.unitPrice;
-        }
-      }
-      invoicesByOrder[order.id] = {
-        discountAmount: discount,
-        paymentEntries: orderDraft.payments.filter((p) => p.amount > 0),
-        lineQtyOverrides,
-        lineUnitPriceOverrides,
-      };
-    }
+    setSyncing(true);
+    try {
+      const invoicesByOrder: CustomerOrderInvoiceSubmitPayload["invoicesByOrder"] =
+        {};
 
-    await onSubmit({
-      orderIds: orders.map((o) => o.id),
-      deliveryBy,
-      invoicesByOrder,
-    });
+      for (const order of workingOrders) {
+        const orderDraft = drafts[order.id]!;
+        const filled = orderDraft.lines.filter(
+          (l) => l.itemName.trim() && Number(l.qty) > 0 && l.unitPrice > 0,
+        );
+        const saved = await syncOrderLines(order, orderDraft);
+        const discountNum = Number(orderDraft.additionalDiscount);
+        const discount =
+          Number.isFinite(discountNum) && discountNum > 0 ? discountNum : 0;
+
+        const lineQtyOverrides: Record<string, number> = {};
+        const lineUnitPriceOverrides: Record<string, number> = {};
+        saved.lines.forEach((line, index) => {
+          const draftLine = filled[index];
+          if (!draftLine) return;
+          lineQtyOverrides[line.id] = Number(draftLine.qty);
+          lineUnitPriceOverrides[line.id] = draftLine.unitPrice;
+        });
+
+        invoicesByOrder[order.id] = {
+          discountAmount: discount,
+          paymentEntries: [],
+          lineQtyOverrides,
+          lineUnitPriceOverrides,
+        };
+      }
+
+      await onSubmit({
+        orderIds: workingOrders.map((o) => o.id),
+        invoicesByOrder,
+      });
+    } catch (e) {
+      setLocalError(
+        e instanceof Error ? e.message : "Could not prepare invoice",
+      );
+    } finally {
+      setSyncing(false);
+    }
   }
 
   const displayError = localError || error || "";
+  const actionBusy = busy || syncing || loadingOrders;
 
   return (
     <Modal
       open={open}
       onClose={() => {
-        if (!busy) onClose();
+        if (!actionBusy) onClose();
       }}
       title="Generate invoices"
       size="2xl"
@@ -505,9 +560,9 @@ export function CustomerOrderInvoiceModal({
       <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-2">
         <div className="min-h-0 overflow-y-auto border-b border-border px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r lg:py-5">
           <div className="mx-auto max-w-xl space-y-5">
-            {orders.length > 1 ? (
+            {workingOrders.length > 1 ? (
               <div className="flex flex-wrap gap-1.5">
-                {orders.map((order, index) => {
+                {workingOrders.map((order, index) => {
                   const active = order.id === activeOrder?.id;
                   return (
                     <button
@@ -516,7 +571,6 @@ export function CustomerOrderInvoiceModal({
                       onClick={() => {
                         setActiveOrderId(order.id);
                         setLocalError("");
-                        setPaymentFieldErrors({});
                       }}
                       className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
                         active
@@ -525,160 +579,131 @@ export function CustomerOrderInvoiceModal({
                       }`}
                     >
                       {index + 1}. {order.customerName ?? "Order"}
-                      {order.isUrgent ? " · Urgent" : ""}
                     </button>
                   );
                 })}
               </div>
             ) : null}
 
-            <div className="flex gap-2 rounded-lg border border-border p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setStep(1);
-                  setLocalError("");
-                }}
-                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
-                  step === 1
-                    ? "bg-sidebar text-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                1. Items
-              </button>
-              <button
-                type="button"
-                onClick={goToPayments}
-                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
-                  step === 2
-                    ? "bg-sidebar text-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                2. Payments
-              </button>
-            </div>
+            {loadingOrders ? (
+              <p className="text-sm text-muted">Loading order lines…</p>
+            ) : null}
 
-            {step === 1 && draft && activeOrder ? (
+            {!loadingOrders && draft && activeOrder ? (
               <>
                 <section className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block min-w-0 sm:col-span-2">
-                      <span className="mb-1.5 block text-xs font-medium text-muted">
-                        Customer
-                      </span>
-                      <input
-                        type="text"
-                        value={
-                          activeOrder.isUrgent
-                            ? `${customerName} · Urgent`
-                            : customerName
-                        }
-                        disabled
-                        className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
-                      />
-                    </label>
-                    <div>
-                      <span className="mb-1.5 block text-xs font-medium text-muted">
-                        Pending balance
-                      </span>
-                      <p className="py-2.5 text-sm tabular-nums">
-                        {formatINR(previousBalance)}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="mb-1.5 block text-xs font-medium text-muted">
-                        Invoice total
-                      </span>
-                      <p className="py-2.5 text-sm tabular-nums font-medium">
-                        {formatINR(invoiceTotal)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {appliedRules.length > 0 ? (
-                    <div className="rounded-lg border border-border bg-sidebar/40 px-3 py-2.5">
-                      <p className="text-xs font-medium text-muted">
-                        Customer price rules
-                      </p>
-                      <ul className="mt-1.5 space-y-0.5 text-sm">
-                        {appliedRules.map((rule) => (
-                          <li key={rule}>{rule}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted">
-                      Using list customer prices (no rules on this customer).
-                    </p>
-                  )}
+                  <label className="block min-w-0">
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Customer
+                    </span>
+                    <input
+                      type="text"
+                      value={customerName}
+                      disabled
+                      className="w-full rounded-lg border border-border bg-sidebar/40 px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-90"
+                    />
+                  </label>
 
                   <div className="space-y-2">
-                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem] gap-2 px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] gap-2 px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
                       <span>Item</span>
                       <span className="text-right">Qty</span>
                       <span className="text-right">Rate</span>
                       <span className="text-right">Amount</span>
+                      <span />
                     </div>
-                    {draft.lines.length === 0 ? (
-                      <p className="text-sm text-muted">
-                        No order lines to invoice. Add manual items on the
-                        order first.
-                      </p>
-                    ) : null}
-                    {draft.lines.map((line) => (
-                      <div
-                        key={line.key}
-                        className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem] items-start gap-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
-                            {line.name}
-                          </p>
-                          <p className="text-xs text-muted">
-                            {line.ruleDescription
-                              ? line.ruleDescription
-                              : line.priceEditable
-                                ? "Manual entry — set rate"
-                                : line.listPrice !== line.unitPrice
-                                  ? `List ${formatINR(line.listPrice)}`
-                                  : "Customer list price"}
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          inputMode="decimal"
-                          value={line.qty}
-                          onChange={(e) =>
-                            updateLineQty(line.key, e.target.value)
-                          }
-                          className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40"
-                        />
-                        {line.priceEditable ? (
+                    {draft.lines.map((line) => {
+                      const blank = isBlankLine(line);
+                      return (
+                        <div
+                          key={line.key}
+                          className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] items-start gap-2"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <ItemNameCombobox
+                              items={priceList}
+                              value={line.itemName}
+                              disabled={actionBusy}
+                              showPrice={false}
+                              placeholder="Item"
+                              onChange={(value) =>
+                                updateLine(line.key, {
+                                  itemName: value,
+                                  priceListItemId: null,
+                                  unitPrice: 0,
+                                  listPrice: 0,
+                                  ruleDescription: null,
+                                })
+                              }
+                              onSelect={(item) =>
+                                selectCatalogItem(line.key, item)
+                              }
+                              onTabToQty={() => undefined}
+                            />
+                            {line.shadeCode.trim() ? (
+                              <p className="truncate text-xs text-muted">
+                                Shade {line.shadeCode.trim()}
+                                {line.ruleDescription
+                                  ? ` · ${line.ruleDescription}`
+                                  : ""}
+                              </p>
+                            ) : line.ruleDescription ? (
+                              <p className="truncate text-xs text-muted">
+                                {line.ruleDescription}
+                              </p>
+                            ) : null}
+                          </div>
                           <input
                             type="number"
                             min={0}
                             step="any"
                             inputMode="decimal"
-                            value={line.unitPrice || ""}
+                            disabled={actionBusy}
+                            value={line.qty}
+                            placeholder="0"
                             onChange={(e) =>
-                              updateLineUnitPrice(line.key, e.target.value)
+                              updateLine(line.key, { qty: e.target.value })
                             }
-                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40"
+                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
                           />
-                        ) : (
-                          <span className="py-2 text-right text-sm tabular-nums text-muted">
-                            {formatINR(line.unitPrice)}
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            inputMode="decimal"
+                            disabled={actionBusy}
+                            value={line.unitPrice || ""}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const priceNum = Number(e.target.value);
+                              updateLine(line.key, {
+                                unitPrice:
+                                  Number.isFinite(priceNum) && priceNum >= 0
+                                    ? Math.round(priceNum * 100) / 100
+                                    : 0,
+                              });
+                            }}
+                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
+                          />
+                          <span className="py-2 text-right text-sm tabular-nums">
+                            {line.amount > 0 ? formatINR(line.amount) : "—"}
                           </span>
-                        )}
-                        <span className="py-2 text-right text-sm tabular-nums">
-                          {line.amount > 0 ? formatINR(line.amount) : "—"}
-                        </span>
-                      </div>
-                    ))}
+                          <div className="flex justify-center pt-2">
+                            {!blank ? (
+                              <button
+                                type="button"
+                                disabled={actionBusy}
+                                onClick={() => removeLine(line.key)}
+                                className="text-sm text-muted hover:text-foreground disabled:opacity-50"
+                                aria-label="Remove line"
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <label className="block">
@@ -694,9 +719,10 @@ export function CustomerOrderInvoiceModal({
                         min={0}
                         step="any"
                         inputMode="decimal"
+                        disabled={actionBusy}
                         value={draft.additionalDiscount}
                         placeholder="0"
-                        className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none"
+                        className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
                         onChange={(e) =>
                           updateActiveDraft({
                             additionalDiscount: e.target.value,
@@ -706,27 +732,6 @@ export function CustomerOrderInvoiceModal({
                     </div>
                   </label>
                 </section>
-
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-medium">Delivery by</span>
-                  <select
-                    value={deliveryBy}
-                    onChange={(e) => setDeliveryBy(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                  >
-                    <option value="">Select person…</option>
-                    {deliveryStaff.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                      </option>
-                    ))}
-                  </select>
-                  {orders.length > 1 ? (
-                    <span className="block text-xs text-muted">
-                      Same delivery person for all {orders.length} invoices.
-                    </span>
-                  ) : null}
-                </label>
 
                 {displayError ? (
                   <p
@@ -740,7 +745,7 @@ export function CustomerOrderInvoiceModal({
                 <div className="flex justify-end gap-2 pb-1">
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={actionBusy}
                     onClick={onClose}
                     className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
                   >
@@ -748,83 +753,31 @@ export function CustomerOrderInvoiceModal({
                   </button>
                   <button
                     type="button"
-                    disabled={busy}
-                    onClick={goToPayments}
+                    disabled={actionBusy || workingOrders.length === 0}
+                    onClick={() => void handleSubmit()}
                     className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Continue to payments
+                    {actionBusy
+                      ? syncing
+                        ? "Saving…"
+                        : busy
+                          ? "Invoicing…"
+                          : "Loading…"
+                      : workingOrders.length > 1
+                        ? `Generate ${workingOrders.length} invoices`
+                        : "Generate invoice"}
                   </button>
                 </div>
               </>
             ) : null}
 
-            {step === 2 && draft ? (
-              <>
-                <InvoicePaymentsStep
-                  payments={draft.payments}
-                  onChange={(next) => {
-                    updateActiveDraft({ payments: next });
-                    setPaymentFieldErrors({});
-                  }}
-                  invoiceTotal={invoiceTotal}
-                  previousBalance={previousBalance}
-                  bankAccounts={bankAccounts}
-                  disabled={busy}
-                  fieldErrors={paymentFieldErrors}
-                />
-
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-medium">Delivery by</span>
-                  <select
-                    value={deliveryBy}
-                    onChange={(e) => setDeliveryBy(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                  >
-                    <option value="">Select person…</option>
-                    {deliveryStaff.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {displayError ? (
-                  <p
-                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                    role="alert"
-                  >
-                    {displayError}
-                  </p>
-                ) : null}
-
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setStep(1);
-                      setLocalError("");
-                      setPaymentFieldErrors({});
-                    }}
-                    className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-                  >
-                    Back to items
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !deliveryBy || orders.length === 0}
-                    onClick={() => void handleSubmit()}
-                    className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
-                  >
-                    {busy
-                      ? "Invoicing…"
-                      : orders.length > 1
-                        ? `Invoice ${orders.length} & assign`
-                        : "Invoice & assign"}
-                  </button>
-                </div>
-              </>
+            {!loadingOrders && !draft && displayError ? (
+              <p
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                role="alert"
+              >
+                {displayError}
+              </p>
             ) : null}
           </div>
         </div>
