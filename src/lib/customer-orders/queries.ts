@@ -409,6 +409,7 @@ export async function deleteCustomerOrder(
 
 export type OrderLineInput = {
   priceListItemId?: string | null;
+  itemName?: string | null;
   shadeId?: string | null;
   shadeCode: string;
   qty: number;
@@ -433,6 +434,7 @@ export async function replaceOrderLines(
   const inserts = lines.map((line, index) => ({
     order_id: orderId,
     price_list_item_id: line.priceListItemId ?? null,
+    item_name: (line.itemName ?? "").trim(),
     shade_id: line.shadeId ?? null,
     shade_code: line.shadeCode.trim(),
     qty: line.qty,

@@ -71,6 +71,10 @@ export async function POST(request: Request, context: RouteContext) {
       discountAmount:
         body.discountAmount != null ? Number(body.discountAmount) : 0,
       notes: body.notes != null ? String(body.notes) : undefined,
+      deliveryBy:
+        body.deliveryBy != null && String(body.deliveryBy).trim()
+          ? String(body.deliveryBy).trim()
+          : undefined,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (e) {

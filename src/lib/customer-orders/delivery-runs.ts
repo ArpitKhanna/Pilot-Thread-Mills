@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
 import { convertOrderToInvoice } from "./convert";
 import {
   mapDeliveryRunOrderRow,
@@ -12,6 +13,14 @@ import type {
   DeliveryRun,
   DeliveryRunStatus,
 } from "./types";
+
+export type DeliveryRunInvoiceOptions = {
+  discountAmount?: number;
+  paymentEntries?: InvoicePaymentEntry[];
+  lineQtyOverrides?: Record<string, number>;
+  lineUnitPriceOverrides?: Record<string, number>;
+  notes?: string | null;
+};
 
 export async function listDeliveryRuns(
   supabase: SupabaseClient,
@@ -101,6 +110,8 @@ export type CreateDeliveryRunInput = {
   createdBy: string;
   /** Optional qty overrides: orderId -> lineId -> qty */
   lineQtyOverridesByOrder?: Record<string, Record<string, number>>;
+  /** Optional per-order invoice payments / discount / qty */
+  invoicesByOrder?: Record<string, DeliveryRunInvoiceOptions>;
 };
 
 export async function createDeliveryRunAndInvoice(
@@ -166,11 +177,18 @@ export async function createDeliveryRunAndInvoice(
   try {
     for (let i = 0; i < input.orderIds.length; i++) {
       const orderId = input.orderIds[i]!;
+      const invoiceOpts = input.invoicesByOrder?.[orderId];
       const result = await convertOrderToInvoice(supabase, {
         orderId,
         createdBy: input.createdBy,
         deliveryBy: delivery.id,
-        lineQtyOverrides: input.lineQtyOverridesByOrder?.[orderId],
+        lineQtyOverrides:
+          invoiceOpts?.lineQtyOverrides ??
+          input.lineQtyOverridesByOrder?.[orderId],
+        lineUnitPriceOverrides: invoiceOpts?.lineUnitPriceOverrides,
+        discountAmount: invoiceOpts?.discountAmount,
+        paymentEntries: invoiceOpts?.paymentEntries,
+        notes: invoiceOpts?.notes ?? input.notes ?? undefined,
       });
       linkInserts.push({
         run_id: runId,

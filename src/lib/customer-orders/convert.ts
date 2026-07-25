@@ -21,8 +21,26 @@ export type ConvertOrderInput = {
   notes?: string;
   /** Optional per-line qty overrides keyed by order line id */
   lineQtyOverrides?: Record<string, number>;
+  /** Optional per-line unit price overrides (manual / unmatched lines) */
+  lineUnitPriceOverrides?: Record<string, number>;
   deliveryBy?: string | null;
 };
+
+function matchCatalogByName(
+  priceList: PriceListItem[],
+  itemName: string,
+): PriceListItem | undefined {
+  const needle = itemName.trim().toLowerCase();
+  if (!needle) return undefined;
+  const exact = priceList.find(
+    (p) => p.item_name.trim().toLowerCase() === needle,
+  );
+  if (exact) return exact;
+  return priceList.find((p) => {
+    const name = p.item_name.trim().toLowerCase();
+    return name.includes(needle) || needle.includes(name);
+  });
+}
 
 export async function convertOrderToInvoice(
   supabase: SupabaseClient,
@@ -45,11 +63,26 @@ export async function convertOrderToInvoice(
         .filter((id): id is string => Boolean(id)),
     ),
   ];
+  const needsNameMatch = order.lines.some(
+    (l) => !l.priceListItemId && Boolean(l.itemName?.trim()),
+  );
 
-  const { data: priceRows, error: priceError } = await supabase
-    .from("price_list_items")
-    .select("*")
-    .in("id", itemIds.length > 0 ? itemIds : ["00000000-0000-0000-0000-000000000000"]);
+  const priceQuery = needsNameMatch
+    ? supabase
+        .from("price_list_items")
+        .select("*")
+        .eq("status", "approved")
+    : supabase
+        .from("price_list_items")
+        .select("*")
+        .in(
+          "id",
+          itemIds.length > 0
+            ? itemIds
+            : ["00000000-0000-0000-0000-000000000000"],
+        );
+
+  const { data: priceRows, error: priceError } = await priceQuery;
   if (priceError) throw priceError;
 
   const priceList = (priceRows ?? []) as PriceListItem[];
@@ -58,7 +91,10 @@ export async function convertOrderToInvoice(
   const customer = order.customerId
     ? await getSalesman(supabase, order.customerId)
     : null;
-  const priceRules = customer?.priceRules ?? [];
+  if (!order.customerId || !customer) {
+    throw new Error("Order customer is required before invoicing");
+  }
+  const priceRules = customer.priceRules ?? [];
 
   const lineItems = order.lines.map((line, index) => {
     const overrideQty = input.lineQtyOverrides?.[line.id];
@@ -66,17 +102,27 @@ export async function convertOrderToInvoice(
       overrideQty !== undefined && Number.isFinite(overrideQty) && overrideQty > 0
         ? overrideQty
         : line.qty;
-    const catalog = line.priceListItemId
-      ? priceById.get(line.priceListItemId)
-      : undefined;
+    const catalog =
+      (line.priceListItemId
+        ? priceById.get(line.priceListItemId)
+        : undefined) ??
+      (line.itemName ? matchCatalogByName(priceList, line.itemName) : undefined);
     const listPrice = catalog ? Number(catalog.customer_price) : 0;
     const nameBase =
-      catalog?.item_name ?? line.itemName ?? "Item";
-    const unitPrice = resolveCustomerUnitPrice(listPrice, priceRules, {
-      priceListItemId: line.priceListItemId,
+      catalog?.item_name ?? line.itemName?.trim() ?? "Item";
+    const priceListItemId = catalog?.id ?? line.priceListItemId ?? undefined;
+    const resolvedPrice = resolveCustomerUnitPrice(listPrice, priceRules, {
+      priceListItemId,
       itemName: nameBase,
       priceList,
     });
+    const overridePrice = input.lineUnitPriceOverrides?.[line.id];
+    const unitPrice =
+      overridePrice !== undefined &&
+      Number.isFinite(overridePrice) &&
+      overridePrice >= 0
+        ? Math.round(overridePrice * 100) / 100
+        : resolvedPrice;
     const name = line.shadeCode
       ? `${nameBase} — ${line.shadeCode}`
       : nameBase;
@@ -87,7 +133,7 @@ export async function convertOrderToInvoice(
       qty,
       unitPrice,
       amount,
-      priceListItemId: line.priceListItemId ?? undefined,
+      priceListItemId,
       shadeId: line.shadeId ?? undefined,
       shadeCode: line.shadeCode || undefined,
       sortOrder: index,
@@ -95,11 +141,11 @@ export async function convertOrderToInvoice(
   });
 
   const missingPrice = lineItems.some(
-    (l) => !l.priceListItemId || l.unitPrice <= 0,
+    (l) => !l.name.trim() || !(l.qty > 0) || !(l.unitPrice > 0),
   );
   if (missingPrice) {
     throw new Error(
-      "Every line needs a linked price-list item with a customer price before invoicing",
+      "Every line needs a name, quantity, and customer price before invoicing",
     );
   }
 

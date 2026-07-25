@@ -55,10 +55,20 @@ export async function PUT(request: Request, context: RouteContext) {
     }
     const row = raw as Record<string, unknown>;
     const shadeCode = String(row.shadeCode ?? "").trim();
+    const itemName = String(row.itemName ?? "").trim();
+    const priceListItemId = row.priceListItemId
+      ? String(row.priceListItemId)
+      : null;
     const qty = Number(row.qty);
-    if (!shadeCode || !(qty > 0)) {
+    if (!(qty > 0)) {
       return NextResponse.json(
-        { error: "Each line needs shadeCode and qty > 0" },
+        { error: "Each line needs qty > 0" },
+        { status: 400 },
+      );
+    }
+    if (!itemName && !priceListItemId && !shadeCode) {
+      return NextResponse.json(
+        { error: "Each line needs an item name, price-list item, or shade" },
         { status: 400 },
       );
     }
@@ -68,9 +78,8 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid unit or source" }, { status: 400 });
     }
     lines.push({
-      priceListItemId: row.priceListItemId
-        ? String(row.priceListItemId)
-        : null,
+      priceListItemId,
+      itemName: itemName || null,
       shadeId: row.shadeId ? String(row.shadeId) : null,
       shadeCode,
       qty,

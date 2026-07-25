@@ -324,9 +324,14 @@ export function NewCustomerOrderModal({
       });
 
       const payload = lines
-        .filter((l) => l.shadeCode.trim() && Number(l.qty) > 0)
+        .filter(
+          (l) =>
+            Number(l.qty) > 0 &&
+            (l.itemName.trim() || l.priceListItemId || l.shadeCode.trim()),
+        )
         .map((l) => ({
           priceListItemId: l.priceListItemId,
+          itemName: l.itemName.trim() || null,
           shadeCode: l.shadeCode.trim(),
           qty: Number(l.qty),
           unit: l.unit,

@@ -3,12 +3,17 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
+import {
+  CustomerOrderInvoiceModal,
+  type CustomerOrderInvoiceSubmitPayload,
+} from "@/components/customer-orders/CustomerOrderInvoiceModal";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
 import { CustomerOrderSidebar } from "@/components/customer-orders/CustomerOrderSidebar";
 import { TopBar } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
+import type { BankAccount } from "@/lib/bank-accounts/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
   KANBAN_COLUMNS,
@@ -40,6 +45,7 @@ type CustomerOrdersListClientProps = {
   customers: Salesman[];
   priceList: PriceListItem[];
   deliveryStaff: DeliveryStaff[];
+  bankAccounts: BankAccount[];
 };
 
 const WEEKDAY_TO_MARKET: Record<number, MarketDay> = {
@@ -123,6 +129,7 @@ export function CustomerOrdersListClient({
   customers,
   priceList,
   deliveryStaff,
+  bankAccounts,
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
@@ -141,7 +148,6 @@ export function CustomerOrdersListClient({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const [runOpen, setRunOpen] = useState(false);
-  const [deliveryBy, setDeliveryBy] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState("");
   const [outOpen, setOutOpen] = useState(false);
@@ -379,7 +385,6 @@ export function CustomerOrdersListClient({
   function openInvoiceModal(ids: string[]) {
     setActionOrderIds(ids);
     setRunError("");
-    setDeliveryBy("");
     setRunOpen(true);
   }
 
@@ -475,14 +480,10 @@ export function CustomerOrdersListClient({
     }
   }
 
-  async function submitDeliveryRun() {
+  async function submitDeliveryRun(payload: CustomerOrderInvoiceSubmitPayload) {
     const packed = actionOrders.filter((o) => o.status === "packed");
     if (packed.length === 0) {
       setRunError("Select at least one packed order");
-      return;
-    }
-    if (!deliveryBy) {
-      setRunError("Select a delivery person");
       return;
     }
     setRunBusy(true);
@@ -498,19 +499,19 @@ export function CustomerOrdersListClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderIds: ids,
-          deliveryBy,
+          deliveryBy: payload.deliveryBy,
           area,
+          invoicesByOrder: payload.invoicesByOrder,
         }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Delivery run failed");
-      const person = deliveryStaff.find((p) => p.id === deliveryBy);
+      const person = deliveryStaff.find((p) => p.id === payload.deliveryBy);
       applyLocalStatus(ids, "invoiced", {
-        deliveryBy,
+        deliveryBy: payload.deliveryBy,
         deliveryByName: person?.fullName ?? null,
       });
       setRunOpen(false);
-      setDeliveryBy("");
       setActionOrderIds([]);
       clearSelection();
       router.refresh();
@@ -1037,70 +1038,23 @@ export function CustomerOrdersListClient({
         initialCustomerId={initialCustomerId}
       />
 
-      <Modal
+      <CustomerOrderInvoiceModal
         open={runOpen}
         onClose={() => {
+          if (runBusy) return;
           setRunOpen(false);
           setActionOrderIds([]);
+          setRunError("");
         }}
-        title="Generate invoices"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Invoice {actionOrders.length} packed order
-            {actionOrders.length === 1 ? "" : "s"} and assign one delivery
-            person.
-          </p>
-          <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
-            {actionOrders.map((o) => (
-              <li key={o.id}>
-                {o.customerName}
-                {o.isUrgent ? " · Urgent" : ""}
-              </li>
-            ))}
-          </ul>
-          {runError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {runError}
-            </p>
-          ) : null}
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Delivery by</span>
-            <select
-              value={deliveryBy}
-              onChange={(e) => setDeliveryBy(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none"
-            >
-              <option value="">Select person…</option>
-              {deliveryStaff.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.fullName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRunOpen(false);
-                setActionOrderIds([]);
-              }}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={runBusy || !deliveryBy || actionOrders.length === 0}
-              onClick={() => void submitDeliveryRun()}
-              className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
-            >
-              {runBusy ? "Invoicing…" : "Invoice & assign"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        orders={actionOrders.filter((o) => o.status === "packed")}
+        customers={customers}
+        priceList={priceList}
+        deliveryStaff={deliveryStaff}
+        bankAccounts={bankAccounts}
+        busy={runBusy}
+        error={runError}
+        onSubmit={submitDeliveryRun}
+      />
 
       <Modal
         open={outOpen}

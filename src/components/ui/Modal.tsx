@@ -9,13 +9,16 @@ type ModalProps = {
   children: React.ReactNode;
   footer?: React.ReactNode;
   /** Wider dialog for multi-step / denser forms. Default "md". */
-  size?: "md" | "lg" | "xl";
+  size?: "md" | "lg" | "xl" | "2xl";
+  /** Extra classes for the scrollable body (e.g. flush split layouts). */
+  bodyClassName?: string;
 };
 
 const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
   md: "sm:max-w-lg",
   lg: "sm:max-w-2xl",
   xl: "sm:max-w-4xl",
+  "2xl": "sm:max-w-6xl",
 };
 
 export function Modal({
@@ -25,6 +28,7 @@ export function Modal({
   children,
   footer,
   size = "md",
+  bodyClassName,
 }: ModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -67,7 +71,12 @@ export function Modal({
             </svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        <div
+          className={
+            bodyClassName ??
+            "flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5"
+          }
+        >
           {children}
         </div>
         {footer && (

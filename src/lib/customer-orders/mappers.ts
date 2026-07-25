@@ -76,6 +76,7 @@ export type DbOrderLineRow = {
   id: string;
   order_id: string;
   price_list_item_id: string | null;
+  item_name?: string | null;
   shade_id: string | null;
   shade_code: string;
   qty: number | string;
@@ -268,11 +269,13 @@ export function mapAttachmentRow(
 
 export function mapOrderLineRow(row: DbOrderLineRow): CustomerOrderLine {
   const shadeRow = nestedShade(row.item_shades);
+  const storedName = (row.item_name ?? "").trim();
+  const catalogName = nestedItemName(row.price_list_items);
   return {
     id: row.id,
     orderId: row.order_id,
     priceListItemId: row.price_list_item_id,
-    itemName: nestedItemName(row.price_list_items),
+    itemName: storedName || catalogName || null,
     shadeId: row.shade_id,
     shadeCode: row.shade_code,
     qty: num(row.qty),
