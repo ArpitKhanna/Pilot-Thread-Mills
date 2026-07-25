@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CustomerTimelineTab } from "@/components/customers/CustomerTimelineTab";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
@@ -35,6 +34,12 @@ type DraftLine = {
 };
 
 type SidebarTab = "timeline" | "details" | "pending";
+
+type ActivityEvent = {
+  id: string;
+  text: string;
+  at: string | null;
+};
 
 type CustomerOrderSidebarProps = {
   orderId: string | null;
@@ -72,23 +77,76 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
   }));
 }
 
-function statusTone(status: CustomerOrderStatus): string {
-  switch (status) {
-    case "picking":
-      return "bg-amber-50 text-amber-900";
-    case "packed":
-      return "bg-sky-50 text-sky-900";
-    case "invoiced":
-      return "bg-emerald-50 text-emerald-900";
-    case "out_for_delivery":
-      return "bg-indigo-50 text-indigo-900";
-    case "delivered":
-      return "bg-teal-50 text-teal-900";
-    case "cancelled":
-      return "bg-red-50 text-red-800";
-    default:
-      return "bg-sidebar text-muted";
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return "";
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return formatShortDate(iso);
+  const diffMs = Date.now() - then;
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return formatShortDate(iso);
+}
+
+function buildOrderActivity(order: CustomerOrder): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+  const name = order.customerName ?? "customer";
+  const lineBit =
+    order.lineCount > 0
+      ? ` with ${order.lineCount} line${order.lineCount === 1 ? "" : "s"}`
+      : "";
+
+  events.push({
+    id: "created",
+    text: `Order was created for ${name}${lineBit}.`,
+    at: order.createdAt,
+  });
+
+  if (order.isUrgent) {
+    events.push({
+      id: "urgent",
+      text: "Order was marked urgent.",
+      at: null,
+    });
   }
+
+  if (order.status !== "picking" && order.status !== "draft") {
+    events.push({
+      id: "status",
+      text: `Moved to ${CUSTOMER_ORDER_STATUS_LABELS[order.status]}.`,
+      at: order.updatedAt !== order.createdAt ? order.updatedAt : null,
+    });
+  }
+
+  if (order.invoiceId) {
+    events.push({
+      id: "invoice",
+      text: "Invoice was generated for this order.",
+      at: order.updatedAt,
+    });
+  }
+
+  if (order.deliveryByName) {
+    events.push({
+      id: "delivery",
+      text: `Delivery assigned to ${order.deliveryByName}.`,
+      at: null,
+    });
+  }
+
+  if (order.status === "cancelled") {
+    events.push({
+      id: "cancelled",
+      text: "Order was cancelled.",
+      at: order.updatedAt,
+    });
+  }
+
+  return events;
 }
 
 function ChevronUpIcon() {
@@ -112,6 +170,17 @@ function ChevronUpIcon() {
   );
 }
 
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[7.5rem_1fr] items-baseline gap-3 text-sm">
+      <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
+        {label}
+      </span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
 function TabButton({
   active,
   onClick,
@@ -125,8 +194,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-md px-3 py-1.5 text-sm ${
-        active ? "bg-sidebar font-medium" : "text-muted hover:text-foreground"
+      className={`shrink-0 border-b-2 px-1 pb-2.5 text-sm transition-colors ${
+        active
+          ? "border-foreground font-medium text-foreground"
+          : "border-transparent text-muted hover:text-foreground"
       }`}
     >
       {label}
@@ -151,11 +222,9 @@ export function CustomerOrderSidebar({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<SidebarTab>("details");
+  const [tab, setTab] = useState<SidebarTab>("timeline");
   const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [timelineOrders, setTimelineOrders] = useState<CustomerOrder[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
   const [pendingItems, setPendingItems] = useState<CustomerPendingItem[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const moveMenuRef = useRef<HTMLDivElement>(null);
@@ -165,17 +234,16 @@ export function CustomerOrderSidebar({
       setOrder(null);
       setLines([]);
       setError("");
-      setTab("details");
+      setTab("timeline");
       setMoveOpen(false);
       setDeleteOpen(false);
-      setTimelineOrders([]);
       setPendingItems([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError("");
-    setTab("details");
+    setTab("timeline");
     void (async () => {
       try {
         const res = await fetch(`/api/customer-orders/${orderId}`);
@@ -228,39 +296,14 @@ export function CustomerOrderSidebar({
   }, [moveOpen]);
 
   useEffect(() => {
-    if (!order?.customerId || tab !== "timeline") return;
-    let cancelled = false;
-    setTimelineLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/customer-orders?customerId=${encodeURIComponent(order.customerId)}`,
-        );
-        const json = (await res.json()) as {
-          orders?: CustomerOrder[];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(json.error ?? "Failed to load timeline");
-        if (!cancelled) setTimelineOrders(json.orders ?? []);
-      } catch {
-        if (!cancelled) setTimelineOrders(order ? [order] : []);
-      } finally {
-        if (!cancelled) setTimelineLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [order, tab]);
-
-  useEffect(() => {
-    if (!order?.customerId || tab !== "pending") return;
+    if (!order?.customerId) return;
+    const customerId = order.customerId;
     let cancelled = false;
     setPendingLoading(true);
     void (async () => {
       try {
         const res = await fetch(
-          `/api/customer-pending-items?customerId=${encodeURIComponent(order.customerId)}`,
+          `/api/customer-pending-items?customerId=${encodeURIComponent(customerId)}`,
         );
         const json = (await res.json()) as {
           pending?: CustomerPendingItem[];
@@ -277,7 +320,7 @@ export function CustomerOrderSidebar({
     return () => {
       cancelled = true;
     };
-  }, [order, tab]);
+  }, [order?.customerId]);
 
   function applyOrder(next: CustomerOrder) {
     setOrder(next);
@@ -288,9 +331,14 @@ export function CustomerOrderSidebar({
   const customer = useMemo(
     () =>
       order
-        ? customers.find((c) => c.id === order.customerId) ?? null
+        ? (customers.find((c) => c.id === order.customerId) ?? null)
         : null,
     [customers, order],
+  );
+
+  const activity = useMemo(
+    () => (order ? buildOrderActivity(order) : []),
+    [order],
   );
 
   const locked =
@@ -445,6 +493,7 @@ export function CustomerOrderSidebar({
     order?.attachments.filter((a) => a.kind === "cloth_patch") ?? [];
   const pendingBalance = customer?.pendingBalance ?? null;
   const moveTargets = KANBAN_COLUMNS.filter((s) => s !== order?.status);
+  const pendingCount = pendingItems.length;
 
   return (
     <div className="fixed inset-0 z-[55] print:static print:z-auto">
@@ -460,7 +509,7 @@ export function CustomerOrderSidebar({
         aria-modal="true"
         aria-label="Order details"
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3 print:border-0">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5 print:border-0">
           <h2 className="text-base font-medium">Order Details</h2>
           <button
             type="button"
@@ -473,53 +522,65 @@ export function CustomerOrderSidebar({
         </header>
 
         {loading ? (
-          <div className="flex-1 px-4 py-3 text-sm text-muted">
+          <div className="flex-1 px-5 py-4 text-sm text-muted">
             Loading order…
           </div>
         ) : order ? (
           <>
-            <div className="shrink-0 space-y-3 border-b border-border px-4 py-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium">
-                    {order.customerName ?? "Customer"}
-                  </p>
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${statusTone(order.status)}`}
-                  >
-                    {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
-                  </span>
-                  {order.isUrgent ? (
-                    <span className="inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                      Urgent
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {area} · {formatShortDate(order.orderDate)}
-                  {orderTime ? ` · ${orderTime}` : ""}
-                </p>
-                <p className="mt-1 text-xs text-muted">
-                  Pending balance{" "}
-                  <span
-                    className={
-                      pendingBalance != null && pendingBalance > 0
-                        ? "font-medium text-foreground tabular-nums"
-                        : "tabular-nums"
-                    }
-                  >
-                    {pendingBalance != null
-                      ? formatINR(pendingBalance)
-                      : "—"}
-                  </span>
-                </p>
+            <div className="shrink-0 space-y-4 border-b border-border px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-xl font-semibold tracking-tight">
+                  {order.customerName ?? "Customer"}
+                </h3>
+                <span className="shrink-0 pt-1 text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+                  {order.isUrgent ? " · Urgent" : ""}
+                </span>
               </div>
 
-              <div className="flex gap-1 overflow-x-auto">
+              <div className="space-y-2">
+                <MetaRow label="Area" value={area} />
+                <MetaRow
+                  label="Order date"
+                  value={formatShortDate(order.orderDate)}
+                />
+                <MetaRow
+                  label="Order time"
+                  value={orderTime || "—"}
+                />
+                <MetaRow
+                  label="Pending bal."
+                  value={
+                    pendingBalance != null ? formatINR(pendingBalance) : "—"
+                  }
+                />
+              </div>
+
+              <div className="flex gap-2 print:hidden">
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => void toggleUrgent()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                >
+                  {order.isUrgent ? "Clear urgent" : "Mark urgent"}
+                </button>
+                {order.status === "picking" || order.status === "packed" ? (
+                  <button
+                    type="button"
+                    onClick={printPickSheet}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar"
+                  >
+                    Print sheet
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="flex gap-4 overflow-x-auto">
                 <TabButton
                   active={tab === "timeline"}
                   onClick={() => setTab("timeline")}
-                  label="Timeline"
+                  label="Activity Timeline"
                 />
                 <TabButton
                   active={tab === "details"}
@@ -529,12 +590,14 @@ export function CustomerOrderSidebar({
                 <TabButton
                   active={tab === "pending"}
                   onClick={() => setTab("pending")}
-                  label="Pending"
+                  label={
+                    pendingCount > 0 ? `Pending ${pendingCount}` : "Pending"
+                  }
                 />
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 print:overflow-visible">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 print:overflow-visible">
               {error ? (
                 <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                   {error}
@@ -542,46 +605,69 @@ export function CustomerOrderSidebar({
               ) : null}
 
               {tab === "timeline" ? (
-                timelineLoading ? (
-                  <p className="text-sm text-muted">Loading timeline…</p>
-                ) : (
-                  <CustomerTimelineTab
-                    orders={timelineOrders}
-                    invoices={[]}
-                    compact
-                  />
-                )
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5">
+                    <span className="text-sm font-medium">
+                      {order.customerName ?? "Customer"}
+                    </span>
+                    <span className="text-xs font-medium tracking-wide text-muted uppercase">
+                      {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+                    </span>
+                  </div>
+
+                  {activity.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted">
+                      No activity yet
+                    </p>
+                  ) : (
+                    activity.map((event) => (
+                      <div
+                        key={event.id}
+                        className="rounded-xl border border-border px-3.5 py-3"
+                      >
+                        <p className="text-sm text-foreground">{event.text}</p>
+                        {event.at ? (
+                          <p className="mt-2 text-xs text-muted">
+                            {formatRelativeTime(event.at)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
               ) : null}
 
               {tab === "pending" ? (
                 pendingLoading ? (
                   <p className="text-sm text-muted">Loading pending…</p>
                 ) : pendingItems.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted">
+                  <p className="py-8 text-center text-sm text-muted">
                     No pending items
                   </p>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="space-y-2">
                     {pendingItems.map((item) => (
                       <div
                         key={item.id}
-                        className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+                        className="rounded-xl border border-border px-3.5 py-3"
                       >
-                        <div>
-                          <div className="font-medium">
-                            {item.itemName ?? "Item"} — {item.shadeCode}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium">
+                              {item.itemName ?? "Item"} — {item.shadeCode}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted">
+                              {item.qty} {ORDER_LINE_UNIT_LABELS[item.unit]}
+                              {item.invoiceDate
+                                ? ` · ${formatShortDate(item.invoiceDate)}`
+                                : ""}
+                              {item.isUrgent ? " · Urgent" : ""}
+                            </p>
                           </div>
-                          <div className="text-xs text-muted">
-                            {item.qty} {ORDER_LINE_UNIT_LABELS[item.unit]}
-                            {item.invoiceDate
-                              ? ` · ${formatShortDate(item.invoiceDate)}`
-                              : ""}
-                            {item.isUrgent ? " · Urgent" : ""}
-                          </div>
+                          <span className="shrink-0 text-[11px] font-medium tracking-wide text-muted uppercase">
+                            {PENDING_ITEM_STATUS_LABELS[item.status]}
+                          </span>
                         </div>
-                        <span className="rounded-md bg-sidebar px-2 py-0.5 text-xs">
-                          {PENDING_ITEM_STATUS_LABELS[item.status]}
-                        </span>
                       </div>
                     ))}
                   </div>
@@ -590,33 +676,12 @@ export function CustomerOrderSidebar({
 
               {tab === "details" ? (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2 print:hidden">
-                    <button
-                      type="button"
-                      disabled={Boolean(busy)}
-                      onClick={() => void toggleUrgent()}
-                      className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
-                    >
-                      {order.isUrgent ? "Clear urgent" : "Mark urgent"}
-                    </button>
-                    {order.status === "picking" ||
-                    order.status === "packed" ? (
-                      <button
-                        type="button"
-                        onClick={printPickSheet}
-                        className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar"
-                      >
-                        Print pick sheet
-                      </button>
-                    ) : null}
-                    <span className="ml-auto self-center text-sm tabular-nums text-muted">
-                      {formatINR(order.amount)}
-                    </span>
-                  </div>
-
-                  <section className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-medium">Lines</h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium">Lines</h3>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm tabular-nums text-muted">
+                        {formatINR(order.amount)}
+                      </span>
                       {!locked ? (
                         <button
                           type="button"
@@ -628,111 +693,112 @@ export function CustomerOrderSidebar({
                         </button>
                       ) : null}
                     </div>
-                    <div className="space-y-2">
-                      {lines.map((line) => (
-                        <div
-                          key={line.key}
-                          className="grid gap-1.5 rounded-lg border border-border p-2"
-                        >
-                          {locked ? (
-                            <div className="text-sm">
-                              <div className="font-medium">
-                                {line.itemName || "Item"} · {line.shadeCode}
-                              </div>
-                              <div className="text-xs text-muted">
-                                {line.qty} {ORDER_LINE_UNIT_LABELS[line.unit]}
-                                {line.isUrgent ? " · Urgent" : ""}
-                              </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {lines.map((line) => (
+                      <div
+                        key={line.key}
+                        className="grid gap-1.5 rounded-xl border border-border p-3"
+                      >
+                        {locked ? (
+                          <div className="text-sm">
+                            <div className="font-medium">
+                              {line.itemName || "Item"} · {line.shadeCode}
                             </div>
-                          ) : (
-                            <>
-                              <ItemNameCombobox
-                                items={priceList}
-                                value={line.itemName}
-                                onChange={(value) =>
+                            <div className="text-xs text-muted">
+                              {line.qty} {ORDER_LINE_UNIT_LABELS[line.unit]}
+                              {line.isUrgent ? " · Urgent" : ""}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <ItemNameCombobox
+                              items={priceList}
+                              value={line.itemName}
+                              onChange={(value) =>
+                                updateLine(line.key, {
+                                  itemName: value,
+                                  priceListItemId: null,
+                                })
+                              }
+                              onSelect={(item) =>
+                                updateLine(line.key, {
+                                  itemName: item.item_name,
+                                  priceListItemId: item.id,
+                                })
+                              }
+                              onTabToQty={() => undefined}
+                              showPrice={false}
+                              placeholder="Item"
+                            />
+                            <div className="grid grid-cols-[1fr_0.55fr_0.7fr] gap-1.5">
+                              <input
+                                value={line.shadeCode}
+                                onChange={(e) =>
                                   updateLine(line.key, {
-                                    itemName: value,
-                                    priceListItemId: null,
+                                    shadeCode: e.target.value,
                                   })
                                 }
-                                onSelect={(item) =>
-                                  updateLine(line.key, {
-                                    itemName: item.item_name,
-                                    priceListItemId: item.id,
-                                  })
-                                }
-                                onTabToQty={() => undefined}
-                                showPrice={false}
-                                placeholder="Item"
+                                placeholder="Shade"
+                                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
                               />
-                              <div className="grid grid-cols-[1fr_0.55fr_0.7fr] gap-1.5">
-                                <input
-                                  value={line.shadeCode}
-                                  onChange={(e) =>
-                                    updateLine(line.key, {
-                                      shadeCode: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Shade"
-                                  className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
-                                />
-                                <input
-                                  value={line.qty}
-                                  onChange={(e) =>
-                                    updateLine(line.key, {
-                                      qty: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Qty"
-                                  className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
-                                />
-                                <select
-                                  value={line.unit}
-                                  onChange={(e) =>
-                                    updateLine(line.key, {
-                                      unit: e.target
-                                        .value as CustomerOrderLineUnit,
-                                    })
-                                  }
-                                  className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
-                                >
-                                  {Object.entries(ORDER_LINE_UNIT_LABELS).map(
-                                    ([value, label]) => (
-                                      <option key={value} value={value}>
-                                        {label}
-                                      </option>
-                                    ),
-                                  )}
-                                </select>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                      {!locked ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLines((prev) => [
-                              ...prev,
-                              {
-                                key: crypto.randomUUID(),
-                                priceListItemId: null,
-                                itemName: "",
-                                shadeCode: "",
-                                qty: "1",
-                                unit: "box",
-                                isUrgent: false,
-                              },
-                            ])
-                          }
-                          className="text-xs font-medium text-muted hover:text-foreground print:hidden"
-                        >
-                          + Add line
-                        </button>
-                      ) : null}
-                    </div>
-                  </section>
+                              <input
+                                value={line.qty}
+                                onChange={(e) =>
+                                  updateLine(line.key, {
+                                    qty: e.target.value,
+                                  })
+                                }
+                                placeholder="Qty"
+                                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                              />
+                              <select
+                                value={line.unit}
+                                onChange={(e) =>
+                                  updateLine(line.key, {
+                                    unit: e.target
+                                      .value as CustomerOrderLineUnit,
+                                  })
+                                }
+                                className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
+                              >
+                                {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                                  ([value, label]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {!locked ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLines((prev) => [
+                            ...prev,
+                            {
+                              key: crypto.randomUUID(),
+                              priceListItemId: null,
+                              itemName: "",
+                              shadeCode: "",
+                              qty: "1",
+                              unit: "box",
+                              isUrgent: false,
+                            },
+                          ])
+                        }
+                        className="text-xs font-medium text-muted hover:text-foreground print:hidden"
+                      >
+                        + Add line
+                      </button>
+                    ) : null}
+                  </div>
 
                   {slips.length > 0 || patches.length > 0 ? (
                     <section className="space-y-2 print:hidden">
@@ -765,7 +831,7 @@ export function CustomerOrderSidebar({
               ) : null}
             </div>
 
-            <div className="shrink-0 border-t border-border px-4 py-3 print:hidden">
+            <div className="shrink-0 border-t border-border px-5 py-3 print:hidden">
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1" ref={moveMenuRef}>
                   <button
@@ -802,7 +868,7 @@ export function CustomerOrderSidebar({
                   type="button"
                   disabled={!canDelete || Boolean(busy)}
                   onClick={() => setDeleteOpen(true)}
-                  className="rounded-lg border border-red-200 px-3 py-2.5 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-40"
+                  className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
                   title={
                     canDelete
                       ? "Delete order"
@@ -815,7 +881,7 @@ export function CustomerOrderSidebar({
             </div>
           </>
         ) : (
-          <div className="flex-1 px-4 py-3 text-sm text-muted">
+          <div className="flex-1 px-5 py-4 text-sm text-muted">
             {error || "Order not found"}
           </div>
         )}
