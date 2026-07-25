@@ -24,6 +24,8 @@ export type Profile = {
   auth_method: AuthMethod;
   role: EmployeeRole | null;
   is_active: boolean;
+  /** Admin-visible PIN; null until set/reset for legacy rows */
+  pin?: string | null;
   created_at: string;
 };
 
