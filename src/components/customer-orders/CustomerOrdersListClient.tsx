@@ -56,6 +56,18 @@ const BULK_LABEL: Partial<Record<CustomerOrderStatus, string>> = {
   out_for_delivery: "Mark delivered",
 };
 
+const BULK_BACK_TARGET: Partial<
+  Record<CustomerOrderStatus, CustomerOrderStatus>
+> = {
+  packed: "picking",
+  out_for_delivery: "invoiced",
+};
+
+const BULK_BACK_LABEL: Partial<Record<CustomerOrderStatus, string>> = {
+  packed: "Back to picking",
+  out_for_delivery: "Back to invoiced",
+};
+
 type MissingDraft = {
   key: string;
   customerId: string;
@@ -234,9 +246,9 @@ export function CustomerOrdersListClient({
     }
   }
 
-  async function submitBulkStatus() {
+  async function submitBulkStatus(targetOverride?: CustomerOrderStatus) {
     if (!selectColumn || selectedOrders.length === 0) return;
-    const target = BULK_TARGET[selectColumn];
+    const target = targetOverride ?? BULK_TARGET[selectColumn];
     if (!target) return;
     setBulkBusy(true);
     setBulkError("");
@@ -378,6 +390,10 @@ export function CustomerOrdersListClient({
 
   const bulkLabel =
     selectColumn != null ? BULK_LABEL[selectColumn] : undefined;
+  const bulkBackLabel =
+    selectColumn != null ? BULK_BACK_LABEL[selectColumn] : undefined;
+  const bulkBackTarget =
+    selectColumn != null ? BULK_BACK_TARGET[selectColumn] : undefined;
 
   return (
     <>
@@ -607,17 +623,27 @@ export function CustomerOrdersListClient({
               Clear
             </button>
             {selectColumn === "packed" ? (
-              <button
-                type="button"
-                disabled={selectedOrders.length === 0}
-                onClick={() => {
-                  setRunError("");
-                  setRunOpen(true);
-                }}
-                className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
-              >
-                {bulkLabel ?? "Generate invoices"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={bulkBusy || selectedOrders.length === 0}
+                  onClick={() => void submitBulkStatus(bulkBackTarget)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                >
+                  {bulkBusy ? "Updating…" : (bulkBackLabel ?? "Back to picking")}
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedOrders.length === 0}
+                  onClick={() => {
+                    setRunError("");
+                    setRunOpen(true);
+                  }}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
+                >
+                  {bulkLabel ?? "Generate invoices"}
+                </button>
+              </>
             ) : selectColumn === "picking" ? (
               <>
                 <button
@@ -635,6 +661,27 @@ export function CustomerOrdersListClient({
                   className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
                 >
                   {bulkBusy ? "Updating…" : "Mark packed"}
+                </button>
+              </>
+            ) : selectColumn === "out_for_delivery" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={bulkBusy || selectedOrders.length === 0}
+                  onClick={() => void submitBulkStatus(bulkBackTarget)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                >
+                  {bulkBusy
+                    ? "Updating…"
+                    : (bulkBackLabel ?? "Back to invoiced")}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || selectedOrders.length === 0}
+                  onClick={() => void submitBulkStatus()}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-surface disabled:opacity-40"
+                >
+                  {bulkBusy ? "Updating…" : "Mark delivered"}
                 </button>
               </>
             ) : (

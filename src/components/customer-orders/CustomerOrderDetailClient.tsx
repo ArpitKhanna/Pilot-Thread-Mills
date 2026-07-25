@@ -559,6 +559,16 @@ export function CustomerOrderDetailClient({
                     Mark packed
                   </button>
                 ) : null}
+                {order.status === "packed" ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => setStatus("picking")}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                  >
+                    Back to picking
+                  </button>
+                ) : null}
                 {order.status === "picking" || order.status === "packed" ? (
                   <button
                     type="button"
@@ -605,14 +615,24 @@ export function CustomerOrderDetailClient({
               </button>
             ) : null}
             {order.status === "out_for_delivery" ? (
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => setStatus("delivered")}
-                className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
-              >
-                Mark delivered
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => setStatus("invoiced")}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                >
+                  Back to invoiced
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => setStatus("delivered")}
+                  className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
+                >
+                  Mark delivered
+                </button>
+              </>
             ) : null}
           </div>
         </div>

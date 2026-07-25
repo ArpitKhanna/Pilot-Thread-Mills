@@ -350,6 +350,16 @@ export function CustomerOrderSidebar({
                     Mark packed
                   </button>
                 ) : null}
+                {order.status === "packed" ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => void setStatus("picking")}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
+                  >
+                    Back to picking
+                  </button>
+                ) : null}
                 {order.status === "invoiced" ? (
                   <button
                     type="button"
@@ -361,14 +371,24 @@ export function CustomerOrderSidebar({
                   </button>
                 ) : null}
                 {order.status === "out_for_delivery" ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => void setStatus("delivered")}
-                    className="rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
-                  >
-                    Mark delivered
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => void setStatus("invoiced")}
+                      className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
+                    >
+                      Back to invoiced
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => void setStatus("delivered")}
+                      className="rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
+                    >
+                      Mark delivered
+                    </button>
+                  </>
                 ) : null}
               </div>
 
