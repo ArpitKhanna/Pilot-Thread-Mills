@@ -138,10 +138,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({
       employee: mapEmployeeRow(updated as DbEmployeeRow),
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid phone number format" },
-      { status: 400 },
-    );
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to update employee";
+    if (message.includes("Enter a valid") || message.includes("phone")) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    const status = message.includes("Missing Supabase admin credentials")
+      ? 500
+      : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }

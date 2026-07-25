@@ -49,13 +49,27 @@ export async function POST(request: Request) {
 
     if (!isValidPin(pin)) {
       return NextResponse.json(
-        { error: "PIN must be 4–6 digits" },
+        { error: "PIN must be exactly 6 digits" },
         { status: 400 },
       );
     }
 
-    const normalizedPhone = normalizePhone(phone);
-    const email = phoneToAuthEmail(phone);
+    let normalizedPhone: string;
+    try {
+      normalizedPhone = normalizePhone(phone);
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error:
+            e instanceof Error
+              ? e.message
+              : "Enter a valid 10-digit mobile number",
+        },
+        { status: 400 },
+      );
+    }
+
+    const email = phoneToAuthEmail(normalizedPhone);
     const admin = createAdminClient();
 
     const { data: created, error: createError } =
@@ -73,9 +87,12 @@ export async function POST(request: Request) {
       });
 
     if (createError || !created.user) {
-      const message = createError?.message.includes("already been registered")
+      const raw = createError?.message ?? "Failed to create employee";
+      const message = raw.includes("already been registered")
         ? "An employee with this phone number already exists"
-        : (createError?.message ?? "Failed to create employee");
+        : raw.toLowerCase().includes("password")
+          ? "PIN was rejected by auth settings. Use a 6-digit PIN."
+          : raw;
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
@@ -110,10 +127,12 @@ export async function POST(request: Request) {
       success: true,
       employee: mapEmployeeRow(profile as DbEmployeeRow),
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid phone number format" },
-      { status: 400 },
-    );
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to create employee";
+    const status = message.includes("Missing Supabase admin credentials")
+      ? 500
+      : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }

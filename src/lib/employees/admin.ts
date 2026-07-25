@@ -10,8 +10,9 @@ export function isValidEmployeeRole(role: unknown): role is EmployeeRole {
   );
 }
 
+/** PINs must be 6 digits to satisfy Supabase Auth minimum password length. */
 export function isValidPin(pin: string): boolean {
-  return /^\d{4,6}$/.test(pin);
+  return /^\d{6}$/.test(pin);
 }
 
 export async function requireAdmin() {

@@ -712,12 +712,12 @@ export function EmployeesRolesClient({
           {!editing && (
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-muted">
-                PIN (4–6 digits)
+                PIN (6 digits)
               </span>
               <input
                 type="text"
                 inputMode="numeric"
-                pattern="\d{4,6}"
+                pattern="\d{6}"
                 maxLength={6}
                 value={form.pin}
                 onChange={(e) =>
@@ -774,12 +774,12 @@ export function EmployeesRolesClient({
         <div className="space-y-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">
-              New PIN (4–6 digits)
+              New PIN (6 digits)
             </span>
             <input
               type="text"
               inputMode="numeric"
-              pattern="\d{4,6}"
+              pattern="\d{6}"
               maxLength={6}
               value={newPin}
               onChange={(e) =>

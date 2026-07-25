@@ -17,7 +17,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (!isValidPin(pin)) {
       return NextResponse.json(
-        { error: "PIN must be 4–6 digits" },
+        { error: "PIN must be exactly 6 digits" },
         { status: 400 },
       );
     }
@@ -42,7 +42,11 @@ export async function POST(request: Request, context: RouteContext) {
       password: pin,
     });
     if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
+      const raw = authError.message;
+      const message = raw.toLowerCase().includes("password")
+        ? "PIN was rejected by auth settings. Use a 6-digit PIN."
+        : raw;
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
     const { data: updated, error: updateError } = await admin
@@ -62,7 +66,12 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({
       employee: mapEmployeeRow(updated as DbEmployeeRow),
     });
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to reset PIN";
+    const status = message.includes("Missing Supabase admin credentials")
+      ? 500
+      : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }
