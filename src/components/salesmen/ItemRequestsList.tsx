@@ -613,7 +613,7 @@ function ActionButton({
         primary
           ? "border-foreground bg-foreground text-surface hover:bg-foreground/90"
           : danger
-            ? "border-border bg-background text-red-700 hover:bg-red-50"
+            ? "border-red-200 bg-background text-red-800 hover:bg-red-50"
             : "border-border bg-background hover:bg-sidebar"
       }`}
     >

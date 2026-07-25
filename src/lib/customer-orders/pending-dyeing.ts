@@ -161,6 +161,121 @@ export async function updatePendingItemStatus(
   return mapPendingItemRow(data as DbPendingItemRow);
 }
 
+export type UpdatePendingItemInput = {
+  priceListItemId?: string | null;
+  shadeCode?: string;
+  qty?: number;
+  unit?: CustomerOrderLineUnit;
+  isUrgent?: boolean;
+  notes?: string | null;
+  status?: CustomerPendingItemStatus;
+};
+
+export async function updatePendingItem(
+  supabase: SupabaseClient,
+  id: string,
+  input: UpdatePendingItemInput,
+): Promise<CustomerPendingItem> {
+  const { data: existing, error: findError } = await supabase
+    .from("customer_pending_items")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (!existing) throw new Error("Missing item not found");
+
+  const updates: Record<string, unknown> = {};
+  const priceListItemId =
+    input.priceListItemId !== undefined
+      ? input.priceListItemId
+      : (existing.price_list_item_id as string | null);
+  const shadeCode =
+    input.shadeCode !== undefined
+      ? input.shadeCode.trim()
+      : String(existing.shade_code ?? "");
+
+  if (input.shadeCode !== undefined || input.priceListItemId !== undefined) {
+    if (!shadeCode) throw new Error("Shade code is required");
+    updates.shade_code = shadeCode.toUpperCase().replace(/\s+/g, "");
+    updates.price_list_item_id = priceListItemId;
+    if (priceListItemId && shadeCode) {
+      const shade = await findOrCreateShade(supabase, {
+        priceListItemId,
+        shadeCode,
+      });
+      updates.shade_id = shade.id;
+    } else {
+      updates.shade_id = null;
+    }
+  }
+  if (input.qty !== undefined) {
+    if (!(input.qty > 0)) throw new Error("Qty must be greater than 0");
+    updates.qty = input.qty;
+  }
+  if (input.unit !== undefined) updates.unit = input.unit;
+  if (input.isUrgent !== undefined) updates.is_urgent = input.isUrgent;
+  if (input.notes !== undefined) updates.notes = input.notes;
+  if (input.status !== undefined) updates.status = input.status;
+
+  if (Object.keys(updates).length === 0) {
+    return mapPendingItemRow(existing as DbPendingItemRow);
+  }
+
+  const { data, error } = await supabase
+    .from("customer_pending_items")
+    .update(updates)
+    .eq("id", id)
+    .select(PENDING_SELECT)
+    .single();
+  if (error) throw error;
+
+  const pending = mapPendingItemRow(data as DbPendingItemRow);
+
+  const jobUpdates: Record<string, unknown> = {};
+  if (updates.shade_code !== undefined) {
+    jobUpdates.shade_code = updates.shade_code;
+  }
+  if (updates.shade_id !== undefined) jobUpdates.shade_id = updates.shade_id;
+  if (updates.price_list_item_id !== undefined) {
+    jobUpdates.price_list_item_id = updates.price_list_item_id;
+  }
+  if (updates.qty !== undefined) jobUpdates.qty = updates.qty;
+  if (updates.unit !== undefined) jobUpdates.unit = updates.unit;
+  if (updates.is_urgent !== undefined) jobUpdates.is_urgent = updates.is_urgent;
+  if (input.status === "cancelled") jobUpdates.status = "cancelled";
+  if (input.status === "ready") jobUpdates.status = "done";
+
+  if (Object.keys(jobUpdates).length > 0) {
+    await supabase
+      .from("dyeing_jobs")
+      .update(jobUpdates)
+      .eq("pending_item_id", id);
+  }
+
+  return pending;
+}
+
+export async function deletePendingItem(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const { data: existing, error: findError } = await supabase
+    .from("customer_pending_items")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (!existing) throw new Error("Missing item not found");
+
+  await supabase.from("dyeing_jobs").delete().eq("pending_item_id", id);
+
+  const { error } = await supabase
+    .from("customer_pending_items")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export async function listDyeingJobs(
   supabase: SupabaseClient,
   opts?: { status?: DyeingJobStatus | DyeingJobStatus[] },

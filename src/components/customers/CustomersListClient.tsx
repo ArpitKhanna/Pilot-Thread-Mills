@@ -468,7 +468,7 @@ export function CustomersListClient({
                             type="button"
                             disabled={busyId === customer.id}
                             onClick={() => handleDelete(customer.id)}
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 disabled:opacity-60"
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-60"
                           >
                             {busyId === customer.id ? "Deleting…" : "Delete"}
                           </button>

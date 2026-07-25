@@ -40,6 +40,14 @@ export function CustomerPendingPatchesTab({
   const [shadeCode, setShadeCode] = useState("");
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState<CustomerOrderLineUnit>("box");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editItemName, setEditItemName] = useState("");
+  const [editPriceListItemId, setEditPriceListItemId] = useState<string | null>(
+    null,
+  );
+  const [editShade, setEditShade] = useState("");
+  const [editQty, setEditQty] = useState("1");
+  const [editUnit, setEditUnit] = useState<CustomerOrderLineUnit>("box");
 
   const [assignPatchId, setAssignPatchId] = useState<string | null>(null);
   const [assignShade, setAssignShade] = useState("");
@@ -62,6 +70,7 @@ export function CustomerPendingPatchesTab({
           customerId,
           items: [
             {
+              customerId,
               priceListItemId,
               shadeCode: shadeCode.trim(),
               qty: Number(qty),
@@ -82,9 +91,81 @@ export function CustomerPendingPatchesTab({
       setWhatsappUrl(json.whatsappUrl ?? null);
       setShadeCode("");
       setQty("1");
+      setItemName("");
+      setPriceListItemId(null);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function beginEdit(item: CustomerPendingItem) {
+    setEditingId(item.id);
+    setEditItemName(item.itemName ?? "");
+    setEditPriceListItemId(item.priceListItemId);
+    setEditShade(item.shadeCode);
+    setEditQty(String(item.qty));
+    setEditUnit(item.unit);
+    setError("");
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    if (!editShade.trim() || !(Number(editQty) > 0)) {
+      setError("Shade and qty are required");
+      return;
+    }
+    setBusy("edit");
+    setError("");
+    try {
+      const res = await fetch(`/api/customer-pending-items/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceListItemId: editPriceListItemId,
+          shadeCode: editShade.trim(),
+          qty: Number(editQty),
+          unit: editUnit,
+        }),
+      });
+      const json = (await res.json()) as {
+        pending?: CustomerPendingItem;
+        error?: string;
+      };
+      if (!res.ok || !json.pending) {
+        throw new Error(json.error ?? "Failed to update");
+      }
+      setPending((prev) =>
+        prev.map((item) =>
+          item.id === json.pending!.id ? json.pending! : item,
+        ),
+      );
+      setEditingId(null);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeMissing(id: string) {
+    if (!window.confirm("Remove this missing item?")) return;
+    setBusy("delete");
+    setError("");
+    try {
+      const res = await fetch(`/api/customer-pending-items/${id}`, {
+        method: "DELETE",
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to remove");
+      setPending((prev) => prev.filter((item) => item.id !== id));
+      if (editingId === id) setEditingId(null);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove");
     } finally {
       setBusy("");
     }
@@ -165,7 +246,7 @@ export function CustomerPendingPatchesTab({
       ) : null}
 
       <section className="rounded-xl border border-border bg-surface p-4">
-        <h3 className="text-sm font-medium">Pending / missing shades</h3>
+        <h3 className="text-sm font-medium">Missing shades</h3>
         <p className="mt-1 text-xs text-muted">
           Missing items for {customerName}. Saving also creates a dyeing job.
         </p>
@@ -234,28 +315,125 @@ export function CustomerPendingPatchesTab({
 
         <div className="mt-4 divide-y divide-border">
           {pending.length === 0 ? (
-            <p className="py-4 text-sm text-muted">No pending items.</p>
+            <p className="py-4 text-sm text-muted">No missing items.</p>
           ) : (
-            pending.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
-              >
-                <div>
-                  <div className="font-medium">
-                    {item.itemName ?? "Item"} — {item.shadeCode}
-                  </div>
-                  <div className="text-xs text-muted">
-                    {item.qty} {ORDER_LINE_UNIT_LABELS[item.unit]}
-                    {item.invoiceDate ? ` · ${item.invoiceDate}` : ""}
-                    {item.isUrgent ? " · Urgent" : ""}
-                  </div>
+            pending.map((item) => {
+              const editing = editingId === item.id;
+              const canEdit =
+                item.status === "open" ||
+                item.status === "in_dyeing" ||
+                item.status === "ready";
+              return (
+                <div key={item.id} className="py-3 text-sm">
+                  {editing ? (
+                    <div className="space-y-2">
+                      <ItemNameCombobox
+                        items={priceList}
+                        value={editItemName}
+                        onChange={(value) => {
+                          setEditItemName(value);
+                          setEditPriceListItemId(null);
+                        }}
+                        onSelect={(row) => {
+                          setEditItemName(row.item_name);
+                          setEditPriceListItemId(row.id);
+                        }}
+                        onTabToQty={() => undefined}
+                        showPrice={false}
+                        placeholder="Item"
+                      />
+                      <div className="grid grid-cols-[1fr_0.55fr_0.7fr] gap-2">
+                        <input
+                          value={editShade}
+                          onChange={(e) => setEditShade(e.target.value)}
+                          placeholder="Shade"
+                          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                        />
+                        <input
+                          value={editQty}
+                          onChange={(e) => setEditQty(e.target.value)}
+                          placeholder="Qty"
+                          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                        />
+                        <select
+                          value={editUnit}
+                          onChange={(e) =>
+                            setEditUnit(
+                              e.target.value as CustomerOrderLineUnit,
+                            )
+                          }
+                          className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                        >
+                          {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                            ([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={Boolean(busy)}
+                          onClick={() => setEditingId(null)}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(busy)}
+                          onClick={() => void saveEdit()}
+                          className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
+                        >
+                          {busy === "edit" ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-medium">
+                          {item.itemName ?? "Item"} — {item.shadeCode}
+                        </div>
+                        <div className="text-xs text-muted">
+                          {item.qty} {ORDER_LINE_UNIT_LABELS[item.unit]}
+                          {item.invoiceDate ? ` · ${item.invoiceDate}` : ""}
+                          {item.isUrgent ? " · Urgent" : ""}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-sidebar px-2 py-0.5 text-xs">
+                          {PENDING_ITEM_STATUS_LABELS[item.status]}
+                        </span>
+                        {canEdit ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={Boolean(busy)}
+                              onClick={() => beginEdit(item)}
+                              className="text-xs font-medium text-muted hover:text-foreground disabled:opacity-50"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(busy)}
+                              onClick={() => void removeMissing(item.id)}
+                              className="text-xs font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <span className="rounded-md bg-sidebar px-2 py-0.5 text-xs">
-                  {PENDING_ITEM_STATUS_LABELS[item.status]}
-                </span>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>

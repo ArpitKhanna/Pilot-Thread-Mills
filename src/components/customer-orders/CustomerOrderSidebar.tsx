@@ -1,21 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
-  KANBAN_COLUMNS,
   ORDER_LINE_UNIT_LABELS,
-  ORDER_STATUS_MOVES,
   PENDING_ITEM_STATUS_LABELS,
   type CustomerOrder,
   type CustomerOrderLineUnit,
   type CustomerOrderStatus,
   type CustomerPendingItem,
 } from "@/lib/customer-orders/types";
+
+/** Forward-only next column on the board. */
+const NEXT_STATUS: Partial<
+  Record<CustomerOrderStatus, CustomerOrderStatus>
+> = {
+  picking: "packed",
+  packed: "invoiced",
+  invoiced: "out_for_delivery",
+  out_for_delivery: "delivered",
+};
 import {
   formatINR,
   formatShortDate,
@@ -75,6 +83,25 @@ function linesFromOrder(order: CustomerOrder): DraftLine[] {
     unit: line.unit,
     isUrgent: Boolean(line.isUrgent),
   }));
+}
+
+function statusTone(status: CustomerOrderStatus): string {
+  switch (status) {
+    case "picking":
+      return "bg-amber-50 text-amber-900";
+    case "packed":
+      return "bg-sky-50 text-sky-900";
+    case "invoiced":
+      return "bg-emerald-50 text-emerald-900";
+    case "out_for_delivery":
+      return "bg-indigo-50 text-indigo-900";
+    case "delivered":
+      return "bg-teal-50 text-teal-900";
+    case "cancelled":
+      return "bg-red-50 text-red-800";
+    default:
+      return "bg-sidebar text-muted";
+  }
 }
 
 function formatRelativeTime(iso: string | null): string {
@@ -149,34 +176,13 @@ function buildOrderActivity(order: CustomerOrder): ActivityEvent[] {
   return events;
 }
 
-function ChevronUpIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      className="shrink-0"
-    >
-      <path
-        d="M4 10L8 6L12 10"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[7.5rem_1fr] items-baseline gap-3 text-sm">
+    <div className="flex w-full items-baseline justify-between gap-3 text-sm">
       <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
         {label}
       </span>
-      <span className="font-medium text-foreground">{value}</span>
+      <span className="text-right font-medium text-foreground">{value}</span>
     </div>
   );
 }
@@ -223,11 +229,27 @@ export function CustomerOrderSidebar({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [tab, setTab] = useState<SidebarTab>("timeline");
-  const [moveOpen, setMoveOpen] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [pendingItems, setPendingItems] = useState<CustomerPendingItem[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
-  const moveMenuRef = useRef<HTMLDivElement>(null);
+  const [missingItemName, setMissingItemName] = useState("");
+  const [missingPriceListItemId, setMissingPriceListItemId] = useState<
+    string | null
+  >(null);
+  const [missingShade, setMissingShade] = useState("");
+  const [missingQty, setMissingQty] = useState("1");
+  const [missingUnit, setMissingUnit] =
+    useState<CustomerOrderLineUnit>("box");
+  const [editingMissingId, setEditingMissingId] = useState<string | null>(null);
+  const [editMissingItemName, setEditMissingItemName] = useState("");
+  const [editMissingPriceListItemId, setEditMissingPriceListItemId] = useState<
+    string | null
+  >(null);
+  const [editMissingShade, setEditMissingShade] = useState("");
+  const [editMissingQty, setEditMissingQty] = useState("1");
+  const [editMissingUnit, setEditMissingUnit] =
+    useState<CustomerOrderLineUnit>("box");
 
   useEffect(() => {
     if (!orderId) {
@@ -235,15 +257,22 @@ export function CustomerOrderSidebar({
       setLines([]);
       setError("");
       setTab("timeline");
-      setMoveOpen(false);
+      setEditingDetails(false);
       setDeleteOpen(false);
       setPendingItems([]);
+      setEditingMissingId(null);
+      setMissingShade("");
+      setMissingQty("1");
+      setMissingItemName("");
+      setMissingPriceListItemId(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError("");
     setTab("timeline");
+    setEditingDetails(false);
+    setEditingMissingId(null);
     void (async () => {
       try {
         const res = await fetch(`/api/customer-orders/${orderId}`);
@@ -275,25 +304,13 @@ export function CustomerOrderSidebar({
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        if (moveOpen) setMoveOpen(false);
-        else if (deleteOpen) setDeleteOpen(false);
+        if (deleteOpen) setDeleteOpen(false);
         else onClose();
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose, moveOpen, deleteOpen]);
-
-  useEffect(() => {
-    if (!moveOpen) return;
-    function onPointer(e: MouseEvent) {
-      if (!moveMenuRef.current?.contains(e.target as Node)) {
-        setMoveOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
-  }, [moveOpen]);
+  }, [open, onClose, deleteOpen]);
 
   useEffect(() => {
     if (!order?.customerId) return;
@@ -321,6 +338,131 @@ export function CustomerOrderSidebar({
       cancelled = true;
     };
   }, [order?.customerId]);
+
+  async function addMissingItem() {
+    if (!order) return;
+    if (!missingShade.trim() || !(Number(missingQty) > 0)) {
+      setError("Shade and qty are required");
+      return;
+    }
+    setBusy("missing");
+    setError("");
+    try {
+      const res = await fetch("/api/customer-pending-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: order.customerId,
+          items: [
+            {
+              customerId: order.customerId,
+              orderId: order.id,
+              priceListItemId: missingPriceListItemId,
+              shadeCode: missingShade.trim(),
+              qty: Number(missingQty),
+              unit: missingUnit,
+              isUrgent: order.isUrgent,
+            },
+          ],
+        }),
+      });
+      const json = (await res.json()) as {
+        pending?: CustomerPendingItem[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to save missing item");
+      if (json.pending?.length) {
+        setPendingItems((prev) => [...json.pending!, ...prev]);
+      }
+      setMissingShade("");
+      setMissingQty("1");
+      setMissingItemName("");
+      setMissingPriceListItemId(null);
+      setMissingUnit("box");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save missing item");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function beginEditMissing(item: CustomerPendingItem) {
+    setEditingMissingId(item.id);
+    setEditMissingItemName(item.itemName ?? "");
+    setEditMissingPriceListItemId(item.priceListItemId);
+    setEditMissingShade(item.shadeCode);
+    setEditMissingQty(String(item.qty));
+    setEditMissingUnit(item.unit);
+    setError("");
+  }
+
+  function cancelEditMissing() {
+    setEditingMissingId(null);
+    setError("");
+  }
+
+  async function saveEditMissing() {
+    if (!editingMissingId) return;
+    if (!editMissingShade.trim() || !(Number(editMissingQty) > 0)) {
+      setError("Shade and qty are required");
+      return;
+    }
+    setBusy("missing-edit");
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/customer-pending-items/${editingMissingId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            priceListItemId: editMissingPriceListItemId,
+            shadeCode: editMissingShade.trim(),
+            qty: Number(editMissingQty),
+            unit: editMissingUnit,
+          }),
+        },
+      );
+      const json = (await res.json()) as {
+        pending?: CustomerPendingItem;
+        error?: string;
+      };
+      if (!res.ok || !json.pending) {
+        throw new Error(json.error ?? "Failed to update missing item");
+      }
+      setPendingItems((prev) =>
+        prev.map((item) =>
+          item.id === json.pending!.id ? json.pending! : item,
+        ),
+      );
+      setEditingMissingId(null);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to update missing item",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeMissingItem(id: string) {
+    if (!window.confirm("Remove this missing item?")) return;
+    setBusy("missing-delete");
+    setError("");
+    try {
+      const res = await fetch(`/api/customer-pending-items/${id}`, {
+        method: "DELETE",
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to remove item");
+      setPendingItems((prev) => prev.filter((item) => item.id !== id));
+      if (editingMissingId === id) setEditingMissingId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove item");
+    } finally {
+      setBusy("");
+    }
+  }
 
   function applyOrder(next: CustomerOrder) {
     setOrder(next);
@@ -387,6 +529,7 @@ export function CustomerOrderSidebar({
         throw new Error(json.error ?? "Failed to save lines");
       }
       applyOrder(json.order);
+      setEditingDetails(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save lines");
     } finally {
@@ -394,21 +537,88 @@ export function CustomerOrderSidebar({
     }
   }
 
+  async function uploadFiles(
+    files: FileList | null,
+    kind: "order_slip" | "cloth_patch",
+  ) {
+    if (!order || !files?.length) return;
+    setBusy("upload");
+    setError("");
+    try {
+      let latest: CustomerOrder | null = null;
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.set("file", file);
+        form.set("kind", kind);
+        const res = await fetch(`/api/customer-orders/${order.id}/attachments`, {
+          method: "POST",
+          body: form,
+        });
+        const json = (await res.json()) as {
+          order?: CustomerOrder;
+          error?: string;
+        };
+        if (!res.ok || !json.order) {
+          throw new Error(json.error ?? "Upload failed");
+        }
+        latest = json.order;
+      }
+      if (latest) applyOrder(latest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeAttachment(attachmentId: string) {
+    if (!order) return;
+    setBusy("upload");
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/customer-orders/${order.id}/attachments?attachmentId=${attachmentId}`,
+        { method: "DELETE" },
+      );
+      const json = (await res.json()) as {
+        order?: CustomerOrder;
+        error?: string;
+      };
+      if (!res.ok || !json.order) {
+        throw new Error(json.error ?? "Delete failed");
+      }
+      applyOrder(json.order);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function startEditingDetails() {
+    if (!order || locked) return;
+    setLines(linesFromOrder(order));
+    setEditingDetails(true);
+  }
+
+  function cancelEditingDetails() {
+    if (order) setLines(linesFromOrder(order));
+    setEditingDetails(false);
+    setError("");
+  }
+
   async function setStatus(status: CustomerOrderStatus) {
     if (!order) return;
     if (order.status === "packed" && status === "invoiced") {
-      setMoveOpen(false);
       onRequestInvoice?.(order.id);
       return;
     }
     if (order.status === "invoiced" && status === "out_for_delivery") {
-      setMoveOpen(false);
       onRequestAssignOut?.(order.id);
       return;
     }
     setBusy("status");
     setError("");
-    setMoveOpen(false);
     try {
       const res = await fetch(`/api/customer-orders/${order.id}`, {
         method: "PATCH",
@@ -477,10 +687,6 @@ export function CustomerOrderSidebar({
     }
   }
 
-  function printPickSheet() {
-    window.print();
-  }
-
   if (!open) return null;
 
   const area = order
@@ -491,8 +697,14 @@ export function CustomerOrderSidebar({
     order?.attachments.filter((a) => a.kind === "order_slip") ?? [];
   const patches =
     order?.attachments.filter((a) => a.kind === "cloth_patch") ?? [];
+  const filledLines = lines.filter(
+    (l) => l.shadeCode.trim() || l.itemName.trim(),
+  );
+  const showSlips = editingDetails || slips.length > 0;
+  const showPatches = editingDetails || patches.length > 0;
+  const showManual = editingDetails || filledLines.length > 0;
   const pendingBalance = customer?.pendingBalance ?? null;
-  const moveTargets = KANBAN_COLUMNS.filter((s) => s !== order?.status);
+  const nextStatus = order ? (NEXT_STATUS[order.status] ?? null) : null;
   const pendingCount = pendingItems.length;
 
   return (
@@ -529,13 +741,21 @@ export function CustomerOrderSidebar({
           <>
             <div className="shrink-0 space-y-4 border-b border-border px-5 py-4">
               <div className="flex items-start justify-between gap-3">
-                <h3 className="text-xl font-semibold tracking-tight">
+                <h4 className="text-xl font-semibold tracking-tight">
                   {order.customerName ?? "Customer"}
-                </h3>
-                <span className="shrink-0 pt-1 text-[11px] font-medium tracking-wide text-muted uppercase">
-                  {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
-                  {order.isUrgent ? " · Urgent" : ""}
-                </span>
+                </h4>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-1">
+                  <span
+                    className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase ${statusTone(order.status)}`}
+                  >
+                    {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
+                  </span>
+                  {order.isUrgent ? (
+                    <span className="inline-flex rounded-md bg-orange-50 px-2 py-0.5 text-[11px] font-medium tracking-wide text-orange-900 uppercase">
+                      Urgent
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -556,24 +776,15 @@ export function CustomerOrderSidebar({
                 />
               </div>
 
-              <div className="flex gap-2 print:hidden">
+              <div className="print:hidden">
                 <button
                   type="button"
                   disabled={Boolean(busy)}
                   onClick={() => void toggleUrgent()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
+                  className="flex w-full items-center justify-center rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
                 >
                   {order.isUrgent ? "Clear urgent" : "Mark urgent"}
                 </button>
-                {order.status === "picking" || order.status === "packed" ? (
-                  <button
-                    type="button"
-                    onClick={printPickSheet}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-sidebar"
-                  >
-                    Print sheet
-                  </button>
-                ) : null}
               </div>
 
               <div className="flex gap-4 overflow-x-auto">
@@ -591,7 +802,7 @@ export function CustomerOrderSidebar({
                   active={tab === "pending"}
                   onClick={() => setTab("pending")}
                   label={
-                    pendingCount > 0 ? `Pending ${pendingCount}` : "Pending"
+                    pendingCount > 0 ? `Missing ${pendingCount}` : "Missing"
                   }
                 />
               </div>
@@ -606,15 +817,6 @@ export function CustomerOrderSidebar({
 
               {tab === "timeline" ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5">
-                    <span className="text-sm font-medium">
-                      {order.customerName ?? "Customer"}
-                    </span>
-                    <span className="text-xs font-medium tracking-wide text-muted uppercase">
-                      {CUSTOMER_ORDER_STATUS_LABELS[order.status]}
-                    </span>
-                  </div>
-
                   {activity.length === 0 ? (
                     <p className="py-8 text-center text-sm text-muted">
                       No activity yet
@@ -638,192 +840,516 @@ export function CustomerOrderSidebar({
               ) : null}
 
               {tab === "pending" ? (
-                pendingLoading ? (
-                  <p className="text-sm text-muted">Loading pending…</p>
-                ) : pendingItems.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted">
-                    No pending items
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {pendingItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-xl border border-border px-3.5 py-3"
+                <div className="space-y-4">
+                  <section className="space-y-2 rounded-xl border border-border p-3">
+                    <h3 className="text-sm font-medium">Add missing item</h3>
+                    <p className="text-xs text-muted">
+                      Saved to this customer’s profile (Missing tab).
+                    </p>
+                    <ItemNameCombobox
+                      items={priceList}
+                      value={missingItemName}
+                      onChange={(value) => {
+                        setMissingItemName(value);
+                        setMissingPriceListItemId(null);
+                      }}
+                      onSelect={(item) => {
+                        setMissingItemName(item.item_name);
+                        setMissingPriceListItemId(item.id);
+                      }}
+                      onTabToQty={() => undefined}
+                      showPrice={false}
+                      placeholder="Item"
+                    />
+                    <div className="grid grid-cols-[1fr_0.55fr_0.7fr_auto] gap-1.5">
+                      <input
+                        value={missingShade}
+                        onChange={(e) => setMissingShade(e.target.value)}
+                        placeholder="Shade"
+                        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                      />
+                      <input
+                        value={missingQty}
+                        onChange={(e) => setMissingQty(e.target.value)}
+                        placeholder="Qty"
+                        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                      />
+                      <select
+                        value={missingUnit}
+                        onChange={(e) =>
+                          setMissingUnit(
+                            e.target.value as CustomerOrderLineUnit,
+                          )
+                        }
+                        className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium">
-                              {item.itemName ?? "Item"} — {item.shadeCode}
-                            </p>
-                            <p className="mt-0.5 text-xs text-muted">
-                              {item.qty} {ORDER_LINE_UNIT_LABELS[item.unit]}
-                              {item.invoiceDate
-                                ? ` · ${formatShortDate(item.invoiceDate)}`
-                                : ""}
-                              {item.isUrgent ? " · Urgent" : ""}
-                            </p>
+                        {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={Boolean(busy)}
+                        onClick={() => void addMissingItem()}
+                        className="rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
+                      >
+                        {busy === "missing" ? "…" : "Add"}
+                      </button>
+                    </div>
+                  </section>
+
+                  {pendingLoading ? (
+                    <p className="text-sm text-muted">Loading missing items…</p>
+                  ) : pendingItems.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted">
+                      No missing items yet
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {pendingItems.map((item) => {
+                        const editing = editingMissingId === item.id;
+                        const canEdit =
+                          item.status === "open" ||
+                          item.status === "in_dyeing" ||
+                          item.status === "ready";
+                        return (
+                          <div
+                            key={item.id}
+                            className="rounded-xl border border-border px-3.5 py-3"
+                          >
+                            {editing ? (
+                              <div className="space-y-2">
+                                <ItemNameCombobox
+                                  items={priceList}
+                                  value={editMissingItemName}
+                                  onChange={(value) => {
+                                    setEditMissingItemName(value);
+                                    setEditMissingPriceListItemId(null);
+                                  }}
+                                  onSelect={(row) => {
+                                    setEditMissingItemName(row.item_name);
+                                    setEditMissingPriceListItemId(row.id);
+                                  }}
+                                  onTabToQty={() => undefined}
+                                  showPrice={false}
+                                  placeholder="Item"
+                                />
+                                <div className="grid grid-cols-[1fr_0.55fr_0.7fr] gap-1.5">
+                                  <input
+                                    value={editMissingShade}
+                                    onChange={(e) =>
+                                      setEditMissingShade(e.target.value)
+                                    }
+                                    placeholder="Shade"
+                                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                                  />
+                                  <input
+                                    value={editMissingQty}
+                                    onChange={(e) =>
+                                      setEditMissingQty(e.target.value)
+                                    }
+                                    placeholder="Qty"
+                                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                                  />
+                                  <select
+                                    value={editMissingUnit}
+                                    onChange={(e) =>
+                                      setEditMissingUnit(
+                                        e.target
+                                          .value as CustomerOrderLineUnit,
+                                      )
+                                    }
+                                    className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
+                                  >
+                                    {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                                      ([value, label]) => (
+                                        <option key={value} value={value}>
+                                          {label}
+                                        </option>
+                                      ),
+                                    )}
+                                  </select>
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(busy)}
+                                    onClick={cancelEditMissing}
+                                    className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(busy)}
+                                    onClick={() => void saveEditMissing()}
+                                    className="rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-surface disabled:opacity-50"
+                                  >
+                                    {busy === "missing-edit"
+                                      ? "Saving…"
+                                      : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {item.itemName ?? "Item"} —{" "}
+                                    {item.shadeCode}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted">
+                                    {item.qty}{" "}
+                                    {ORDER_LINE_UNIT_LABELS[item.unit]}
+                                    {item.invoiceDate
+                                      ? ` · ${formatShortDate(item.invoiceDate)}`
+                                      : ""}
+                                    {item.isUrgent ? " · Urgent" : ""}
+                                  </p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1.5">
+                                  <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                                    {PENDING_ITEM_STATUS_LABELS[item.status]}
+                                  </span>
+                                  {canEdit ? (
+                                    <div className="flex gap-1.5">
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(busy)}
+                                        onClick={() => beginEditMissing(item)}
+                                        className="text-xs font-medium text-muted hover:text-foreground disabled:opacity-50"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(busy)}
+                                        onClick={() =>
+                                          void removeMissingItem(item.id)
+                                        }
+                                        className="text-xs font-medium text-red-700 hover:text-red-800 disabled:opacity-50"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className="shrink-0 text-[11px] font-medium tracking-wide text-muted uppercase">
-                            {PENDING_ITEM_STATUS_LABELS[item.status]}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               ) : null}
 
               {tab === "details" ? (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-medium">Lines</h3>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm tabular-nums text-muted">
-                        {formatINR(order.amount)}
-                      </span>
-                      {!locked ? (
+                    <span className="text-sm tabular-nums text-muted">
+                      {formatINR(order.amount)}
+                    </span>
+                    {!locked ? (
+                      editingDetails ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={Boolean(busy)}
+                            onClick={cancelEditingDetails}
+                            className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(busy)}
+                            onClick={() => void saveLines()}
+                            className="rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-surface disabled:opacity-50"
+                          >
+                            {busy === "lines" ? "Saving…" : "Save"}
+                          </button>
+                        </div>
+                      ) : (
                         <button
                           type="button"
                           disabled={Boolean(busy)}
-                          onClick={() => void saveLines()}
-                          className="text-xs font-medium text-muted hover:text-foreground disabled:opacity-50 print:hidden"
+                          onClick={startEditingDetails}
+                          className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-sidebar disabled:opacity-50"
                         >
-                          {busy === "lines" ? "Saving…" : "Save"}
+                          Edit
                         </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {lines.map((line) => (
-                      <div
-                        key={line.key}
-                        className="grid gap-1.5 rounded-xl border border-border p-3"
-                      >
-                        {locked ? (
-                          <div className="text-sm">
-                            <div className="font-medium">
-                              {line.itemName || "Item"} · {line.shadeCode}
-                            </div>
-                            <div className="text-xs text-muted">
-                              {line.qty} {ORDER_LINE_UNIT_LABELS[line.unit]}
-                              {line.isUrgent ? " · Urgent" : ""}
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <ItemNameCombobox
-                              items={priceList}
-                              value={line.itemName}
-                              onChange={(value) =>
-                                updateLine(line.key, {
-                                  itemName: value,
-                                  priceListItemId: null,
-                                })
-                              }
-                              onSelect={(item) =>
-                                updateLine(line.key, {
-                                  itemName: item.item_name,
-                                  priceListItemId: item.id,
-                                })
-                              }
-                              onTabToQty={() => undefined}
-                              showPrice={false}
-                              placeholder="Item"
-                            />
-                            <div className="grid grid-cols-[1fr_0.55fr_0.7fr] gap-1.5">
-                              <input
-                                value={line.shadeCode}
-                                onChange={(e) =>
-                                  updateLine(line.key, {
-                                    shadeCode: e.target.value,
-                                  })
-                                }
-                                placeholder="Shade"
-                                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
-                              />
-                              <input
-                                value={line.qty}
-                                onChange={(e) =>
-                                  updateLine(line.key, {
-                                    qty: e.target.value,
-                                  })
-                                }
-                                placeholder="Qty"
-                                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
-                              />
-                              <select
-                                value={line.unit}
-                                onChange={(e) =>
-                                  updateLine(line.key, {
-                                    unit: e.target
-                                      .value as CustomerOrderLineUnit,
-                                  })
-                                }
-                                className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
-                              >
-                                {Object.entries(ORDER_LINE_UNIT_LABELS).map(
-                                  ([value, label]) => (
-                                    <option key={value} value={value}>
-                                      {label}
-                                    </option>
-                                  ),
-                                )}
-                              </select>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                    {!locked ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setLines((prev) => [
-                            ...prev,
-                            {
-                              key: crypto.randomUUID(),
-                              priceListItemId: null,
-                              itemName: "",
-                              shadeCode: "",
-                              qty: "1",
-                              unit: "box",
-                              isUrgent: false,
-                            },
-                          ])
-                        }
-                        className="text-xs font-medium text-muted hover:text-foreground print:hidden"
-                      >
-                        + Add line
-                      </button>
+                      )
                     ) : null}
                   </div>
 
-                  {slips.length > 0 || patches.length > 0 ? (
-                    <section className="space-y-2 print:hidden">
-                      <h3 className="text-sm font-medium">Attachments</h3>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[...slips, ...patches].map((att) =>
-                          att.signedUrl &&
-                          (att.contentType?.startsWith("image/") ||
-                            att.kind === "cloth_patch") ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={att.id}
-                              src={att.signedUrl}
-                              alt={att.fileName ?? att.kind}
-                              className="h-20 w-full rounded-md border border-border object-cover"
+                  {!showSlips && !showPatches && !showManual ? (
+                    <div className="space-y-3 py-6 text-center">
+                      <p className="text-sm text-muted">No order details yet</p>
+                      {!locked ? (
+                        <button
+                          type="button"
+                          onClick={startEditingDetails}
+                          className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
+                        >
+                          Add details
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {showSlips ? (
+                    <section className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-medium">Order slips</h3>
+                        {editingDetails ? (
+                          <label className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-sidebar">
+                            {busy === "upload" ? "Uploading…" : "Upload"}
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              multiple
+                              className="hidden"
+                              disabled={Boolean(busy)}
+                              onChange={(e) => {
+                                void uploadFiles(e.target.files, "order_slip");
+                                e.target.value = "";
+                              }}
                             />
-                          ) : (
-                            <div
-                              key={att.id}
-                              className="flex h-20 items-center justify-center rounded-md border border-border bg-sidebar px-1 text-center text-[10px] text-muted"
+                          </label>
+                        ) : null}
+                      </div>
+                      {slips.length === 0 ? (
+                        <p className="text-xs text-muted">No slips uploaded</p>
+                      ) : (
+                        <ul className="grid gap-2 sm:grid-cols-2">
+                          {slips.map((slip) => (
+                            <li
+                              key={slip.id}
+                              className="rounded-xl border border-border p-2"
                             >
-                              {att.fileName ?? att.kind}
+                              {slip.signedUrl &&
+                              slip.contentType?.startsWith("image/") ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={slip.signedUrl}
+                                  alt={slip.fileName ?? "Order slip"}
+                                  className="mb-2 max-h-36 w-full rounded-md bg-sidebar object-contain"
+                                />
+                              ) : (
+                                <p className="mb-2 text-sm">
+                                  {slip.fileName ?? "File"}
+                                </p>
+                              )}
+                              {editingDetails ? (
+                                <button
+                                  type="button"
+                                  disabled={Boolean(busy)}
+                                  onClick={() =>
+                                    void removeAttachment(slip.id)
+                                  }
+                                  className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  ) : null}
+
+                  {showPatches ? (
+                    <section className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-medium">Cloth patches</h3>
+                        {editingDetails ? (
+                          <label className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-sidebar">
+                            {busy === "upload" ? "Uploading…" : "Upload"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              disabled={Boolean(busy)}
+                              onChange={(e) => {
+                                void uploadFiles(e.target.files, "cloth_patch");
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        ) : null}
+                      </div>
+                      {patches.length === 0 ? (
+                        <p className="text-xs text-muted">No patches uploaded</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {patches.map((patch) => (
+                            <div
+                              key={patch.id}
+                              className="rounded-xl border border-border p-1"
+                            >
+                              {patch.signedUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={patch.signedUrl}
+                                  alt={patch.fileName ?? "Cloth patch"}
+                                  className="mb-1 h-20 w-full rounded object-cover"
+                                />
+                              ) : (
+                                <p className="p-1 text-xs">
+                                  {patch.fileName}
+                                </p>
+                              )}
+                              {editingDetails ? (
+                                <button
+                                  type="button"
+                                  disabled={Boolean(busy)}
+                                  onClick={() =>
+                                    void removeAttachment(patch.id)
+                                  }
+                                  className="w-full rounded-md border border-border px-1 py-0.5 text-[10px] disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                              ) : null}
                             </div>
-                          ),
-                        )}
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  ) : null}
+
+                  {showManual ? (
+                    <section className="space-y-2">
+                      <h3 className="text-sm font-medium">Manual entry</h3>
+                      <div className="space-y-2">
+                        {(editingDetails ? lines : filledLines).map((line) => (
+                          <div
+                            key={line.key}
+                            className="grid gap-1.5 rounded-xl border border-border p-3"
+                          >
+                            {editingDetails ? (
+                              <>
+                                <ItemNameCombobox
+                                  items={priceList}
+                                  value={line.itemName}
+                                  onChange={(value) =>
+                                    updateLine(line.key, {
+                                      itemName: value,
+                                      priceListItemId: null,
+                                    })
+                                  }
+                                  onSelect={(item) =>
+                                    updateLine(line.key, {
+                                      itemName: item.item_name,
+                                      priceListItemId: item.id,
+                                    })
+                                  }
+                                  onTabToQty={() => undefined}
+                                  showPrice={false}
+                                  placeholder="Item"
+                                />
+                                <div className="grid grid-cols-[1fr_0.55fr_0.7fr_auto] gap-1.5">
+                                  <input
+                                    value={line.shadeCode}
+                                    onChange={(e) =>
+                                      updateLine(line.key, {
+                                        shadeCode: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Shade"
+                                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                                  />
+                                  <input
+                                    value={line.qty}
+                                    onChange={(e) =>
+                                      updateLine(line.key, {
+                                        qty: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Qty"
+                                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                                  />
+                                  <select
+                                    value={line.unit}
+                                    onChange={(e) =>
+                                      updateLine(line.key, {
+                                        unit: e.target
+                                          .value as CustomerOrderLineUnit,
+                                      })
+                                    }
+                                    className="rounded-md border border-border bg-background px-1.5 py-1.5 text-sm outline-none"
+                                  >
+                                    {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                                      ([value, label]) => (
+                                        <option key={value} value={value}>
+                                          {label}
+                                        </option>
+                                      ),
+                                    )}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setLines((prev) =>
+                                        prev.length <= 1
+                                          ? prev
+                                          : prev.filter(
+                                              (l) => l.key !== line.key,
+                                            ),
+                                      )
+                                    }
+                                    className="rounded-md border border-border px-2 py-1 text-xs text-red-700"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  {line.itemName || "Item"}
+                                  {line.shadeCode
+                                    ? ` · ${line.shadeCode}`
+                                    : ""}
+                                </div>
+                                <div className="text-xs text-muted">
+                                  {line.qty}{" "}
+                                  {ORDER_LINE_UNIT_LABELS[line.unit]}
+                                  {line.isUrgent ? " · Urgent" : ""}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {editingDetails ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLines((prev) => [
+                                ...prev,
+                                {
+                                  key: crypto.randomUUID(),
+                                  priceListItemId: null,
+                                  itemName: "",
+                                  shadeCode: "",
+                                  qty: "1",
+                                  unit: "box",
+                                  isUrgent: false,
+                                },
+                              ])
+                            }
+                            className="text-xs font-medium text-muted hover:text-foreground"
+                          >
+                            + Add items
+                          </button>
+                        ) : null}
                       </div>
                     </section>
                   ) : null}
@@ -833,42 +1359,25 @@ export function CustomerOrderSidebar({
 
             <div className="shrink-0 border-t border-border px-5 py-3 print:hidden">
               <div className="flex gap-2">
-                <div className="relative min-w-0 flex-1" ref={moveMenuRef}>
+                {nextStatus ? (
                   <button
                     type="button"
-                    disabled={Boolean(busy) || order.status === "delivered"}
-                    onClick={() => setMoveOpen((v) => !v)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
+                    disabled={Boolean(busy)}
+                    onClick={() => void setStatus(nextStatus)}
+                    className="min-w-0 flex-1 rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                   >
-                    Move to
-                    <ChevronUpIcon />
+                    {busy === "status"
+                      ? "Updating…"
+                      : `Move to ${CUSTOMER_ORDER_STATUS_LABELS[nextStatus]}`}
                   </button>
-                  {moveOpen ? (
-                    <div className="absolute bottom-full left-0 right-0 z-10 mb-1 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
-                      {moveTargets.map((status) => {
-                        const allowed =
-                          ORDER_STATUS_MOVES[order.status]?.includes(status) ??
-                          false;
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            disabled={!allowed || Boolean(busy)}
-                            onClick={() => void setStatus(status)}
-                            className="block w-full px-3 py-2.5 text-left text-sm hover:bg-sidebar disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {CUSTOMER_ORDER_STATUS_LABELS[status]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                ) : null}
                 <button
                   type="button"
                   disabled={!canDelete || Boolean(busy)}
                   onClick={() => setDeleteOpen(true)}
-                  className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
+                  className={`rounded-lg border border-red-200 px-3 py-2.5 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-40 ${
+                    nextStatus ? "" : "flex-1"
+                  }`}
                   title={
                     canDelete
                       ? "Delete order"
@@ -912,7 +1421,7 @@ export function CustomerOrderSidebar({
               type="button"
               disabled={busy === "delete"}
               onClick={() => void confirmDelete()}
-              className="rounded-lg bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-50"
             >
               {busy === "delete" ? "Deleting…" : "Delete"}
             </button>
