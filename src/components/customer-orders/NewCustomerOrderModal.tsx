@@ -32,6 +32,19 @@ type DraftLine = {
   unit: CustomerOrderLineUnit;
 };
 
+type DyeingShadeDraft = {
+  key: string;
+  shadeCode: string;
+  qty: string;
+  unit: CustomerOrderLineUnit;
+};
+
+type DyeingPatchDraft = {
+  key: string;
+  file: File;
+  previewUrl: string;
+};
+
 type NewCustomerOrderModalProps = {
   open: boolean;
   onClose: () => void;
@@ -55,12 +68,27 @@ function emptyLines(count = 3): DraftLine[] {
   return Array.from({ length: count }, () => emptyLine());
 }
 
+function emptyDyeingShade(): DyeingShadeDraft {
+  return {
+    key: crypto.randomUUID(),
+    shadeCode: "",
+    qty: "1",
+    unit: "box",
+  };
+}
+
 function todayLocalDate(): string {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function revokeDyeingPreviews(patches: DyeingPatchDraft[]) {
+  for (const patch of patches) {
+    URL.revokeObjectURL(patch.previewUrl);
+  }
 }
 
 export function NewCustomerOrderModal({
@@ -88,6 +116,10 @@ export function NewCustomerOrderModal({
   const [slips, setSlips] = useState<CustomerOrderAttachment[]>([]);
   const [patches, setPatches] = useState<CustomerOrderAttachment[]>([]);
   const [lines, setLines] = useState<DraftLine[]>(() => emptyLines(3));
+  const [dyeingShades, setDyeingShades] = useState<DyeingShadeDraft[]>(() => [
+    emptyDyeingShade(),
+  ]);
+  const [dyeingPatches, setDyeingPatches] = useState<DyeingPatchDraft[]>([]);
 
   const selectedCustomer =
     customers.find((c) => c.id === customerId) ?? null;
@@ -100,6 +132,14 @@ export function NewCustomerOrderModal({
     setCustomerId(customer.id);
     setCustomerQuery(customer.name);
   }, [open, initialCustomerId, customers]);
+
+  useEffect(() => {
+    return () => {
+      revokeDyeingPreviews(dyeingPatches);
+    };
+    // Only revoke on unmount; reset() handles mid-session cleanup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredCustomers = useMemo(() => {
     const active = customers
@@ -118,6 +158,46 @@ export function NewCustomerOrderModal({
         (c.phone ?? "").toLowerCase().includes(q),
     );
   }, [customers, customerQuery, selectedCustomer]);
+
+  const orderLinePayload = useMemo(
+    () =>
+      lines
+        .filter(
+          (l) =>
+            Number(l.qty) > 0 &&
+            (l.itemName.trim() || l.priceListItemId || l.shadeCode.trim()),
+        )
+        .map((l) => ({
+          priceListItemId: l.priceListItemId,
+          itemName: l.itemName.trim() || null,
+          shadeCode: l.shadeCode.trim(),
+          qty: Number(l.qty),
+          unit: l.unit,
+          source: "manual" as const,
+        })),
+    [lines],
+  );
+
+  const dyeingShadePayload = useMemo(
+    () =>
+      dyeingShades
+        .filter((s) => s.shadeCode.trim() && Number(s.qty) > 0)
+        .map((s) => ({
+          shadeCode: s.shadeCode.trim(),
+          qty: Number(s.qty),
+          unit: s.unit,
+        })),
+    [dyeingShades],
+  );
+
+  const hasOrderContent =
+    Boolean(orderId) ||
+    slips.length > 0 ||
+    patches.length > 0 ||
+    orderLinePayload.length > 0;
+
+  const hasDyeingContent =
+    dyeingShadePayload.length > 0 || dyeingPatches.length > 0;
 
   function updateCustomerMenuPosition() {
     const el = customerInputRef.current;
@@ -184,6 +264,11 @@ export function NewCustomerOrderModal({
     setSlips([]);
     setPatches([]);
     setLines(emptyLines(3));
+    setDyeingShades([emptyDyeingShade()]);
+    setDyeingPatches((prev) => {
+      revokeDyeingPreviews(prev);
+      return [];
+    });
   }
 
   function handleClose() {
@@ -311,55 +396,145 @@ export function NewCustomerOrderModal({
     );
   }
 
-  async function finishOrder() {
-    const id = await ensureOrder();
-    if (!id) return;
+  function updateDyeingShade(key: string, patch: Partial<DyeingShadeDraft>) {
+    setDyeingShades((prev) =>
+      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function addDyeingPatchFiles(files: FileList | null) {
+    if (!files?.length) return;
+    if (!customerId) {
+      setError("Select a customer before uploading cloth patches");
+      return;
+    }
+    const next = Array.from(files).map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setDyeingPatches((prev) => [...prev, ...next]);
+    setError("");
+  }
+
+  function removeDyeingPatch(key: string) {
+    setDyeingPatches((prev) => {
+      const target = prev.find((p) => p.key === key);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.key !== key);
+    });
+  }
+
+  async function saveDyeingRequest(forCustomerId: string) {
+    if (dyeingShadePayload.length > 0) {
+      const res = await fetch("/api/customer-pending-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: forCustomerId,
+          isUrgent,
+          items: dyeingShadePayload.map((item) => ({
+            customerId: forCustomerId,
+            shadeCode: item.shadeCode,
+            qty: item.qty,
+            unit: item.unit,
+            isUrgent,
+          })),
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to save dyeing shades");
+      }
+    }
+
+    for (const patch of dyeingPatches) {
+      const form = new FormData();
+      form.set("customerId", forCustomerId);
+      form.set("file", patch.file);
+      const res = await fetch("/api/customer-cloth-patches", {
+        method: "POST",
+        body: form,
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to upload dyeing cloth patch");
+      }
+    }
+  }
+
+  async function finish() {
+    if (!customerId) {
+      setError("Select a customer");
+      return;
+    }
+    if (!hasOrderContent && !hasDyeingContent) {
+      setError(
+        "Add an order (slip, custom lines, or cloth patches) or a dyeing request (shade number or cloth patch)",
+      );
+      return;
+    }
+
     setBusy("save");
     setError("");
     try {
-      await fetch(`/api/customer-orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isUrgent, orderDate }),
-      });
+      let createdOrderId: string | null = orderId;
 
-      const payload = lines
-        .filter(
-          (l) =>
-            Number(l.qty) > 0 &&
-            (l.itemName.trim() || l.priceListItemId || l.shadeCode.trim()),
-        )
-        .map((l) => ({
-          priceListItemId: l.priceListItemId,
-          itemName: l.itemName.trim() || null,
-          shadeCode: l.shadeCode.trim(),
-          qty: Number(l.qty),
-          unit: l.unit,
-          source: "manual" as const,
-        }));
+      if (hasOrderContent) {
+        const id = await ensureOrder();
+        if (!id) return;
+        createdOrderId = id;
 
-      const res = await fetch(`/api/customer-orders/${id}/lines`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines: payload, createMissingShades: true }),
-      });
-      const json = (await res.json()) as {
-        order?: CustomerOrder;
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(json.error ?? "Failed to save lines");
+        setBusy("save");
+        await fetch(`/api/customer-orders/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isUrgent, orderDate }),
+        });
+
+        const res = await fetch(`/api/customer-orders/${id}/lines`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lines: orderLinePayload,
+            createMissingShades: true,
+          }),
+        });
+        const json = (await res.json()) as {
+          order?: CustomerOrder;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(json.error ?? "Failed to save lines");
+        }
+      }
+
+      if (hasDyeingContent) {
+        await saveDyeingRequest(customerId);
       }
 
       reset();
       onClose();
-      router.push(`/orders/customers/${id}`);
+      if (createdOrderId) {
+        router.push(`/orders/customers/${createdOrderId}`);
+      } else {
+        router.push(`/entities/customers/${customerId}`);
+      }
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save order");
+      setError(e instanceof Error ? e.message : "Failed to save");
       setBusy("");
     }
   }
+
+  const saveLabel =
+    busy === "save" || busy === "create"
+      ? "Saving…"
+      : hasOrderContent && hasDyeingContent
+        ? "Save"
+        : hasDyeingContent && !hasOrderContent
+          ? "Save dyeing request"
+          : "Save and create order";
 
   return (
     <Modal
@@ -369,299 +544,452 @@ export function NewCustomerOrderModal({
       size="xl"
     >
       <div className="space-y-5">
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Customer</span>
-            <input
-              ref={customerInputRef}
-              type="text"
-              role="combobox"
-              aria-expanded={customerOpen}
-              aria-controls={customerListId}
-              aria-autocomplete="list"
-              value={customerQuery}
-              placeholder="Search customer…"
-              autoComplete="off"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
-              onFocus={() => setCustomerOpen(true)}
-              onChange={(e) => {
-                setCustomerQuery(e.target.value);
-                setCustomerId("");
-                setCustomerOpen(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setCustomerOpen(false);
-                  return;
-                }
-                if (e.key === "Enter" && filteredCustomers[0]) {
-                  e.preventDefault();
-                  selectCustomer(filteredCustomers[0]);
-                }
-              }}
-            />
-            {customerOpen &&
-            customerMenuPos &&
-            typeof document !== "undefined"
-              ? createPortal(
-                  <div
-                    ref={customerMenuRef}
-                    id={customerListId}
-                    role="listbox"
-                    style={{
-                      position: "fixed",
-                      top: customerMenuPos.top,
-                      left: customerMenuPos.left,
-                      width: customerMenuPos.width,
-                      transform:
-                        customerMenuPos.top <
-                        (customerInputRef.current?.getBoundingClientRect()
-                          .top ?? 0)
-                          ? "translateY(-100%)"
-                          : undefined,
-                      zIndex: 80,
-                    }}
-                    className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
-                  >
-                    {filteredCustomers.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted">
-                        No matching customers
-                      </div>
-                    ) : (
-                      filteredCustomers.map((customer) => (
-                        <button
-                          key={customer.id}
-                          type="button"
-                          role="option"
-                          aria-selected={customerId === customer.id}
-                          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                            customerId === customer.id
-                              ? "bg-sidebar"
-                              : "hover:bg-sidebar"
-                          }`}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            selectCustomer(customer);
-                          }}
-                        >
-                          <span className="min-w-0 truncate">
-                            {customer.name}
-                          </span>
-                          <span className="shrink-0 text-xs text-muted">
-                            {customer.phone || "No phone"}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>,
-                  document.body,
-                )
-              : null}
-          </label>
-
-          <div className="flex flex-col gap-3 sm:pt-6">
-            <label className="flex items-center gap-2 text-sm">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Customer</span>
               <input
-                type="checkbox"
-                checked={isUrgent}
-                onChange={(e) => setIsUrgent(e.target.checked)}
+                ref={customerInputRef}
+                type="text"
+                role="combobox"
+                aria-expanded={customerOpen}
+                aria-controls={customerListId}
+                aria-autocomplete="list"
+                value={customerQuery}
+                placeholder="Search customer…"
+                autoComplete="off"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20"
+                onFocus={() => setCustomerOpen(true)}
+                onChange={(e) => {
+                  setCustomerQuery(e.target.value);
+                  setCustomerId("");
+                  setCustomerOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setCustomerOpen(false);
+                    return;
+                  }
+                  if (e.key === "Enter" && filteredCustomers[0]) {
+                    e.preventDefault();
+                    selectCustomer(filteredCustomers[0]);
+                  }
+                }}
               />
-              <span className="font-medium">Urgent</span>
+              {customerOpen &&
+              customerMenuPos &&
+              typeof document !== "undefined"
+                ? createPortal(
+                    <div
+                      ref={customerMenuRef}
+                      id={customerListId}
+                      role="listbox"
+                      style={{
+                        position: "fixed",
+                        top: customerMenuPos.top,
+                        left: customerMenuPos.left,
+                        width: customerMenuPos.width,
+                        transform:
+                          customerMenuPos.top <
+                          (customerInputRef.current?.getBoundingClientRect()
+                            .top ?? 0)
+                            ? "translateY(-100%)"
+                            : undefined,
+                        zIndex: 80,
+                      }}
+                      className="max-h-56 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg"
+                    >
+                      {filteredCustomers.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted">
+                          No matching customers
+                        </div>
+                      ) : (
+                        filteredCustomers.map((customer) => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            role="option"
+                            aria-selected={customerId === customer.id}
+                            className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                              customerId === customer.id
+                                ? "bg-sidebar"
+                                : "hover:bg-sidebar"
+                            }`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectCustomer(customer);
+                            }}
+                          >
+                            <span className="min-w-0 truncate">
+                              {customer.name}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>,
+                    document.body,
+                  )
+                : null}
             </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-muted">Date</span>
+
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Date</span>
               <input
                 type="date"
                 value={orderDate}
                 readOnly
                 disabled
-                className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2 text-sm text-muted"
+                className="w-full cursor-not-allowed rounded-lg border border-border bg-sidebar/50 px-3 py-2.5 text-sm text-muted"
               />
             </label>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 sm:max-w-xs">
+            <span className="text-sm font-medium">Urgent</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isUrgent}
+              aria-label="Urgent"
+              onClick={() => setIsUrgent((v) => !v)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                isUrgent ? "bg-foreground" : "bg-border"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-surface shadow transition-transform ${
+                  isUrgent ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
         </div>
 
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium">Order lines</h3>
+        {/* 1. Order */}
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">1. Order</h3>
+            <p className="mt-0.5 text-xs text-muted">
+              Order slip, custom order, or cloth patches
+            </p>
+          </div>
+
           <div className="space-y-2">
-            {lines.map((line) => (
-              <div
-                key={line.key}
-                className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
-              >
-                <ItemNameCombobox
-                  items={priceList}
-                  value={line.itemName}
-                  onChange={(value) =>
-                    updateLine(line.key, {
-                      itemName: value,
-                      priceListItemId: null,
-                    })
-                  }
-                  onSelect={(item) =>
-                    updateLine(line.key, {
-                      itemName: item.item_name,
-                      priceListItemId: item.id,
-                    })
-                  }
-                  onTabToQty={() => undefined}
-                  showPrice={false}
-                  placeholder="Item"
-                />
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-medium">Order slips</h4>
+              <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
+                Upload
                 <input
-                  value={line.shadeCode}
-                  onChange={(e) =>
-                    updateLine(line.key, { shadeCode: e.target.value })
-                  }
-                  placeholder="Shade"
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    void uploadFiles(e.target.files, "order_slip");
+                    e.target.value = "";
+                  }}
                 />
-                <input
-                  value={line.qty}
-                  onChange={(e) =>
-                    updateLine(line.key, { qty: e.target.value })
-                  }
-                  placeholder="Qty"
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
-                />
-                <select
-                  value={line.unit}
-                  onChange={(e) =>
-                    updateLine(line.key, {
-                      unit: e.target.value as CustomerOrderLineUnit,
-                    })
-                  }
-                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
-                >
-                  {Object.entries(ORDER_LINE_UNIT_LABELS).map(
-                    ([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ),
-                  )}
-                </select>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLines((prev) =>
-                      prev.length <= 1
-                        ? prev
-                        : prev.filter((l) => l.key !== line.key),
-                    )
-                  }
-                  className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setLines((prev) => [...prev, emptyLine()])}
-              className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
-            >
-              Add items
-            </button>
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium">Order slips</h3>
-            <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
-              Upload
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void uploadFiles(e.target.files, "order_slip");
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </div>
-          {slips.length > 0 ? (
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {slips.map((slip) => (
-                <li
-                  key={slip.id}
-                  className="rounded-lg border border-border p-2"
-                >
-                  {slip.signedUrl &&
-                  slip.contentType?.startsWith("image/") ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={slip.signedUrl}
-                      alt={slip.fileName ?? "Order slip"}
-                      className="mb-2 max-h-36 w-full rounded-md object-contain bg-sidebar"
-                    />
-                  ) : (
-                    <p className="mb-2 text-sm">{slip.fileName ?? "File"}</p>
-                  )}
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => removeAttachment(slip.id)}
-                    className="rounded-md border border-border px-2 py-1 text-xs"
+              </label>
+            </div>
+            {slips.length > 0 ? (
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {slips.map((slip) => (
+                  <li
+                    key={slip.id}
+                    className="rounded-lg border border-border p-2"
                   >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium">Cloth patches</h3>
-            <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
-              Upload
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void uploadFiles(e.target.files, "cloth_patch");
-                  e.target.value = "";
-                }}
-              />
-            </label>
+                    {slip.signedUrl &&
+                    slip.contentType?.startsWith("image/") ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={slip.signedUrl}
+                        alt={slip.fileName ?? "Order slip"}
+                        className="mb-2 max-h-36 w-full rounded-md object-contain bg-sidebar"
+                      />
+                    ) : (
+                      <p className="mb-2 text-sm">{slip.fileName ?? "File"}</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => removeAttachment(slip.id)}
+                      className="rounded-md border border-border px-2 py-1 text-xs"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
-          {patches.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {patches.map((patch) => (
+
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Custom order</h4>
+            <div className="space-y-2">
+              {lines.map((line) => (
                 <div
-                  key={patch.id}
-                  className="rounded-lg border border-border p-1"
+                  key={line.key}
+                  className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.3fr_0.8fr_0.45fr_0.55fr_auto]"
                 >
-                  {patch.signedUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={patch.signedUrl}
-                      alt={patch.fileName ?? "Cloth patch"}
-                      className="mb-1 h-20 w-full rounded object-cover"
-                    />
-                  ) : (
-                    <p className="p-1 text-xs">{patch.fileName}</p>
-                  )}
+                  <ItemNameCombobox
+                    items={priceList}
+                    value={line.itemName}
+                    onChange={(value) =>
+                      updateLine(line.key, {
+                        itemName: value,
+                        priceListItemId: null,
+                      })
+                    }
+                    onSelect={(item) =>
+                      updateLine(line.key, {
+                        itemName: item.item_name,
+                        priceListItemId: item.id,
+                      })
+                    }
+                    onTabToQty={() => undefined}
+                    showPrice={false}
+                    placeholder="Item"
+                  />
+                  <input
+                    value={line.shadeCode}
+                    onChange={(e) =>
+                      updateLine(line.key, { shadeCode: e.target.value })
+                    }
+                    placeholder="Shade"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                  />
+                  <input
+                    value={line.qty}
+                    onChange={(e) =>
+                      updateLine(line.key, { qty: e.target.value })
+                    }
+                    placeholder="Qty"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                  />
+                  <select
+                    value={line.unit}
+                    onChange={(e) =>
+                      updateLine(line.key, {
+                        unit: e.target.value as CustomerOrderLineUnit,
+                      })
+                    }
+                    className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                  >
+                    {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                      ([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ),
+                    )}
+                  </select>
                   <button
                     type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => removeAttachment(patch.id)}
-                    className="w-full rounded-md border border-border px-1 py-0.5 text-[10px]"
+                    onClick={() =>
+                      setLines((prev) =>
+                        prev.length <= 1
+                          ? prev
+                          : prev.filter((l) => l.key !== line.key),
+                      )
+                    }
+                    className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
                   >
-                    Remove
+                    ×
                   </button>
                 </div>
               ))}
+              <button
+                type="button"
+                onClick={() => setLines((prev) => [...prev, emptyLine()])}
+                className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+              >
+                Add items
+              </button>
             </div>
-          ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-medium">Cloth patches</h4>
+              <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
+                Upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    void uploadFiles(e.target.files, "cloth_patch");
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {patches.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {patches.map((patch) => (
+                  <div
+                    key={patch.id}
+                    className="rounded-lg border border-border p-1"
+                  >
+                    {patch.signedUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={patch.signedUrl}
+                        alt={patch.fileName ?? "Cloth patch"}
+                        className="mb-1 h-20 w-full rounded object-cover"
+                      />
+                    ) : (
+                      <p className="p-1 text-xs">{patch.fileName}</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => removeAttachment(patch.id)}
+                      className="w-full rounded-md border border-border px-1 py-0.5 text-[10px]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <div className="relative flex items-center gap-3 py-1" role="separator">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            or
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        {/* 2. Dyeing Request */}
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              2. Dyeing Request
+            </h3>
+            <p className="mt-0.5 text-xs text-muted">
+              Shade number or cloth patch
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Shade number</h4>
+            <div className="space-y-2">
+              {dyeingShades.map((row) => (
+                <div
+                  key={row.key}
+                  className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1.4fr_0.5fr_0.6fr_auto]"
+                >
+                  <input
+                    value={row.shadeCode}
+                    onChange={(e) =>
+                      updateDyeingShade(row.key, {
+                        shadeCode: e.target.value,
+                      })
+                    }
+                    placeholder="Shade number"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                  />
+                  <input
+                    value={row.qty}
+                    onChange={(e) =>
+                      updateDyeingShade(row.key, { qty: e.target.value })
+                    }
+                    placeholder="Qty"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+                  />
+                  <select
+                    value={row.unit}
+                    onChange={(e) =>
+                      updateDyeingShade(row.key, {
+                        unit: e.target.value as CustomerOrderLineUnit,
+                      })
+                    }
+                    className="rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none"
+                  >
+                    {Object.entries(ORDER_LINE_UNIT_LABELS).map(
+                      ([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDyeingShades((prev) =>
+                        prev.length <= 1
+                          ? prev
+                          : prev.filter((s) => s.key !== row.key),
+                      )
+                    }
+                    className="rounded-md border border-border px-2 py-1.5 text-xs text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setDyeingShades((prev) => [...prev, emptyDyeingShade()])
+                }
+                className="text-sm font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+              >
+                Add shade
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-medium">Cloth patch</h4>
+              <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-sidebar">
+                Upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addDyeingPatchFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {dyeingPatches.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {dyeingPatches.map((patch) => (
+                  <div
+                    key={patch.key}
+                    className="rounded-lg border border-border p-1"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={patch.previewUrl}
+                      alt={patch.file.name}
+                      className="mb-1 h-20 w-full rounded object-cover"
+                    />
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => removeDyeingPatch(patch.key)}
+                      className="w-full rounded-md border border-border px-1 py-0.5 text-[10px]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </section>
 
         {error ? (
@@ -682,12 +1010,10 @@ export function NewCustomerOrderModal({
           <button
             type="button"
             disabled={Boolean(busy) || !customerId}
-            onClick={() => void finishOrder()}
+            onClick={() => void finish()}
             className="flex-1 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-50"
           >
-            {busy === "save" || busy === "create"
-              ? "Saving…"
-              : "Save and create order"}
+            {saveLabel}
           </button>
         </div>
       </div>
