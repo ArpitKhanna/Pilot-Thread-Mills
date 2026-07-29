@@ -264,6 +264,14 @@ export function SalesmenInvoiceCreateClient({
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
       returnItems,
       paymentEntries: payments.length > 0 ? payments : undefined,
+      verificationStatus:
+        initialInvoice?.verificationStatus ?? "pending_verification",
+      createdBy: initialInvoice?.createdBy ?? null,
+      createdByName: initialInvoice?.createdByName ?? null,
+      verifiedBy: initialInvoice?.verifiedBy ?? null,
+      verifiedByName: initialInvoice?.verifiedByName ?? null,
+      verifiedAt: initialInvoice?.verifiedAt ?? null,
+      verificationNote: initialInvoice?.verificationNote ?? null,
     };
   }, [
     draftId,
@@ -276,6 +284,7 @@ export function SalesmenInvoiceCreateClient({
     amountPaid,
     discountAmount,
     payments,
+    initialInvoice,
   ]);
 
   const previewSalesman: Salesman = salesman ?? {
@@ -837,8 +846,12 @@ export function SalesmenInvoiceCreateClient({
         </dl>
         <p className="mt-4 text-xs text-muted">
           {isEdit
-            ? "Changes will replace the current invoice details."
-            : `This will add the invoice to ${salesman?.name}'s invoice list.`}
+            ? context.profile.role === "admin"
+              ? "Changes will replace the current invoice details."
+              : "Saving will resubmit this invoice for admin verification."
+            : context.profile.role === "admin"
+              ? `This will add the invoice to ${salesman?.name}'s invoice list.`
+              : `This invoice will be sent for admin verification before it updates ${salesman?.name}'s balance.`}
         </p>
         {error && (
           <p className="mt-3 text-sm text-[#c45c26]" role="alert">

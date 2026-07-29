@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { TopBar } from "@/components/layout/AppShell";
 import { getAppContext } from "@/app/(app)/layout";
 import { ITEM_TYPE_LABELS, type ItemType, type PriceListItem } from "@/lib/auth/types";
+import { formatINR } from "@/lib/salesmen/mock-data";
+import { listPendingInvoiceApprovals } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
@@ -11,16 +13,23 @@ export default async function DashboardPage() {
 
   const isAdmin = context.profile.role === "admin";
   let pendingItems: PriceListItem[] = [];
+  let pendingInvoices: Awaited<
+    ReturnType<typeof listPendingInvoiceApprovals>
+  > = [];
 
   if (isAdmin) {
     const supabase = await createClient();
-    const { data } = await supabase
-      .from("price_list_items")
-      .select("*")
-      .eq("status", "pending_approval")
-      .order("created_at", { ascending: false })
-      .limit(10);
+    const [{ data }, invoices] = await Promise.all([
+      supabase
+        .from("price_list_items")
+        .select("*")
+        .eq("status", "pending_approval")
+        .order("created_at", { ascending: false })
+        .limit(10),
+      listPendingInvoiceApprovals(supabase),
+    ]);
     pendingItems = (data ?? []) as PriceListItem[];
+    pendingInvoices = invoices.slice(0, 10);
   }
 
   return (
@@ -39,11 +48,89 @@ export default async function DashboardPage() {
           </p>
         </div>
 
+        {isAdmin && pendingInvoices.length > 0 && (
+          <section className="mb-8">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-medium">Invoice approvals</h2>
+                <p className="text-sm text-muted">
+                  Salesman invoices awaiting admin verification
+                </p>
+              </div>
+              <Link
+                href="/approvals"
+                className="text-sm font-medium underline underline-offset-2"
+              >
+                View all
+              </Link>
+            </div>
+
+            <div className="space-y-3 md:hidden">
+              {pendingInvoices.map(({ invoice, salesmanName }) => (
+                <div
+                  key={invoice.id}
+                  className="rounded-xl border border-border bg-surface p-4"
+                >
+                  <p className="font-medium">{invoice.number}</p>
+                  <p className="mt-1 text-xs text-muted">{salesmanName}</p>
+                  <p className="mt-2 text-sm text-muted">
+                    {formatINR(invoice.totalAmount)} · Paid{" "}
+                    {formatINR(invoice.amountPaid)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    By @{invoice.createdByName ?? "Unknown"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-xl border border-border bg-surface md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-table-header">
+                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
+                      Invoice
+                    </th>
+                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
+                      Salesman
+                    </th>
+                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
+                      Amount
+                    </th>
+                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
+                      Created by
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingInvoices.map(({ invoice, salesmanName }) => (
+                    <tr
+                      key={invoice.id}
+                      className="border-b border-border last:border-0"
+                    >
+                      <td className="px-5 py-3 font-medium">
+                        {invoice.number}
+                      </td>
+                      <td className="px-5 py-3 text-muted">{salesmanName}</td>
+                      <td className="px-5 py-3 text-muted tabular-nums">
+                        {formatINR(invoice.totalAmount)}
+                      </td>
+                      <td className="px-5 py-3 text-muted">
+                        @{invoice.createdByName ?? "Unknown"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         {isAdmin && pendingItems.length > 0 && (
           <section className="mb-8">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-medium">Approval Queue</h2>
+                <h2 className="text-lg font-medium">Price list approvals</h2>
                 <p className="text-sm text-muted">
                   Price list items submitted by accountants awaiting your review
                 </p>

@@ -190,20 +190,6 @@ export function CustomerDetailClient({
         </span>
       ),
     },
-    {
-      key: "tier",
-      node: (
-        <span
-          className={
-            tierInsight.tier ? "font-medium text-foreground" : "text-muted"
-          }
-        >
-          {tierInsight.tier
-            ? CUSTOMER_TIER_LABELS[tierInsight.tier]
-            : "Tier —"}
-        </span>
-      ),
-    },
   ];
 
   if (customer.marketDay) {
@@ -211,11 +197,37 @@ export function CustomerDetailClient({
       key: "market",
       node: (
         <span className="text-muted">
-          Market: {MARKET_DAY_LABELS[customer.marketDay]}
+          {MARKET_DAY_LABELS[customer.marketDay]}
         </span>
       ),
     });
   }
+
+  const areaLabel =
+    customer.area?.trim() ||
+    customer.addressArea?.trim() ||
+    "";
+  if (areaLabel) {
+    metaParts.push({
+      key: "area",
+      node: <span className="text-muted">{areaLabel}</span>,
+    });
+  }
+
+  metaParts.push({
+    key: "tier",
+    node: (
+      <span
+        className={
+          tierInsight.tier ? "font-medium text-foreground" : "text-muted"
+        }
+      >
+        {tierInsight.tier
+          ? CUSTOMER_TIER_LABELS[tierInsight.tier]
+          : "Tier —"}
+      </span>
+    ),
+  });
 
   function handleSelect(invoice: Invoice) {
     setSelectedInvoice(invoice);
@@ -573,7 +585,7 @@ export function CustomerDetailClient({
         title="Edit window closed"
       >
         <p className="text-sm text-muted">
-          Invoices can only be edited for a limited time after creation.
+          Invoices can only be edited within 1 day of creation.
         </p>
         <div className="mt-4 flex justify-end">
           <button

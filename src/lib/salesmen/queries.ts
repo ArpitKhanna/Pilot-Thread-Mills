@@ -254,6 +254,44 @@ export async function getInvoiceById(
   return invoice ?? null;
 }
 
+export type PendingInvoiceApproval = {
+  invoice: Invoice;
+  salesmanName: string;
+  salesmanId: string;
+};
+
+/** Invoices awaiting admin verification */
+export async function listPendingInvoiceApprovals(
+  supabase: SupabaseClient,
+): Promise<PendingInvoiceApproval[]> {
+  const { data, error } = await supabase
+    .from("salesmen_invoices")
+    .select("*")
+    .eq("verification_status", "pending_verification")
+    .order("issued_at", { ascending: false });
+  if (error) throw error;
+  const rows = (data ?? []) as DbInvoiceRow[];
+  if (rows.length === 0) return [];
+
+  const invoices = await attachInvoiceChildren(supabase, rows);
+  const salesmanIds = [...new Set(invoices.map((i) => i.salesmanId))];
+  const { data: salesmenRows, error: salesmenError } = await supabase
+    .from("salesmen")
+    .select("id, name")
+    .in("id", salesmanIds);
+  if (salesmenError) throw salesmenError;
+
+  const nameById = new Map(
+    (salesmenRows ?? []).map((s) => [s.id as string, s.name as string]),
+  );
+
+  return invoices.map((invoice) => ({
+    invoice,
+    salesmanId: invoice.salesmanId,
+    salesmanName: nameById.get(invoice.salesmanId) ?? "Unknown",
+  }));
+}
+
 /** Recompute salesman pending balance + last invoice timestamp from opening + invoices */
 export async function refreshSalesmanTotals(
   supabase: SupabaseClient,
@@ -269,7 +307,8 @@ export async function refreshSalesmanTotals(
       supabase
         .from("salesmen_invoices")
         .select("total_amount, amount_paid, issued_at")
-        .eq("salesman_id", salesmanId),
+        .eq("salesman_id", salesmanId)
+        .eq("verification_status", "verified"),
     ]);
   if (salesmanError) throw salesmanError;
   if (error) throw error;

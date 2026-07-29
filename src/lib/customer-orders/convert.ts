@@ -10,6 +10,10 @@ import {
   getSalesman,
   refreshSalesmanTotals,
 } from "@/lib/salesmen/queries";
+import {
+  paymentVerificationFields,
+  verificationForCreator,
+} from "@/lib/salesmen/verification";
 import type { InvoicePaymentEntry } from "@/lib/salesmen/types";
 import { logCustomerOrderEvent } from "./events";
 import { getCustomerOrder, updateCustomerOrder } from "./queries";
@@ -17,6 +21,10 @@ import { getCustomerOrder, updateCustomerOrder } from "./queries";
 export type ConvertOrderInput = {
   orderId: string;
   createdBy: string;
+  /** Display name for accountability logs */
+  createdByName?: string;
+  /** Role drives auto-verify vs pending (admin vs accountant) */
+  createdByRole?: string | null;
   paymentEntries?: InvoicePaymentEntry[];
   discountAmount?: number;
   notes?: string;
@@ -162,6 +170,26 @@ export async function convertOrderToInvoice(
   const number = `INV-CU-${Date.now()}`;
   const issuedAt = new Date().toISOString();
 
+  let creatorName = input.createdByName?.trim() ?? "";
+  let creatorRole = input.createdByRole ?? null;
+  if (!creatorName || creatorRole === null || creatorRole === undefined) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, role")
+      .eq("id", input.createdBy)
+      .maybeSingle();
+    if (!creatorName) creatorName = profile?.full_name?.trim() ?? "Unknown";
+    if (creatorRole === null || creatorRole === undefined) {
+      creatorRole = profile?.role ?? null;
+    }
+  }
+
+  const verification = verificationForCreator({
+    id: input.createdBy,
+    full_name: creatorName || "Unknown",
+    role: creatorRole,
+  });
+
   const { data: invoiceRow, error: insertError } = await supabase
     .from("salesmen_invoices")
     .insert({
@@ -173,7 +201,13 @@ export async function convertOrderToInvoice(
       amount_paid: amountPaid,
       discount_amount: discountAmount,
       notes: input.notes ?? order.notes,
-      created_by: input.createdBy,
+      created_by: verification.created_by,
+      created_by_name: verification.created_by_name,
+      verification_status: verification.verification_status,
+      verified_by: verification.verified_by,
+      verified_by_name: verification.verified_by_name,
+      verified_at: verification.verified_at,
+      verification_note: verification.verification_note,
     })
     .select("*")
     .single();
@@ -221,7 +255,11 @@ export async function convertOrderToInvoice(
     paymentEntries,
   };
 
-  const payments = paymentInserts(invoiceId, payload);
+  const payments = paymentInserts(
+    invoiceId,
+    payload,
+    paymentVerificationFields(verification),
+  );
   if (payments.length > 0) {
     const { error: payError } = await supabase
       .from("salesmen_invoice_payments")

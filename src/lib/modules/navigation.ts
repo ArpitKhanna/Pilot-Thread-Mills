@@ -2,6 +2,7 @@ import type { AppModule, EmployeeRole } from "@/lib/auth/types";
 
 export const MODULE_ICONS: Record<string, string> = {
   dashboard: "grid",
+  approvals: "list-checks",
   payments: "wallet",
   expenses: "receipt",
   inventory: "package",

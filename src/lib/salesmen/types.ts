@@ -158,6 +158,11 @@ export type InvoiceLineItem = {
 
 export type InvoicePaymentMethod = "cash" | "cheque" | "upi" | "imps";
 
+export type InvoiceVerificationStatus =
+  | "verified"
+  | "pending_verification"
+  | "needs_edit";
+
 /** Detailed payment capture during invoice creation (not printed line-by-line) */
 export type InvoicePaymentEntry = {
   id: string;
@@ -169,6 +174,12 @@ export type InvoicePaymentEntry = {
   depositAccountId?: string;
   /** Sender name for UPI / IMPS */
   senderName?: string;
+  verificationStatus?: InvoiceVerificationStatus;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
 };
 
 export type Invoice = {
@@ -187,6 +198,13 @@ export type Invoice = {
   returnItems?: InvoiceLineItem[];
   /** Optional detail retained for ledger; preview uses amountPaid only */
   paymentEntries?: InvoicePaymentEntry[];
+  verificationStatus: InvoiceVerificationStatus;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
 };
 
 export type TimeRangePreset =

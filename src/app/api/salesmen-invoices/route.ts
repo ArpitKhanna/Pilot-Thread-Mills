@@ -5,6 +5,10 @@ import {
   validateInvoicePayload,
 } from "@/lib/salesmen/invoice-api";
 import { getInvoiceById, refreshSalesmanTotals } from "@/lib/salesmen/queries";
+import {
+  paymentVerificationFields,
+  verificationForCreator,
+} from "@/lib/salesmen/verification";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
 
 async function hasOrderSalesmenAccess(
@@ -46,6 +50,11 @@ export async function POST(request: Request) {
 
   const number = payload.number?.trim() || `INV-SM-${Date.now()}`;
   const issuedAt = payload.issuedAt ?? new Date().toISOString();
+  const verification = verificationForCreator({
+    id: profile.id,
+    full_name: profile.full_name,
+    role: profile.role,
+  });
 
   const { data: invoiceRow, error: insertError } = await supabase
     .from("salesmen_invoices")
@@ -58,7 +67,13 @@ export async function POST(request: Request) {
       amount_paid: payload.amountPaid,
       discount_amount: payload.discountAmount ?? 0,
       notes: payload.notes ?? null,
-      created_by: profile.id,
+      created_by: verification.created_by,
+      created_by_name: verification.created_by_name,
+      verification_status: verification.verification_status,
+      verified_by: verification.verified_by,
+      verified_by_name: verification.verified_by_name,
+      verified_at: verification.verified_at,
+      verification_note: verification.verification_note,
     })
     .select("*")
     .single();
@@ -86,7 +101,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const payments = paymentInserts(invoiceRow.id, payload);
+  const payments = paymentInserts(
+    invoiceRow.id,
+    payload,
+    paymentVerificationFields(verification),
+  );
   if (payments.length > 0) {
     const { error: payError } = await supabase
       .from("salesmen_invoice_payments")

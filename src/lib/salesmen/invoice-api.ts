@@ -6,7 +6,7 @@ import type {
 } from "./types";
 
 /** Invoices can only be edited within this window after generation */
-export const INVOICE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+export const INVOICE_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const METHODS: InvoicePaymentMethod[] = ["cash", "cheque", "upi", "imps"];
 
@@ -33,9 +33,15 @@ export function canEditIssuedAt(
 }
 
 export function canEditInvoice(
-  invoice: Pick<Invoice, "issuedAt">,
+  invoice: Pick<Invoice, "issuedAt" | "verificationStatus">,
   now: number = Date.now(),
 ): boolean {
+  if (
+    invoice.verificationStatus === "needs_edit" ||
+    invoice.verificationStatus === "pending_verification"
+  ) {
+    return true;
+  }
   return canEditIssuedAt(invoice.issuedAt, now);
 }
 
@@ -49,9 +55,17 @@ export function getInvoiceEditRemainingMs(
 }
 
 export function formatEditCountdown(remainingMs: number): string {
-  const totalSec = Math.ceil(remainingMs / 1000);
-  const mins = Math.floor(totalSec / 60);
+  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
   const secs = totalSec % 60;
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${mins}m`;
+  }
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
@@ -218,6 +232,14 @@ export function lineInserts(
 export function paymentInserts(
   invoiceId: string,
   payload: InvoiceWritePayload,
+  verification?: {
+    verification_status: string;
+    created_by: string | null;
+    created_by_name: string | null;
+    verified_by: string | null;
+    verified_by_name: string | null;
+    verified_at: string | null;
+  },
 ) {
   return (payload.paymentEntries ?? []).map((payment, index) => ({
     invoice_id: invoiceId,
@@ -227,5 +249,15 @@ export function paymentInserts(
     deposit_account_id: payment.depositAccountId ?? null,
     sender_name: payment.senderName ?? null,
     sort_order: index,
+    ...(verification
+      ? {
+          verification_status: verification.verification_status,
+          created_by: verification.created_by,
+          created_by_name: verification.created_by_name,
+          verified_by: verification.verified_by,
+          verified_by_name: verification.verified_by_name,
+          verified_at: verification.verified_at,
+        }
+      : {}),
   }));
 }

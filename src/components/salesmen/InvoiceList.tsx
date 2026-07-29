@@ -5,6 +5,7 @@ import {
   formatInvoiceDate,
 } from "@/lib/salesmen/mock-data";
 import type { Invoice } from "@/lib/salesmen/types";
+import { verificationStatusLabel } from "@/lib/salesmen/verification";
 
 type InvoiceListProps = {
   invoices: Invoice[];
@@ -54,6 +55,9 @@ export function InvoiceList({
               const date = formatInvoiceDate(invoice.issuedAt);
               const selected = selectedId === invoice.id;
               const balance = invoice.totalAmount - invoice.amountPaid;
+              const statusLabel = verificationStatusLabel(
+                invoice.verificationStatus,
+              );
 
               return (
                 <li key={invoice.id}>
@@ -80,9 +84,22 @@ export function InvoiceList({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {invoice.number}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-medium">
+                          {invoice.number}
+                        </p>
+                        {statusLabel && (
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
+                              invoice.verificationStatus === "needs_edit"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-sky-100 text-sky-800"
+                            }`}
+                          >
+                            {statusLabel}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-0.5 truncate text-xs text-muted">
                         {date.time}
                         <span className="mx-1.5 text-border">·</span>

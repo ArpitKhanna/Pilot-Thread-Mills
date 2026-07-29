@@ -282,7 +282,7 @@ export function InvoicePreview({
             {onEdit && !editable && (
               <span
                 className="text-xs text-muted"
-                title="Invoices can only be edited within 5 minutes of generation"
+                title="Invoices can only be edited within 1 day of generation"
               >
                 Edit locked
               </span>

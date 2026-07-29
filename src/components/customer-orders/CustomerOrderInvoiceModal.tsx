@@ -441,6 +441,7 @@ export function CustomerOrderInvoiceModal({
       amountPaid: 0,
       lineItems,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      verificationStatus: "pending_verification",
     };
   }, [
     filledLines,

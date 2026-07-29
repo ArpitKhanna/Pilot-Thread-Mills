@@ -6,6 +6,7 @@ import type {
   InvoiceLineItem,
   InvoicePaymentEntry,
   InvoicePaymentMethod,
+  InvoiceVerificationStatus,
   MarketDay,
   Salesman,
   SalesmanDiscountRule,
@@ -57,6 +58,13 @@ export type DbInvoiceRow = {
   amount_paid: number | string;
   discount_amount: number | string;
   notes: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  verification_status?: string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_note?: string | null;
 };
 
 export type DbInvoiceLineRow = {
@@ -80,7 +88,26 @@ export type DbInvoicePaymentRow = {
   deposit_account_id: string | null;
   sender_name: string | null;
   sort_order: number;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  verification_status?: string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
 };
+
+function parseVerificationStatus(
+  value: string | null | undefined,
+): InvoiceVerificationStatus {
+  if (
+    value === "pending_verification" ||
+    value === "needs_edit" ||
+    value === "verified"
+  ) {
+    return value;
+  }
+  return "verified";
+}
 
 function num(value: number | string): number {
   return typeof value === "number" ? value : Number(value);
@@ -281,6 +308,12 @@ export function mapInvoiceRows(
             chequeNumber: p.cheque_number ?? undefined,
             depositAccountId: p.deposit_account_id ?? undefined,
             senderName: p.sender_name ?? undefined,
+            verificationStatus: parseVerificationStatus(p.verification_status),
+            createdBy: p.created_by ?? null,
+            createdByName: p.created_by_name ?? null,
+            verifiedBy: p.verified_by ?? null,
+            verifiedByName: p.verified_by_name ?? null,
+            verifiedAt: p.verified_at ?? null,
           }))
       : undefined;
 
@@ -299,5 +332,12 @@ export function mapInvoiceRows(
     discountAmount: discount > 0 ? discount : undefined,
     returnItems,
     paymentEntries,
+    verificationStatus: parseVerificationStatus(invoice.verification_status),
+    createdBy: invoice.created_by ?? null,
+    createdByName: invoice.created_by_name ?? null,
+    verifiedBy: invoice.verified_by ?? null,
+    verifiedByName: invoice.verified_by_name ?? null,
+    verifiedAt: invoice.verified_at ?? null,
+    verificationNote: invoice.verification_note ?? null,
   };
 }

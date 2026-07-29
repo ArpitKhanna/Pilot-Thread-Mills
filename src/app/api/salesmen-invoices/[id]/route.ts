@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import {
-  canEditIssuedAt,
+  canEditInvoice,
   lineInserts,
   paymentInserts,
   validateInvoicePayload,
 } from "@/lib/salesmen/invoice-api";
 import { getInvoiceById, refreshSalesmanTotals } from "@/lib/salesmen/queries";
+import {
+  paymentVerificationFields,
+  verificationForCreator,
+  verificationForResubmit,
+  type VerificationInsert,
+} from "@/lib/salesmen/verification";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -68,11 +74,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
-  if (!canEditIssuedAt(existing.issuedAt)) {
+  if (!canEditInvoice(existing)) {
     return NextResponse.json(
       {
         error:
-          "This invoice can no longer be edited. Changes are only allowed within 5 minutes of generation.",
+          "This invoice can no longer be edited. Verified invoices are only editable within 1 day of generation.",
       },
       { status: 403 },
     );
@@ -94,6 +100,39 @@ export async function PATCH(request: Request, context: RouteContext) {
   // Keep original salesman + issuedAt; number stays the same
   const salesmanId = existing.salesmanId;
 
+  const actor = {
+    id: profile.id,
+    full_name: profile.full_name,
+    role: profile.role,
+  };
+
+  let verification: VerificationInsert;
+  if (
+    existing.verificationStatus === "needs_edit" ||
+    existing.verificationStatus === "pending_verification"
+  ) {
+    // Accountant (or any editor) resubmits → back to pending
+    verification = verificationForResubmit(
+      actor,
+      existing.createdBy,
+      existing.createdByName,
+    );
+  } else if (profile.role === "admin") {
+    verification = verificationForCreator(actor);
+    // Preserve original creator when admin edits a verified invoice
+    verification = {
+      ...verification,
+      created_by: existing.createdBy ?? actor.id,
+      created_by_name: existing.createdByName ?? actor.full_name,
+    };
+  } else {
+    verification = verificationForResubmit(
+      actor,
+      existing.createdBy,
+      existing.createdByName,
+    );
+  }
+
   const { error: updateError } = await supabase
     .from("salesmen_invoices")
     .update({
@@ -102,6 +141,13 @@ export async function PATCH(request: Request, context: RouteContext) {
       amount_paid: payload.amountPaid,
       discount_amount: payload.discountAmount ?? 0,
       notes: payload.notes ?? null,
+      created_by: verification.created_by,
+      created_by_name: verification.created_by_name,
+      verification_status: verification.verification_status,
+      verified_by: verification.verified_by,
+      verified_by_name: verification.verified_by_name,
+      verified_at: verification.verified_at,
+      verification_note: verification.verification_note,
     })
     .eq("id", id);
 
@@ -151,7 +197,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  const payments = paymentInserts(id, { ...payload, salesmanId });
+  const payments = paymentInserts(
+    id,
+    { ...payload, salesmanId },
+    paymentVerificationFields(verification),
+  );
   if (payments.length > 0) {
     const { error: payError } = await supabase
       .from("salesmen_invoice_payments")

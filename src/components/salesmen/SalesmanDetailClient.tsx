@@ -390,7 +390,7 @@ export function SalesmanDetailClient({
       >
         <p className="text-sm text-muted">
           This invoice can no longer be edited. Changes are only allowed within
-          5 minutes of generation so prices stay consistent.
+          1 day of generation so prices stay consistent.
         </p>
       </Modal>
     </>

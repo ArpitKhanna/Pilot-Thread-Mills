@@ -85,6 +85,8 @@ export async function POST(request: Request, context: RouteContext) {
     const result = await convertOrderToInvoice(supabase, {
       orderId: id,
       createdBy: profile.id,
+      createdByName: profile.full_name,
+      createdByRole: profile.role,
       paymentEntries: payments,
       discountAmount:
         body.discountAmount != null ? Number(body.discountAmount) : 0,
