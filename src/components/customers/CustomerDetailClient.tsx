@@ -420,11 +420,22 @@ export function CustomerDetailClient({
               orders={orders}
               invoices={invoices}
               customer={customer}
+              priceList={priceList}
               onOrderUpdated={(order) =>
                 setOrders((prev) =>
                   prev.map((o) => (o.id === order.id ? order : o)),
                 )
               }
+              onOrderDeleted={(id) =>
+                setOrders((prev) => prev.filter((o) => o.id !== id))
+              }
+              onRequestInvoice={(id) => {
+                const order = orders.find((o) => o.id === id);
+                if (!order || order.status !== "packed") return;
+                setInvoiceError("");
+                setInvoiceOrders([order]);
+                setInvoiceModalOpen(true);
+              }}
             />
           ) : tab === "invoices" ? (
             <div>
