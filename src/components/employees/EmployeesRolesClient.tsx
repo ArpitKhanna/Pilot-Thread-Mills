@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -48,6 +49,7 @@ export function EmployeesRolesClient({
   initialEmployees,
   initialRoleAccess,
 }: EmployeesRolesClientProps) {
+  const router = useRouter();
   const [modules] = useState<AppModule[]>(initialRoleAccess.modules);
   const [grantSet, setGrantSet] = useState(() =>
     grantsToSet(initialRoleAccess.grants),
@@ -80,6 +82,9 @@ export function EmployeesRolesClient({
   const [error, setError] = useState("");
   const [pinError, setPinError] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [revealedPinIds, setRevealedPinIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const displayed = useMemo(() => {
     return employees
@@ -137,6 +142,51 @@ export function EmployeesRolesClient({
     }
   }
 
+  function togglePinVisibility(employeeId: string) {
+    setRevealedPinIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }
+
+  function renderPinCell(employee: Employee) {
+    if (!employee.pin) {
+      return (
+        <span className="font-mono text-sm tabular-nums text-muted">
+          Not set
+        </span>
+      );
+    }
+
+    const revealed = revealedPinIds.has(employee.id);
+
+    return (
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm tabular-nums tracking-wider">
+          {revealed ? employee.pin : "••••••"}
+        </span>
+        <button
+          type="button"
+          onClick={() => togglePinVisibility(employee.id)}
+          className="text-xs text-muted underline underline-offset-2"
+        >
+          {revealed ? "Hide" : "Show"}
+        </button>
+        {revealed && (
+          <button
+            type="button"
+            onClick={() => void copyPin(employee)}
+            className="text-xs text-muted underline underline-offset-2"
+          >
+            {copiedId === employee.id ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   async function handleSaveEmployee() {
     setSaving(true);
     setError("");
@@ -172,6 +222,7 @@ export function EmployeesRolesClient({
         setEmployees((prev) => [...prev, data.employee]);
       }
       setModalOpen(false);
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -194,6 +245,7 @@ export function EmployeesRolesClient({
       setEmployees((prev) =>
         prev.map((e) => (e.id === employee.id ? data.employee : e)),
       );
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update status");
     } finally {
@@ -220,6 +272,7 @@ export function EmployeesRolesClient({
         prev.map((e) => (e.id === pinTarget.id ? data.employee : e)),
       );
       setPinModalOpen(false);
+      router.refresh();
     } catch (e) {
       setPinError(e instanceof Error ? e.message : "Failed to reset PIN");
     } finally {
@@ -400,20 +453,7 @@ export function EmployeesRolesClient({
                     <p className="mt-2 text-sm">
                       {ROLE_LABELS[employee.role]}
                     </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="font-mono text-sm tabular-nums">
-                        {employee.pin ?? "Not set"}
-                      </span>
-                      {employee.pin && (
-                        <button
-                          type="button"
-                          onClick={() => void copyPin(employee)}
-                          className="text-xs text-muted underline underline-offset-2"
-                        >
-                          {copiedId === employee.id ? "Copied" : "Copy"}
-                        </button>
-                      )}
-                    </div>
+                    <div className="mt-2">{renderPinCell(employee)}</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -471,22 +511,7 @@ export function EmployeesRolesClient({
                         <td className="px-4 py-3">
                           {ROLE_LABELS[employee.role]}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono tabular-nums">
-                              {employee.pin ?? "Not set"}
-                            </span>
-                            {employee.pin && (
-                              <button
-                                type="button"
-                                onClick={() => void copyPin(employee)}
-                                className="text-xs text-muted underline underline-offset-2"
-                              >
-                                {copiedId === employee.id ? "Copied" : "Copy"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        <td className="px-4 py-3">{renderPinCell(employee)}</td>
                         <td className="px-4 py-3">
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
