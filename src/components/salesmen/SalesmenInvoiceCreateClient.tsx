@@ -903,9 +903,18 @@ export function SalesmenInvoiceCreateClient({
           <div className="flex justify-between gap-4 text-muted">
             <dt>This invoice</dt>
             <dd className="tabular-nums text-foreground">
-              {formatINR(invoiceTotal)}
+              {formatINR(Math.max(0, subtotal - returnAmount))}
             </dd>
           </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between gap-4 text-muted">
+              <dt>Discount</dt>
+              <dd className="tabular-nums text-foreground">
+                −{formatINR(discountAmount)}
+              </dd>
+            </div>
+          )}
+          <div className="my-2 border-t border-border" />
           <div className="flex justify-between gap-4 text-muted">
             <dt>Invoice total</dt>
             <dd className="tabular-nums text-foreground">
@@ -918,6 +927,7 @@ export function SalesmenInvoiceCreateClient({
               {formatINR(amountPaid)}
             </dd>
           </div>
+          <div className="my-2 border-t border-border" />
           <div className="flex justify-between gap-4 font-medium text-foreground">
             <dt>Closing</dt>
             <dd
@@ -932,14 +942,6 @@ export function SalesmenInvoiceCreateClient({
               )}
             </dd>
           </div>
-          {discountAmount > 0 && (
-            <div className="flex justify-between gap-4 text-muted">
-              <dt>Discount</dt>
-              <dd className="tabular-nums text-foreground">
-                {formatINR(discountAmount)}
-              </dd>
-            </div>
-          )}
         </dl>
         <p className="mt-4 text-xs text-muted">
           {isEdit
