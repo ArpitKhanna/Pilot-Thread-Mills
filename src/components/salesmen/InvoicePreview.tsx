@@ -601,9 +601,7 @@ function PageTotals({
         {discountAmount > 0 && (
           <Row label="Discount" value={`−${formatINR(discountAmount)}`} />
         )}
-        {(returnsTotal > 0 ||
-          discountAmount > 0 ||
-          previousBalance !== undefined) && (
+        {(returnsTotal > 0 || discountAmount > 0) && (
           <Row label="Invoice total" value={formatINR(invoice.totalAmount)} />
         )}
         {previousBalance !== undefined && (
