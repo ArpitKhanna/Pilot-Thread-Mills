@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { ROLE_LABELS } from "@/lib/auth/types";
+import { EntitySearch } from "./EntitySearch";
 import { useMobileNav } from "./MobileNavContext";
 
 type TopBarProps = {
@@ -33,8 +34,8 @@ export function TopBar({ context, breadcrumbs }: TopBarProps) {
   const currentPage = breadcrumbs[breadcrumbs.length - 1]?.label;
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 sm:px-6">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
+      <div className="flex min-w-0 max-w-[32%] items-center gap-3 sm:max-w-[40%] lg:max-w-none">
         <button
           type="button"
           onClick={toggle}
@@ -73,6 +74,10 @@ export function TopBar({ context, breadcrumbs }: TopBarProps) {
         </nav>
 
         <p className="truncate text-sm font-medium sm:hidden">{currentPage}</p>
+      </div>
+
+      <div className="flex min-w-0 flex-1 justify-end sm:justify-center">
+        <EntitySearch context={context} />
       </div>
 
       <div className="relative shrink-0">
