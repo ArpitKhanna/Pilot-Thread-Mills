@@ -164,9 +164,6 @@ export function validateInvoicePayload(
       }
     }
     if (method === "upi" || method === "imps") {
-      if (!String(row.senderName ?? "").trim()) {
-        return { error: "UPI / IMPS payments need a sender name" };
-      }
       if (!String(row.depositAccountId ?? "").trim()) {
         return { error: "UPI / IMPS payments need a deposit account" };
       }

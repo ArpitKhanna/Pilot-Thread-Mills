@@ -51,6 +51,56 @@ function draftLinesFromInvoice(invoice: Invoice): DraftLine[] {
   return [...filled, ...blanks];
 }
 
+type PaymentFieldErrors = Record<
+  string,
+  {
+    amount?: string;
+    chequeNumber?: string;
+    depositAccountId?: string;
+  }
+>;
+
+function mapPaymentApiErrorToFields(
+  message: string,
+  payments: InvoicePaymentEntry[],
+): PaymentFieldErrors | null {
+  const lower = message.toLowerCase();
+  const next: PaymentFieldErrors = {};
+
+  if (lower.includes("sender name")) {
+    // Sender name is optional — ignore stale API messages.
+    return {};
+  }
+
+  for (const payment of payments) {
+    const field: PaymentFieldErrors[string] = {};
+    if (lower.includes("amount") && !(payment.amount > 0)) {
+      field.amount = "Enter an amount greater than zero.";
+    }
+    if (
+      payment.method === "cheque" &&
+      lower.includes("cheque") &&
+      !payment.chequeNumber?.trim()
+    ) {
+      field.chequeNumber = "Cheque number is required.";
+    }
+    if (
+      (payment.method === "cheque" ||
+        payment.method === "upi" ||
+        payment.method === "imps") &&
+      lower.includes("deposit account") &&
+      !payment.depositAccountId
+    ) {
+      field.depositAccountId = "Select a deposit account.";
+    }
+    if (Object.keys(field).length > 0) {
+      next[payment.id] = field;
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
 export function SalesmenInvoiceCreateClient({
   context,
   salesmen,
@@ -440,8 +490,20 @@ export function SalesmenInvoiceCreateClient({
         `/entities/salesmen/${salesman.id}?tab=invoices`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save invoice.");
+      const message =
+        err instanceof Error ? err.message : "Could not save invoice.";
+      setConfirmOpen(false);
+      setStep(2);
       setSaving(false);
+
+      const fieldErrors = mapPaymentApiErrorToFields(message, payments);
+      if (fieldErrors) {
+        setPaymentFieldErrors(fieldErrors);
+        setError(null);
+      } else {
+        setPaymentFieldErrors({});
+        setError(message);
+      }
     }
   }
 
@@ -723,6 +785,7 @@ export function SalesmenInvoiceCreateClient({
                     onChange={(next) => {
                       setPayments(next);
                       setPaymentFieldErrors({});
+                      setError(null);
                     }}
                     invoiceTotal={invoiceTotal}
                     previousBalance={salesman ? previousBalance : 0}
@@ -730,6 +793,12 @@ export function SalesmenInvoiceCreateClient({
                     disabled={!salesman}
                     fieldErrors={paymentFieldErrors}
                   />
+
+                  {error && (
+                    <p className="text-sm text-red-600" role="alert">
+                      {error}
+                    </p>
+                  )}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
                     <button
@@ -823,16 +892,44 @@ export function SalesmenInvoiceCreateClient({
           ?
         </p>
         <dl className="mt-4 space-y-1.5 text-sm">
+          {previousBalance > 0 && (
+            <div className="flex justify-between gap-4 text-muted">
+              <dt>Prev. balance</dt>
+              <dd className="tabular-nums text-foreground">
+                {formatINR(previousBalance)}
+              </dd>
+            </div>
+          )}
+          <div className="flex justify-between gap-4 text-muted">
+            <dt>This invoice</dt>
+            <dd className="tabular-nums text-foreground">
+              {formatINR(invoiceTotal)}
+            </dd>
+          </div>
           <div className="flex justify-between gap-4 text-muted">
             <dt>Invoice total</dt>
             <dd className="tabular-nums text-foreground">
-              {formatINR(invoiceTotal)}
+              {formatINR(previousBalance + invoiceTotal)}
             </dd>
           </div>
           <div className="flex justify-between gap-4 text-muted">
             <dt>Paid</dt>
             <dd className="tabular-nums text-foreground">
               {formatINR(amountPaid)}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-4 font-medium text-foreground">
+            <dt>Closing</dt>
+            <dd
+              className={`tabular-nums ${
+                previousBalance + invoiceTotal - amountPaid > 0
+                  ? "text-[#c45c26]"
+                  : ""
+              }`}
+            >
+              {formatINR(
+                Math.max(0, previousBalance + invoiceTotal - amountPaid),
+              )}
             </dd>
           </div>
           {discountAmount > 0 && (
@@ -853,11 +950,6 @@ export function SalesmenInvoiceCreateClient({
               ? `This will add the invoice to ${salesman?.name}'s invoice list.`
               : `This invoice will be sent for admin verification before it updates ${salesman?.name}'s balance.`}
         </p>
-        {error && (
-          <p className="mt-3 text-sm text-[#c45c26]" role="alert">
-            {error}
-          </p>
-        )}
       </Modal>
     </>
   );
