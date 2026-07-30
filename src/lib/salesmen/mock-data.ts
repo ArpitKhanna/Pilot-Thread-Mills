@@ -113,25 +113,43 @@ export function calculateSalesmanDiscount(
   for (const rule of rules) {
     if (!(rule.amountPerUnit > 0) || !rule.itemName.trim()) continue;
     const needle = rule.itemName.trim().toLowerCase();
+    const ruleCatalog = rule.priceListItemId
+      ? priceList.find((p) => p.id === rule.priceListItemId)
+      : undefined;
+    const expectedName = (
+      ruleCatalog?.item_name ?? rule.itemName
+    )
+      .trim()
+      .toLowerCase();
     let units = 0;
 
     for (const line of lines) {
       if (!(line.qty > 0)) continue;
 
-      if (
-        rule.priceListItemId &&
-        line.priceListItemId &&
-        rule.priceListItemId === line.priceListItemId
-      ) {
-        units += line.qty;
+      // Prefer exact catalog id when the rule is tied to a price-list item.
+      if (rule.priceListItemId) {
+        if (
+          line.priceListItemId &&
+          line.priceListItemId === rule.priceListItemId
+        ) {
+          units += line.qty;
+        } else if (!line.priceListItemId) {
+          const lineName = (line.name ?? "").trim().toLowerCase();
+          if (lineName && lineName === expectedName) {
+            units += line.qty;
+          }
+        }
         continue;
       }
 
+      // Name-only rules: exact name match (not substring).
       const catalog = line.priceListItemId
         ? priceList.find((p) => p.id === line.priceListItemId)
         : undefined;
-      const lineName = (line.name ?? catalog?.item_name ?? "").toLowerCase();
-      if (lineName.includes(needle) || (catalog?.item_name.toLowerCase().includes(needle) ?? false)) {
+      const lineName = (line.name ?? catalog?.item_name ?? "")
+        .trim()
+        .toLowerCase();
+      if (lineName && lineName === needle) {
         units += line.qty;
       }
     }
