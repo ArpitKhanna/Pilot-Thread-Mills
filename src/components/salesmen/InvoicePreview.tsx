@@ -22,6 +22,7 @@ type InvoicePreviewProps = {
   editPending?: boolean;
   onPrint?: () => void;
   onWhatsApp?: () => void;
+  whatsAppPending?: boolean;
   asOverlay?: boolean;
   forPrint?: boolean;
   hideToolbar?: boolean;
@@ -149,6 +150,7 @@ export function InvoicePreview({
   editPending = false,
   onPrint,
   onWhatsApp,
+  whatsAppPending = false,
   asOverlay = false,
   forPrint = false,
   hideToolbar = false,
@@ -289,7 +291,12 @@ export function InvoicePreview({
             )}
             {onPrint && <ActionButton label="Print" onClick={onPrint} />}
             {onWhatsApp && (
-              <ActionButton label="WhatsApp" onClick={onWhatsApp} primary />
+              <ActionButton
+                label={whatsAppPending ? "Preparing…" : "WhatsApp"}
+                onClick={onWhatsApp}
+                primary
+                disabled={whatsAppPending}
+              />
             )}
           </div>
         </div>

@@ -15,10 +15,10 @@ import { SalesmanOverview } from "@/components/salesmen/SalesmanOverview";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
-  buildWhatsAppShareUrl,
   canEditInvoice,
   formatINR,
 } from "@/lib/salesmen/mock-data";
+import { shareInvoicePdfOnWhatsApp } from "@/lib/salesmen/share-invoice-pdf";
 import type {
   Invoice,
   ItemRequest,
@@ -96,6 +96,8 @@ export function SalesmanDetailClient({
   );
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [editLockedOpen, setEditLockedOpen] = useState(false);
+  const [whatsAppPending, setWhatsAppPending] = useState(false);
+  const [whatsAppError, setWhatsAppError] = useState("");
 
   useEffect(() => {
     setSalesman(initialSalesman);
@@ -163,13 +165,30 @@ export function SalesmanDetailClient({
     });
   }
 
-  function handleWhatsApp(invoice: Invoice) {
-    const url = buildWhatsAppShareUrl(
-      salesman.phone,
-      invoice,
-      salesman.name,
-    );
-    window.open(url, "_blank", "noopener,noreferrer");
+  async function handleWhatsApp(invoice: Invoice) {
+    if (whatsAppPending) return;
+    setWhatsAppError("");
+    setSelectedInvoice(invoice);
+    setWhatsAppPending(true);
+    try {
+      // Ensure #invoice-print-root is mounted with this invoice before capture.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      await shareInvoicePdfOnWhatsApp({
+        phone: salesman.phone,
+        invoice,
+        partyName: salesman.name,
+      });
+    } catch (err) {
+      setWhatsAppError(
+        err instanceof Error
+          ? err.message
+          : "Could not generate the PDF. WhatsApp opened with invoice details.",
+      );
+    } finally {
+      setWhatsAppPending(false);
+    }
   }
 
   const invoiceBalances = useMemo(() => {
@@ -353,6 +372,7 @@ export function SalesmanDetailClient({
                       editPending={editPending}
                       onPrint={() => handlePrint(selectedInvoice)}
                       onWhatsApp={() => handleWhatsApp(selectedInvoice)}
+                      whatsAppPending={whatsAppPending}
                       previousBalance={previousBalanceForInvoice(
                         selectedInvoice,
                       )}
@@ -397,6 +417,7 @@ export function SalesmanDetailClient({
             editPending={editPending}
             onPrint={() => handlePrint(selectedInvoice)}
             onWhatsApp={() => handleWhatsApp(selectedInvoice)}
+            whatsAppPending={whatsAppPending}
             previousBalance={previousBalanceForInvoice(selectedInvoice)}
           />
         </div>
@@ -416,6 +437,15 @@ export function SalesmanDetailClient({
           />
         </div>
       )}
+
+      {whatsAppError ? (
+        <p
+          role="alert"
+          className="fixed bottom-4 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-lg border border-border bg-surface px-4 py-2 text-center text-sm text-red-600 shadow-lg print:hidden"
+        >
+          {whatsAppError}
+        </p>
+      ) : null}
 
       <Modal
         open={editLockedOpen}

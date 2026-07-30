@@ -213,6 +213,8 @@ export function buildWhatsAppShareUrl(
     `Amount: ${formatINR(invoice.totalAmount)}`,
     `Paid: ${formatINR(invoice.amountPaid)}`,
     `Date: ${formatShortDate(invoice.issuedAt)}`,
+    "",
+    `Attach the downloaded PDF: ${invoice.number}.pdf`,
   ].join("\n");
 
   const digits = phone.replace(/\D/g, "");
