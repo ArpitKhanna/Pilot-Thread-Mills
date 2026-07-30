@@ -74,7 +74,7 @@ function LoginForm() {
               type="tel"
               inputMode="numeric"
               autoComplete="tel"
-              placeholder="9876543210"
+              placeholder="10-digit mobile number"
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -95,7 +95,7 @@ function LoginForm() {
               type="password"
               inputMode="numeric"
               autoComplete="current-password"
-              placeholder="••••"
+              placeholder="4–6 digit PIN"
               required
               minLength={4}
               maxLength={6}
