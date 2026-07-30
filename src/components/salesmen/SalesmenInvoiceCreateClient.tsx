@@ -17,11 +17,15 @@ import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import { calculateSalesmanDiscount, formatINR } from "@/lib/salesmen/mock-data";
+import { buildAutoAppliedAdvancePayments } from "@/lib/salesmen/advance-apply";
+import { buildAutoAppliedReturnItems } from "@/lib/salesmen/return-apply";
 import type {
   Invoice,
   InvoiceLineItem,
   InvoicePaymentEntry,
   Salesman,
+  SalesmanAdvance,
+  SalesmanReturn,
 } from "@/lib/salesmen/types";
 
 type SalesmenInvoiceCreateClientProps = {
@@ -35,6 +39,22 @@ type SalesmenInvoiceCreateClientProps = {
 };
 
 type BuilderStep = 1 | 2;
+
+type DraftReturnLine = DraftLine & {
+  standAloneReturnId?: string;
+};
+
+function draftReturnLinesFromInvoice(invoice: Invoice): DraftReturnLine[] {
+  return (invoice.returnItems ?? []).map((item) => ({
+    key: item.id || `ret-${crypto.randomUUID()}`,
+    priceListItemId: item.priceListItemId ?? null,
+    name: item.name,
+    qty: String(item.qty),
+    unitPrice: item.unitPrice,
+    amount: item.amount,
+    standAloneReturnId: item.standAloneReturnId,
+  }));
+}
 
 function draftLinesFromInvoice(invoice: Invoice): DraftLine[] {
   const filled = invoice.lineItems.map((item) => ({
@@ -137,22 +157,19 @@ export function SalesmenInvoiceCreateClient({
   const [returnOpen, setReturnOpen] = useState(
     () => Boolean(initialInvoice?.returnItems?.length),
   );
-  const [returnLine, setReturnLine] = useState<DraftLine>(() => {
-    const first = initialInvoice?.returnItems?.[0];
-    if (!first) return createEmptyDraftLine();
-    return {
-      key: first.id || `ret-${crypto.randomUUID()}`,
-      priceListItemId: first.priceListItemId ?? null,
-      name: first.name,
-      qty: String(first.qty),
-      unitPrice: first.unitPrice,
-      amount: first.amount,
-    };
-  });
+  const [returnLines, setReturnLines] = useState<DraftReturnLine[]>(() =>
+    initialInvoice ? draftReturnLinesFromInvoice(initialInvoice) : [],
+  );
   const [additionalDiscount, setAdditionalDiscount] = useState("");
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>(
     () => initialInvoice?.paymentEntries ?? [],
   );
+  const [openAdvances, setOpenAdvances] = useState<SalesmanAdvance[]>([]);
+  const [openReturns, setOpenReturns] = useState<SalesmanReturn[]>([]);
+  const [advancesReady, setAdvancesReady] = useState(false);
+  const [returnsReady, setReturnsReady] = useState(false);
+  const [dismissedAdvanceIds, setDismissedAdvanceIds] = useState<string[]>([]);
+  const [dismissedReturnIds, setDismissedReturnIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [paymentFieldErrors, setPaymentFieldErrors] = useState<
     Record<
@@ -176,6 +193,63 @@ export function SalesmenInvoiceCreateClient({
     setSalesmanId(match.id);
     setSalesmanQuery(match.name);
   }, [initialSalesmanId, initialInvoice?.salesmanId, salesmen]);
+
+  useEffect(() => {
+    if (!salesmanId) {
+      setOpenAdvances([]);
+      setOpenReturns([]);
+      setAdvancesReady(true);
+      setReturnsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setAdvancesReady(false);
+    setReturnsReady(false);
+    setDismissedAdvanceIds([]);
+    setDismissedReturnIds([]);
+    void (async () => {
+      try {
+        const [advRes, retRes] = await Promise.all([
+          fetch(`/api/salesmen/${salesmanId}/advances`),
+          fetch(`/api/salesmen/${salesmanId}/returns`),
+        ]);
+        const advData = (await advRes.json()) as {
+          advances?: SalesmanAdvance[];
+        };
+        const retData = (await retRes.json()) as {
+          returns?: SalesmanReturn[];
+        };
+        if (cancelled) return;
+        setOpenAdvances(
+          (advData.advances ?? []).filter(
+            (a) =>
+              a.status === "active" &&
+              a.verificationStatus === "verified",
+          ),
+        );
+        setOpenReturns(
+          (retData.returns ?? []).filter(
+            (r) =>
+              r.status === "active" &&
+              r.verificationStatus === "verified",
+          ),
+        );
+      } catch {
+        if (!cancelled) {
+          setOpenAdvances([]);
+          setOpenReturns([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAdvancesReady(true);
+          setReturnsReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [salesmanId]);
 
   // After salesman + lines known in edit mode, split stored discount into rule vs additional
   useEffect(() => {
@@ -234,16 +308,22 @@ export function SalesmenInvoiceCreateClient({
     [filledLines],
   );
 
-  const filledReturn =
-    returnOpen &&
-    returnLine.priceListItemId &&
-    returnLine.name.trim() &&
-    Number(returnLine.qty) > 0 &&
-    returnLine.unitPrice > 0
-      ? returnLine
-      : null;
+  const filledReturns = useMemo(
+    () =>
+      returnLines.filter(
+        (l) =>
+          l.name.trim() &&
+          Number(l.qty) > 0 &&
+          l.unitPrice > 0 &&
+          (l.priceListItemId || l.standAloneReturnId),
+      ),
+    [returnLines],
+  );
 
-  const returnAmount = filledReturn?.amount ?? 0;
+  const returnAmount = useMemo(
+    () => filledReturns.reduce((sum, l) => sum + l.amount, 0),
+    [filledReturns],
+  );
 
   const ruleDiscount = useMemo(
     () =>
@@ -267,17 +347,158 @@ export function SalesmenInvoiceCreateClient({
   const invoiceTotal = Math.max(0, subtotal - returnAmount - discountAmount);
 
   const amountPaid = useMemo(
-    () => payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+    () =>
+      payments
+        .filter((p) => p.status !== "cancelled")
+        .reduce((sum, p) => sum + (p.amount || 0), 0),
     [payments],
   );
 
+  const advanceCreditPool = useMemo(
+    () => openAdvances.reduce((s, a) => s + a.remainingAmount, 0),
+    [openAdvances],
+  );
+
+  const returnCreditPool = useMemo(
+    () => openReturns.reduce((s, r) => s + r.remainingAmount, 0),
+    [openReturns],
+  );
+
+  // Gross prior dues: header pending already nets unapplied advances/returns
   const previousBalance = Math.max(
     0,
-    (salesman?.pendingBalance ?? 0) -
+    (salesman?.pendingBalance ?? 0) +
+      advanceCreditPool +
+      returnCreditPool -
       (isEdit && initialInvoice
         ? Math.max(0, initialInvoice.totalAmount - initialInvoice.amountPaid)
         : 0),
   );
+
+  const advancesForApply = useMemo(() => {
+    return openAdvances
+      .filter((a) => !dismissedAdvanceIds.includes(a.id))
+      .map((advance) => {
+        const appliedOnThisInvoice = (initialInvoice?.paymentEntries ?? [])
+          .filter(
+            (p) =>
+              p.advanceId === advance.id && p.status !== "cancelled",
+          )
+          .reduce((s, p) => s + (p.amount || 0), 0);
+        return {
+          ...advance,
+          remainingAmount:
+            Math.round(
+              (advance.remainingAmount + appliedOnThisInvoice) * 100,
+            ) / 100,
+        };
+      })
+      .filter((a) => a.remainingAmount > 0);
+  }, [openAdvances, initialInvoice, dismissedAdvanceIds]);
+
+  const returnsForApply = useMemo(() => {
+    return openReturns
+      .filter((r) => !dismissedReturnIds.includes(r.id))
+      .map((ret) => {
+        const appliedOnThisInvoice = (initialInvoice?.returnItems ?? [])
+          .filter((l) => l.standAloneReturnId === ret.id)
+          .reduce((s, l) => s + (l.amount || 0), 0);
+        return {
+          ...ret,
+          remainingAmount:
+            Math.round(
+              (ret.remainingAmount + appliedOnThisInvoice) * 100,
+            ) / 100,
+        };
+      })
+      .filter((r) => r.remainingAmount > 0);
+  }, [openReturns, initialInvoice, dismissedReturnIds]);
+
+  // Keep advance applications synced when totals / salesman / credit pool change
+  useEffect(() => {
+    if (!advancesReady || !salesmanId) return;
+    setPayments((prev) => {
+      const next = buildAutoAppliedAdvancePayments(
+        advancesForApply,
+        previousBalance,
+        invoiceTotal,
+        prev,
+      );
+      // Preserve user-reduced advance amounts (never force higher than what they set)
+      return next.map((p) => {
+        if (!p.advanceId) return p;
+        const existing = prev.find((x) => x.advanceId === p.advanceId);
+        if (existing && existing.amount < p.amount) {
+          return { ...p, amount: existing.amount };
+        }
+        return p;
+      });
+    });
+  }, [
+    advancesReady,
+    salesmanId,
+    invoiceTotal,
+    previousBalance,
+    advancesForApply,
+  ]);
+
+  // Auto-apply open stand-alone returns as return lines
+  useEffect(() => {
+    if (!returnsReady || !salesmanId) return;
+    setReturnLines((prev) => {
+      const existingItems: InvoiceLineItem[] = prev.map((l) => ({
+        id: l.key,
+        name: l.name,
+        qty: Number(l.qty) || 0,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        priceListItemId: l.priceListItemId ?? undefined,
+        standAloneReturnId: l.standAloneReturnId,
+      }));
+      const next = buildAutoAppliedReturnItems(returnsForApply, existingItems);
+      const mapped: DraftReturnLine[] = next.map((item) => {
+        const existing = prev.find(
+          (p) =>
+            (item.standAloneReturnId &&
+              p.standAloneReturnId === item.standAloneReturnId &&
+              p.name === item.name) ||
+            (!item.standAloneReturnId && p.key === item.id),
+        );
+        const amount =
+          existing && existing.amount < item.amount
+            ? existing.amount
+            : item.amount;
+        const qty =
+          existing && Number(existing.qty) > 0 && existing.amount < item.amount
+            ? existing.qty
+            : String(item.qty);
+        return {
+          key: item.id,
+          priceListItemId: item.priceListItemId ?? null,
+          name: item.name,
+          qty,
+          unitPrice: item.unitPrice,
+          amount,
+          standAloneReturnId: item.standAloneReturnId,
+        };
+      });
+      if (mapped.length > 0) setReturnOpen(true);
+      return mapped;
+    });
+  }, [returnsReady, salesmanId, returnsForApply]);
+
+  function handlePaymentsChange(next: InvoicePaymentEntry[]) {
+    const removedAdvanceIds = payments
+      .filter((p) => p.advanceId)
+      .map((p) => p.advanceId!)
+      .filter((id) => !next.some((p) => p.advanceId === id));
+    if (removedAdvanceIds.length > 0) {
+      setDismissedAdvanceIds((prev) => [
+        ...new Set([...prev, ...removedAdvanceIds]),
+      ]);
+    }
+    setPayments(next);
+  }
 
   const liveInvoice: Invoice = useMemo(() => {
     const lineItems: InvoiceLineItem[] = filledLines.map((l) => ({
@@ -289,18 +510,18 @@ export function SalesmenInvoiceCreateClient({
       priceListItemId: l.priceListItemId ?? undefined,
     }));
 
-    const returnItems: InvoiceLineItem[] | undefined = filledReturn
-      ? [
-          {
-            id: filledReturn.key,
-            name: filledReturn.name,
-            qty: Number(filledReturn.qty),
-            unitPrice: filledReturn.unitPrice,
-            amount: filledReturn.amount,
-            priceListItemId: filledReturn.priceListItemId ?? undefined,
-          },
-        ]
-      : undefined;
+    const returnItems: InvoiceLineItem[] | undefined =
+      filledReturns.length > 0
+        ? filledReturns.map((l) => ({
+            id: l.key,
+            name: l.name,
+            qty: Number(l.qty),
+            unitPrice: l.unitPrice,
+            amount: l.amount,
+            priceListItemId: l.priceListItemId ?? undefined,
+            standAloneReturnId: l.standAloneReturnId,
+          }))
+        : undefined;
 
     return {
       id: draftId,
@@ -328,7 +549,7 @@ export function SalesmenInvoiceCreateClient({
     draftNumber,
     issuedAt,
     filledLines,
-    filledReturn,
+    filledReturns,
     salesman?.id,
     invoiceTotal,
     amountPaid,
@@ -377,19 +598,53 @@ export function SalesmenInvoiceCreateClient({
     setError(null);
   }
 
-  function updateReturn(patch: Partial<DraftLine>) {
-    setReturnLine((prev) => {
-      const merged = { ...prev, ...patch };
-      const qtyNum = Number(merged.qty);
-      const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
-      merged.amount = Math.round(qty * merged.unitPrice * 100) / 100;
-      return merged;
+  function updateReturnLine(key: string, patch: Partial<DraftReturnLine>) {
+    setReturnLines((prev) =>
+      prev.map((line) => {
+        if (line.key !== key) return line;
+        const merged = { ...line, ...patch };
+        const qtyNum = Number(merged.qty);
+        const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
+        merged.amount = Math.round(qty * merged.unitPrice * 100) / 100;
+        return merged;
+      }),
+    );
+  }
+
+  function removeReturnLine(key: string) {
+    setReturnLines((prev) => {
+      const target = prev.find((l) => l.key === key);
+      if (target?.standAloneReturnId) {
+        setDismissedReturnIds((ids) => [
+          ...new Set([...ids, target.standAloneReturnId!]),
+        ]);
+      }
+      const next = prev.filter((l) => l.key !== key);
+      if (next.length === 0) setReturnOpen(false);
+      return next;
     });
   }
 
-  function clearReturn() {
+  function clearAllReturns() {
+    const linked = returnLines
+      .map((l) => l.standAloneReturnId)
+      .filter((id): id is string => Boolean(id));
+    if (linked.length > 0) {
+      setDismissedReturnIds((prev) => [...new Set([...prev, ...linked])]);
+    }
     setReturnOpen(false);
-    setReturnLine(createEmptyDraftLine());
+    setReturnLines([]);
+  }
+
+  function addManualReturnLine() {
+    setReturnOpen(true);
+    setReturnLines((prev) => [
+      ...prev,
+      {
+        ...createEmptyDraftLine(),
+        key: `ret-${crypto.randomUUID()}`,
+      },
+    ]);
   }
 
   function validateStep1(): boolean {
@@ -644,11 +899,11 @@ export function SalesmenInvoiceCreateClient({
                       </p>
                     )}
 
-                    {!returnOpen ? (
+                    {!returnOpen || returnLines.length === 0 ? (
                       <button
                         type="button"
                         disabled={!salesman}
-                        onClick={() => setReturnOpen(true)}
+                        onClick={addManualReturnLine}
                         className="text-sm text-muted underline-offset-2 hover:text-foreground hover:underline disabled:opacity-40"
                       >
                         + Add return
@@ -656,56 +911,88 @@ export function SalesmenInvoiceCreateClient({
                     ) : (
                       <div className="space-y-2 rounded-xl border border-dashed border-border bg-sidebar/40 p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium">Return item</p>
+                          <p className="text-sm font-medium">Returns</p>
                           <button
                             type="button"
-                            onClick={clearReturn}
+                            onClick={clearAllReturns}
                             className="text-xs text-muted hover:text-foreground"
                           >
-                            Remove
+                            Remove all
                           </button>
                         </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2">
-                          <ItemNameCombobox
-                            items={priceList}
-                            value={returnLine.name}
-                            disabled={!salesman}
-                            placeholder="Returning item…"
-                            onChange={(name) =>
-                              updateReturn({
-                                name,
-                                priceListItemId: null,
-                                unitPrice: 0,
-                              })
-                            }
-                            onSelect={(item) =>
-                              updateReturn({
-                                name: item.item_name,
-                                priceListItemId: item.id,
-                                unitPrice: item.salesmen_price,
-                              })
-                            }
-                            onTabToQty={() => undefined}
-                          />
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            inputMode="decimal"
-                            disabled={!salesman}
-                            value={returnLine.qty}
-                            placeholder="Qty"
-                            className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-                            onChange={(e) =>
-                              updateReturn({ qty: e.target.value })
-                            }
-                          />
-                          <span className="text-right text-sm tabular-nums text-[#c45c26]">
-                            {returnAmount > 0
-                              ? `−${formatINR(returnAmount)}`
-                              : "—"}
-                          </span>
-                        </div>
+                        {returnLines.map((line) => (
+                          <div key={line.key} className="space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              {line.standAloneReturnId ? (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-amber-800 uppercase">
+                                  Applied return
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-muted uppercase tracking-wide">
+                                  Manual
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeReturnLine(line.key)}
+                                className="text-xs text-muted hover:text-foreground"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-2">
+                              <ItemNameCombobox
+                                items={priceList}
+                                value={line.name}
+                                disabled={!salesman || Boolean(line.standAloneReturnId)}
+                                placeholder="Returning item…"
+                                onChange={(name) =>
+                                  updateReturnLine(line.key, {
+                                    name,
+                                    priceListItemId: null,
+                                    unitPrice: 0,
+                                  })
+                                }
+                                onSelect={(item) =>
+                                  updateReturnLine(line.key, {
+                                    name: item.item_name,
+                                    priceListItemId: item.id,
+                                    unitPrice: item.salesmen_price,
+                                  })
+                                }
+                                onTabToQty={() => undefined}
+                              />
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                inputMode="decimal"
+                                disabled={!salesman}
+                                value={line.qty}
+                                placeholder="Qty"
+                                className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+                                onChange={(e) =>
+                                  updateReturnLine(line.key, {
+                                    qty: e.target.value,
+                                  })
+                                }
+                              />
+                              <span className="text-right text-sm tabular-nums text-[#c45c26]">
+                                {line.amount > 0
+                                  ? `−${formatINR(line.amount)}`
+                                  : "—"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          disabled={!salesman}
+                          onClick={addManualReturnLine}
+                          className="text-xs text-muted underline-offset-2 hover:text-foreground hover:underline disabled:opacity-40"
+                        >
+                          + Add another return item
+                        </button>
                       </div>
                     )}
 
@@ -783,7 +1070,7 @@ export function SalesmenInvoiceCreateClient({
                   <InvoicePaymentsStep
                     payments={payments}
                     onChange={(next) => {
-                      setPayments(next);
+                      handlePaymentsChange(next);
                       setPaymentFieldErrors({});
                       setError(null);
                     }}

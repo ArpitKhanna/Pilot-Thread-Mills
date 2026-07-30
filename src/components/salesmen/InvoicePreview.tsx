@@ -20,6 +20,7 @@ type InvoicePreviewProps = {
   onClose?: () => void;
   onEdit?: () => void;
   editPending?: boolean;
+  onDelete?: () => void;
   onPrint?: () => void;
   onWhatsApp?: () => void;
   whatsAppPending?: boolean;
@@ -148,6 +149,7 @@ export function InvoicePreview({
   onClose,
   onEdit,
   editPending = false,
+  onDelete,
   onPrint,
   onWhatsApp,
   whatsAppPending = false,
@@ -185,6 +187,7 @@ export function InvoicePreview({
   );
 
   const editable = Boolean(onEdit) && canEditInvoice(invoice, now);
+  const deletable = Boolean(onDelete) && canEditInvoice(invoice, now);
   const editRemainingMs = getInvoiceEditRemainingMs(invoice, now);
 
   useEffect(() => {
@@ -287,6 +290,17 @@ export function InvoicePreview({
                 title="Invoices can only be edited within 1 day of generation"
               >
                 Edit locked
+              </span>
+            )}
+            {deletable && onDelete && (
+              <ActionButton label="Delete" onClick={onDelete} />
+            )}
+            {onDelete && !deletable && (
+              <span
+                className="text-xs text-muted"
+                title="Invoices can only be deleted within 1 day of generation"
+              >
+                Delete locked
               </span>
             )}
             {onPrint && <ActionButton label="Print" onClick={onPrint} />}

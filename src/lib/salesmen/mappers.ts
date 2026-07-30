@@ -8,9 +8,12 @@ import type {
   InvoicePaymentMethod,
   InvoiceVerificationStatus,
   MarketDay,
+  PaymentRecordStatus,
   Salesman,
+  SalesmanAdvance,
   SalesmanDiscountRule,
   SalesmanEntityType,
+  SalesmanReturn,
   TierRubricScore,
 } from "./types";
 import {
@@ -77,6 +80,7 @@ export type DbInvoiceLineRow = {
   price_list_item_id: string | null;
   is_return: boolean;
   sort_order: number;
+  stand_alone_return_id?: string | null;
 };
 
 export type DbInvoicePaymentRow = {
@@ -88,12 +92,75 @@ export type DbInvoicePaymentRow = {
   deposit_account_id: string | null;
   sender_name: string | null;
   sort_order: number;
+  status?: string | null;
+  advance_id?: string | null;
+  received_at?: string | null;
+  created_at?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancelled_by_name?: string | null;
+  cancel_reason?: string | null;
   created_by?: string | null;
   created_by_name?: string | null;
   verification_status?: string | null;
   verified_by?: string | null;
   verified_by_name?: string | null;
   verified_at?: string | null;
+};
+
+export type DbAdvanceRow = {
+  id: string;
+  salesman_id: string;
+  method: InvoicePaymentMethod;
+  amount: number | string;
+  remaining_amount: number | string;
+  cheque_number: string | null;
+  deposit_account_id: string | null;
+  sender_name: string | null;
+  notes: string | null;
+  received_at: string;
+  created_at?: string | null;
+  status: string;
+  verification_status?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_note?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancelled_by_name?: string | null;
+  cancel_reason?: string | null;
+};
+
+export type DbReturnRow = {
+  id: string;
+  salesman_id: string;
+  total_amount: number | string;
+  remaining_amount: number | string;
+  notes: string | null;
+  received_at: string;
+  created_at?: string | null;
+  status: string;
+  verification_status?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_note?: string | null;
+};
+
+export type DbReturnLineRow = {
+  id: string;
+  return_id: string;
+  name: string;
+  qty: number | string;
+  unit_price: number | string;
+  amount: number | string;
+  price_list_item_id: string | null;
+  sort_order: number;
 };
 
 function parseVerificationStatus(
@@ -107,6 +174,12 @@ function parseVerificationStatus(
     return value;
   }
   return "verified";
+}
+
+function parsePaymentStatus(
+  value: string | null | undefined,
+): PaymentRecordStatus {
+  return value === "cancelled" ? "cancelled" : "active";
 }
 
 function num(value: number | string): number {
@@ -294,6 +367,7 @@ export function mapInvoiceRows(
           unitPrice: num(l.unit_price),
           amount: num(l.amount),
           priceListItemId: l.price_list_item_id ?? undefined,
+          standAloneReturnId: l.stand_alone_return_id ?? undefined,
         }))
       : undefined;
 
@@ -308,6 +382,13 @@ export function mapInvoiceRows(
             chequeNumber: p.cheque_number ?? undefined,
             depositAccountId: p.deposit_account_id ?? undefined,
             senderName: p.sender_name ?? undefined,
+            advanceId: p.advance_id ?? undefined,
+            receivedAt: p.received_at ?? undefined,
+            createdAt: p.created_at ?? undefined,
+            status: parsePaymentStatus(p.status),
+            cancelledAt: p.cancelled_at ?? null,
+            cancelledByName: p.cancelled_by_name ?? null,
+            cancelReason: p.cancel_reason ?? null,
             verificationStatus: parseVerificationStatus(p.verification_status),
             createdBy: p.created_by ?? null,
             createdByName: p.created_by_name ?? null,
@@ -339,5 +420,64 @@ export function mapInvoiceRows(
     verifiedByName: invoice.verified_by_name ?? null,
     verifiedAt: invoice.verified_at ?? null,
     verificationNote: invoice.verification_note ?? null,
+  };
+}
+
+export function mapAdvanceRow(row: DbAdvanceRow): SalesmanAdvance {
+  return {
+    id: row.id,
+    salesmanId: row.salesman_id,
+    method: row.method,
+    amount: num(row.amount),
+    remainingAmount: num(row.remaining_amount),
+    chequeNumber: row.cheque_number ?? undefined,
+    depositAccountId: row.deposit_account_id ?? undefined,
+    senderName: row.sender_name ?? undefined,
+    notes: row.notes ?? undefined,
+    receivedAt: row.received_at,
+    createdAt: row.created_at ?? row.received_at,
+    status: parsePaymentStatus(row.status),
+    verificationStatus: parseVerificationStatus(row.verification_status),
+    createdBy: row.created_by ?? null,
+    createdByName: row.created_by_name ?? null,
+    verifiedBy: row.verified_by ?? null,
+    verifiedByName: row.verified_by_name ?? null,
+    verifiedAt: row.verified_at ?? null,
+    verificationNote: row.verification_note ?? null,
+    cancelledAt: row.cancelled_at ?? null,
+    cancelledByName: row.cancelled_by_name ?? null,
+    cancelReason: row.cancel_reason ?? null,
+  };
+}
+
+export function mapReturnRow(
+  row: DbReturnRow,
+  lines: DbReturnLineRow[],
+): SalesmanReturn {
+  const sorted = [...lines].sort((a, b) => a.sort_order - b.sort_order);
+  return {
+    id: row.id,
+    salesmanId: row.salesman_id,
+    totalAmount: num(row.total_amount),
+    remainingAmount: num(row.remaining_amount),
+    lineItems: sorted.map((l) => ({
+      id: l.id,
+      name: l.name,
+      qty: num(l.qty),
+      unitPrice: num(l.unit_price),
+      amount: num(l.amount),
+      priceListItemId: l.price_list_item_id ?? undefined,
+    })),
+    notes: row.notes ?? undefined,
+    receivedAt: row.received_at,
+    createdAt: row.created_at ?? row.received_at,
+    status: parsePaymentStatus(row.status),
+    verificationStatus: parseVerificationStatus(row.verification_status),
+    createdBy: row.created_by ?? null,
+    createdByName: row.created_by_name ?? null,
+    verifiedBy: row.verified_by ?? null,
+    verifiedByName: row.verified_by_name ?? null,
+    verifiedAt: row.verified_at ?? null,
+    verificationNote: row.verification_note ?? null,
   };
 }

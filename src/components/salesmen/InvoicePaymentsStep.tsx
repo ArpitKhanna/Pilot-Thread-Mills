@@ -3,6 +3,7 @@
 import { formatBankAccountLabel } from "@/lib/bank-accounts/mappers";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
+import { toDateInputValue } from "@/lib/salesmen/record-window";
 import type { InvoicePaymentEntry, InvoicePaymentMethod } from "@/lib/salesmen/types";
 
 type InvoicePaymentsStepProps = {
@@ -18,6 +19,7 @@ type InvoicePaymentsStepProps = {
       amount?: string;
       chequeNumber?: string;
       depositAccountId?: string;
+      receivedAt?: string;
     }
   >;
 };
@@ -40,6 +42,8 @@ function emptyPayment(
     chequeNumber: method === "cheque" ? "" : undefined,
     depositAccountId: method === "cash" ? undefined : defaultAccountId,
     senderName: method === "upi" || method === "imps" ? "" : undefined,
+    receivedAt:
+      method === "cash" ? undefined : toDateInputValue(),
   };
 }
 
@@ -118,8 +122,15 @@ export function InvoicePaymentsStep({
             >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">
-                  {METHOD_LABELS[payment.method]}{" "}
+                  {payment.advanceId
+                    ? "Applied advance"
+                    : METHOD_LABELS[payment.method]}{" "}
                   <span className="font-normal text-muted">#{index + 1}</span>
+                  {payment.advanceId && (
+                    <span className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
+                      {METHOD_LABELS[payment.method]}
+                    </span>
+                  )}
                 </p>
                 <button
                   type="button"
@@ -197,6 +208,36 @@ export function InvoicePaymentsStep({
                       </p>
                     )}
                   </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Payment date
+                    </span>
+                    <input
+                      type="date"
+                      disabled={disabled || Boolean(payment.advanceId)}
+                      max={toDateInputValue()}
+                      value={
+                        payment.receivedAt
+                          ? toDateInputValue(payment.receivedAt)
+                          : toDateInputValue()
+                      }
+                      className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+                        fieldErrors[payment.id]?.receivedAt
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border focus:border-foreground/40"
+                      }`}
+                      onChange={(e) =>
+                        updatePayment(payment.id, {
+                          receivedAt: e.target.value,
+                        })
+                      }
+                    />
+                    {fieldErrors[payment.id]?.receivedAt && (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {fieldErrors[payment.id]?.receivedAt}
+                      </p>
+                    )}
+                  </label>
                   <AccountSelect
                     value={payment.depositAccountId ?? ""}
                     disabled={disabled}
@@ -229,6 +270,36 @@ export function InvoicePaymentsStep({
                         })
                       }
                     />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Payment date
+                    </span>
+                    <input
+                      type="date"
+                      disabled={disabled || Boolean(payment.advanceId)}
+                      max={toDateInputValue()}
+                      value={
+                        payment.receivedAt
+                          ? toDateInputValue(payment.receivedAt)
+                          : toDateInputValue()
+                      }
+                      className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+                        fieldErrors[payment.id]?.receivedAt
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border focus:border-foreground/40"
+                      }`}
+                      onChange={(e) =>
+                        updatePayment(payment.id, {
+                          receivedAt: e.target.value,
+                        })
+                      }
+                    />
+                    {fieldErrors[payment.id]?.receivedAt && (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {fieldErrors[payment.id]?.receivedAt}
+                      </p>
+                    )}
                   </label>
                   <AccountSelect
                     value={payment.depositAccountId ?? ""}

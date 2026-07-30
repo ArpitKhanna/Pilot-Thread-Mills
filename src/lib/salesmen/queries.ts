@@ -292,26 +292,44 @@ export async function listPendingInvoiceApprovals(
   }));
 }
 
-/** Recompute salesman pending balance + last invoice timestamp from opening + invoices */
+/** Recompute salesman pending balance + last invoice timestamp from opening + invoices − advances − returns */
 export async function refreshSalesmanTotals(
   supabase: SupabaseClient,
   salesmanId: string,
 ): Promise<void> {
-  const [{ data: salesman, error: salesmanError }, { data, error }] =
-    await Promise.all([
-      supabase
-        .from("salesmen")
-        .select("opening_balance")
-        .eq("id", salesmanId)
-        .maybeSingle(),
-      supabase
-        .from("salesmen_invoices")
-        .select("total_amount, amount_paid, issued_at")
-        .eq("salesman_id", salesmanId)
-        .eq("verification_status", "verified"),
-    ]);
+  const [
+    { data: salesman, error: salesmanError },
+    { data, error },
+    { data: advances, error: advancesError },
+    { data: returns, error: returnsError },
+  ] = await Promise.all([
+    supabase
+      .from("salesmen")
+      .select("opening_balance")
+      .eq("id", salesmanId)
+      .maybeSingle(),
+    supabase
+      .from("salesmen_invoices")
+      .select("total_amount, amount_paid, issued_at")
+      .eq("salesman_id", salesmanId)
+      .eq("verification_status", "verified"),
+    supabase
+      .from("salesmen_advances")
+      .select("remaining_amount")
+      .eq("salesman_id", salesmanId)
+      .eq("status", "active")
+      .eq("verification_status", "verified"),
+    supabase
+      .from("salesmen_returns")
+      .select("remaining_amount")
+      .eq("salesman_id", salesmanId)
+      .eq("status", "active")
+      .eq("verification_status", "verified"),
+  ]);
   if (salesmanError) throw salesmanError;
   if (error) throw error;
+  if (advancesError) throw advancesError;
+  if (returnsError) throw returnsError;
 
   const opening = Number(salesman?.opening_balance ?? 0);
   const rows = data ?? [];
@@ -330,7 +348,18 @@ export async function refreshSalesmanTotals(
     }
   }
 
-  const pending = Math.max(0, Math.round((opening + invoiceNet) * 100) / 100);
+  let credit = 0;
+  for (const row of advances ?? []) {
+    credit += Number(row.remaining_amount);
+  }
+  for (const row of returns ?? []) {
+    credit += Number(row.remaining_amount);
+  }
+
+  const pending = Math.max(
+    0,
+    Math.round((opening + invoiceNet - credit) * 100) / 100,
+  );
 
   const { error: updateError } = await supabase
     .from("salesmen")

@@ -154,6 +154,8 @@ export type InvoiceLineItem = {
   amount: number;
   /** Linked catalog item when created from the price list */
   priceListItemId?: string;
+  /** When set, this return line applies an existing stand-alone return */
+  standAloneReturnId?: string;
 };
 
 export type InvoicePaymentMethod = "cash" | "cheque" | "upi" | "imps";
@@ -162,6 +164,8 @@ export type InvoiceVerificationStatus =
   | "verified"
   | "pending_verification"
   | "needs_edit";
+
+export type PaymentRecordStatus = "active" | "cancelled";
 
 /** Detailed payment capture during invoice creation (not printed line-by-line) */
 export type InvoicePaymentEntry = {
@@ -174,12 +178,70 @@ export type InvoicePaymentEntry = {
   depositAccountId?: string;
   /** Sender name for UPI / IMPS */
   senderName?: string;
+  /** When set, this payment applies an existing advance */
+  advanceId?: string;
+  /** Business / backdated payment date */
+  receivedAt?: string;
+  /** System creation time (24h delete window) */
+  createdAt?: string;
+  status?: PaymentRecordStatus;
+  cancelledAt?: string | null;
+  cancelledByName?: string | null;
+  cancelReason?: string | null;
   verificationStatus?: InvoiceVerificationStatus;
   createdBy?: string | null;
   createdByName?: string | null;
   verifiedBy?: string | null;
   verifiedByName?: string | null;
   verifiedAt?: string | null;
+};
+
+/** Stand-alone payment recorded before an invoice (advance / credit) */
+export type SalesmanAdvance = {
+  id: string;
+  salesmanId: string;
+  method: InvoicePaymentMethod;
+  amount: number;
+  remainingAmount: number;
+  chequeNumber?: string;
+  depositAccountId?: string;
+  senderName?: string;
+  notes?: string;
+  /** Business / backdated payment date */
+  receivedAt: string;
+  /** System creation time (24h delete window) */
+  createdAt: string;
+  status: PaymentRecordStatus;
+  verificationStatus: InvoiceVerificationStatus;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
+  cancelledAt?: string | null;
+  cancelledByName?: string | null;
+  cancelReason?: string | null;
+};
+
+/** Stand-alone return recorded before an invoice (credit) */
+export type SalesmanReturn = {
+  id: string;
+  salesmanId: string;
+  totalAmount: number;
+  remainingAmount: number;
+  lineItems: InvoiceLineItem[];
+  notes?: string;
+  receivedAt: string;
+  createdAt: string;
+  status: PaymentRecordStatus;
+  verificationStatus: InvoiceVerificationStatus;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
 };
 
 export type Invoice = {

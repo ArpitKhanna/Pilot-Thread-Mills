@@ -22,7 +22,10 @@ import { TopBar } from "@/components/layout/AppShell";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { InvoicePrintChoiceModal } from "@/components/salesmen/InvoicePrintChoiceModal";
+import { AddAdvancePaymentModal } from "@/components/salesmen/AddAdvancePaymentModal";
+import { AddReturnModal } from "@/components/salesmen/AddReturnModal";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
+import { ReturnsList } from "@/components/salesmen/ReturnsList";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
@@ -37,7 +40,12 @@ import {
   formatINR,
 } from "@/lib/salesmen/mock-data";
 import { shareInvoicePdfOnWhatsApp } from "@/lib/salesmen/share-invoice-pdf";
-import type { Invoice, Salesman } from "@/lib/salesmen/types";
+import type {
+  Invoice,
+  Salesman,
+  SalesmanAdvance,
+  SalesmanReturn,
+} from "@/lib/salesmen/types";
 import {
   CUSTOMER_TIER_LABELS,
   ENTITY_TYPE_LABELS,
@@ -49,6 +57,7 @@ type DetailTab =
   | "orders"
   | "invoices"
   | "payments"
+  | "returns"
   | "pending"
   | "details";
 
@@ -57,6 +66,8 @@ type CustomerDetailClientProps = {
   initialCustomer: Salesman;
   initialOrders: CustomerOrder[];
   initialInvoices: Invoice[];
+  initialAdvances?: SalesmanAdvance[];
+  initialReturns?: SalesmanReturn[];
   initialPending: CustomerPendingItem[];
   initialPatches: CustomerClothPatch[];
   bankAccounts: BankAccount[];
@@ -92,6 +103,8 @@ export function CustomerDetailClient({
   initialCustomer,
   initialOrders,
   initialInvoices,
+  initialAdvances = [],
+  initialReturns = [],
   initialPending,
   initialPatches,
   bankAccounts,
@@ -101,6 +114,10 @@ export function CustomerDetailClient({
   const [customer, setCustomer] = useState(initialCustomer);
   const [orders, setOrders] = useState(initialOrders);
   const [invoices, setInvoices] = useState(initialInvoices);
+  const [advances, setAdvances] = useState<SalesmanAdvance[]>(initialAdvances);
+  const [returns, setReturns] = useState<SalesmanReturn[]>(initialReturns);
+  const [addPaymentOpen, setAddPaymentOpen] = useState(false);
+  const [addReturnOpen, setAddReturnOpen] = useState(false);
   const [tab, setTab] = useState<DetailTab>("timeline");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
@@ -110,6 +127,10 @@ export function CustomerDetailClient({
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [invoiceError, setInvoiceError] = useState("");
   const [editLockedOpen, setEditLockedOpen] = useState(false);
+  const [deleteInvoiceOpen, setDeleteInvoiceOpen] = useState(false);
+  const [deleteInvoiceBusy, setDeleteInvoiceBusy] = useState(false);
+  const [deleteInvoiceError, setDeleteInvoiceError] = useState("");
+  const [deleteLockedOpen, setDeleteLockedOpen] = useState(false);
   const [whatsAppPending, setWhatsAppPending] = useState(false);
   const [whatsAppError, setWhatsAppError] = useState("");
   const [editPending, startEditTransition] = useTransition();
@@ -118,7 +139,15 @@ export function CustomerDetailClient({
     setCustomer(initialCustomer);
     setOrders(initialOrders);
     setInvoices(initialInvoices);
-  }, [initialCustomer, initialOrders, initialInvoices]);
+    setAdvances(initialAdvances);
+    setReturns(initialReturns);
+  }, [
+    initialCustomer,
+    initialOrders,
+    initialInvoices,
+    initialAdvances,
+    initialReturns,
+  ]);
 
   useEffect(() => {
     if (invoices.length === 0) {
@@ -139,8 +168,8 @@ export function CustomerDetailClient({
         (inv) =>
           inv.amountPaid > 0 ||
           (inv.paymentEntries != null && inv.paymentEntries.length > 0),
-      ).length,
-    [invoices],
+      ).length + advances.length,
+    [invoices, advances],
   );
 
   const packedOrders = useMemo(
@@ -245,6 +274,43 @@ export function CustomerDetailClient({
     startEditTransition(() => {
       router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
     });
+  }
+
+  function handleDeleteClick() {
+    if (!selectedInvoice) return;
+    if (!canEditInvoice(selectedInvoice)) {
+      setDeleteLockedOpen(true);
+      return;
+    }
+    setDeleteInvoiceError("");
+    setDeleteInvoiceOpen(true);
+  }
+
+  async function confirmDeleteInvoice() {
+    if (!selectedInvoice || deleteInvoiceBusy) return;
+    setDeleteInvoiceBusy(true);
+    setDeleteInvoiceError("");
+    try {
+      const res = await fetch(`/api/salesmen-invoices/${selectedInvoice.id}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Could not delete invoice.");
+      }
+      const deletedId = selectedInvoice.id;
+      setInvoices((prev) => prev.filter((inv) => inv.id !== deletedId));
+      setSelectedInvoice(null);
+      setDeleteInvoiceOpen(false);
+      setMobilePreviewOpen(false);
+      router.refresh();
+    } catch (err) {
+      setDeleteInvoiceError(
+        err instanceof Error ? err.message : "Could not delete invoice.",
+      );
+    } finally {
+      setDeleteInvoiceBusy(false);
+    }
   }
 
   async function handleWhatsApp(invoice: Invoice) {
@@ -432,6 +498,11 @@ export function CustomerDetailClient({
               label={`Payments (${paymentCount})`}
             />
             <TabButton
+              active={tab === "returns"}
+              onClick={() => setTab("returns")}
+              label={`Returns (${returns.length})`}
+            />
+            <TabButton
               active={tab === "pending"}
               onClick={() => setTab("pending")}
               label={`Missing / Patches (${openPendingCount})`}
@@ -520,6 +591,7 @@ export function CustomerDetailClient({
                           onClose={() => setSelectedInvoice(null)}
                           onEdit={handleEdit}
                           editPending={editPending}
+                          onDelete={handleDeleteClick}
                           onPrint={() => setPrintInvoice(selectedInvoice)}
                           onWhatsApp={() => handleWhatsApp(selectedInvoice)}
                           whatsAppPending={whatsAppPending}
@@ -535,7 +607,22 @@ export function CustomerDetailClient({
               )}
             </div>
           ) : tab === "payments" ? (
-            <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
+            <PaymentsList
+              invoices={invoices}
+              advances={advances}
+              bankAccounts={bankAccounts}
+              onAdvancesChange={setAdvances}
+              onInvoicesChange={setInvoices}
+              onAddPayment={() => setAddPaymentOpen(true)}
+              onLedgerChanged={() => router.refresh()}
+            />
+          ) : tab === "returns" ? (
+            <ReturnsList
+              returns={returns}
+              onReturnsChange={setReturns}
+              onAddReturn={() => setAddReturnOpen(true)}
+              onLedgerChanged={() => router.refresh()}
+            />
           ) : tab === "pending" ? (
             <CustomerPendingPatchesTab
               customerId={customer.id}
@@ -566,6 +653,7 @@ export function CustomerDetailClient({
             onClose={() => setMobilePreviewOpen(false)}
             onEdit={handleEdit}
             editPending={editPending}
+            onDelete={handleDeleteClick}
             onPrint={() => setPrintInvoice(selectedInvoice)}
             onWhatsApp={() => handleWhatsApp(selectedInvoice)}
             whatsAppPending={whatsAppPending}
@@ -641,6 +729,113 @@ export function CustomerDetailClient({
           </button>
         </div>
       </Modal>
+
+      <Modal
+        open={deleteLockedOpen}
+        onClose={() => setDeleteLockedOpen(false)}
+        title="Delete locked"
+      >
+        <p className="text-sm text-muted">
+          Invoices can only be deleted within 1 day of creation (same window as
+          edit).
+        </p>
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setDeleteLockedOpen(false)}
+            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface"
+          >
+            OK
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={deleteInvoiceOpen}
+        onClose={() => {
+          if (deleteInvoiceBusy) return;
+          setDeleteInvoiceOpen(false);
+          setDeleteInvoiceError("");
+        }}
+        title="Delete invoice"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={deleteInvoiceBusy}
+              onClick={() => {
+                setDeleteInvoiceOpen(false);
+                setDeleteInvoiceError("");
+              }}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              disabled={deleteInvoiceBusy}
+              onClick={() => void confirmDeleteInvoice()}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
+            >
+              {deleteInvoiceBusy ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted">
+          Permanently delete this invoice and restore any applied advances or
+          returns.
+        </p>
+        {deleteInvoiceError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {deleteInvoiceError}
+          </div>
+        )}
+      </Modal>
+
+      <AddAdvancePaymentModal
+        open={addPaymentOpen}
+        onClose={() => setAddPaymentOpen(false)}
+        salesmanId={customer.id}
+        partyName={customer.name}
+        bankAccounts={bankAccounts}
+        onCreated={(advance) => {
+          setAdvances((prev) => [advance, ...prev]);
+          if (advance.verificationStatus === "verified") {
+            setCustomer((prev) => ({
+              ...prev,
+              pendingBalance: Math.max(
+                0,
+                Math.round((prev.pendingBalance - advance.amount) * 100) / 100,
+              ),
+            }));
+          }
+          router.refresh();
+        }}
+      />
+
+      <AddReturnModal
+        open={addReturnOpen}
+        onClose={() => setAddReturnOpen(false)}
+        salesmanId={customer.id}
+        partyName={customer.name}
+        priceList={priceList}
+        onCreated={(returnRecord) => {
+          setReturns((prev) => [returnRecord, ...prev]);
+          if (returnRecord.verificationStatus === "verified") {
+            setCustomer((prev) => ({
+              ...prev,
+              pendingBalance: Math.max(
+                0,
+                Math.round(
+                  (prev.pendingBalance - returnRecord.totalAmount) * 100,
+                ) / 100,
+              ),
+            }));
+          }
+          router.refresh();
+        }}
+      />
     </>
   );
 }

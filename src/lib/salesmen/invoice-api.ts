@@ -4,6 +4,7 @@ import type {
   InvoicePaymentEntry,
   InvoicePaymentMethod,
 } from "./types";
+import { parseBusinessReceivedAt } from "./record-window";
 
 /** Invoices can only be edited within this window after generation */
 export const INVOICE_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -138,6 +139,9 @@ export function validateInvoicePayload(
       priceListItemId: row.priceListItemId
         ? String(row.priceListItemId)
         : undefined,
+      standAloneReturnId: row.standAloneReturnId
+        ? String(row.standAloneReturnId)
+        : undefined,
     });
   }
 
@@ -168,6 +172,18 @@ export function validateInvoicePayload(
         return { error: "UPI / IMPS payments need a deposit account" };
       }
     }
+
+    let receivedAt: string | undefined;
+    if (method === "cash") {
+      receivedAt = new Date().toISOString();
+    } else if (row.receivedAt != null && String(row.receivedAt).trim()) {
+      const parsed = parseBusinessReceivedAt(row.receivedAt);
+      if ("error" in parsed) return parsed;
+      receivedAt = parsed.iso;
+    } else {
+      receivedAt = new Date().toISOString();
+    }
+
     paymentEntries.push({
       id: String(row.id ?? crypto.randomUUID()),
       method,
@@ -179,6 +195,9 @@ export function validateInvoicePayload(
         ? String(row.depositAccountId)
         : undefined,
       senderName: row.senderName ? String(row.senderName) : undefined,
+      advanceId: row.advanceId ? String(row.advanceId) : undefined,
+      receivedAt,
+      status: row.status === "cancelled" ? "cancelled" : "active",
     });
   }
 
@@ -222,6 +241,7 @@ export function lineInserts(
     price_list_item_id: line.priceListItemId ?? null,
     is_return: true,
     sort_order: index,
+    stand_alone_return_id: line.standAloneReturnId ?? null,
   }));
   return [...purchase, ...returns];
 }
@@ -246,6 +266,9 @@ export function paymentInserts(
     deposit_account_id: payment.depositAccountId ?? null,
     sender_name: payment.senderName ?? null,
     sort_order: index,
+    status: payment.status === "cancelled" ? "cancelled" : "active",
+    advance_id: payment.advanceId ?? null,
+    received_at: payment.receivedAt ?? new Date().toISOString(),
     ...(verification
       ? {
           verification_status: verification.verification_status,

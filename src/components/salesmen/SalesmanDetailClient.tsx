@@ -9,7 +9,10 @@ import type { AppContext } from "@/app/(app)/layout";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { ItemRequestsList } from "@/components/salesmen/ItemRequestsList";
+import { AddAdvancePaymentModal } from "@/components/salesmen/AddAdvancePaymentModal";
+import { AddReturnModal } from "@/components/salesmen/AddReturnModal";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
+import { ReturnsList } from "@/components/salesmen/ReturnsList";
 import { PersonalDetailsForm } from "@/components/salesmen/PersonalDetailsForm";
 import { SalesmanOverview } from "@/components/salesmen/SalesmanOverview";
 import type { BankAccount } from "@/lib/bank-accounts/types";
@@ -23,6 +26,8 @@ import type {
   Invoice,
   ItemRequest,
   Salesman,
+  SalesmanAdvance,
+  SalesmanReturn,
 } from "@/lib/salesmen/types";
 import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
@@ -30,6 +35,7 @@ type DetailTab =
   | "overview"
   | "invoices"
   | "payments"
+  | "returns"
   | "requests"
   | "details";
 
@@ -38,6 +44,8 @@ type SalesmanDetailClientProps = {
   initialSalesman: Salesman;
   initialInvoices: Invoice[];
   initialItemRequests: ItemRequest[];
+  initialAdvances?: SalesmanAdvance[];
+  initialReturns?: SalesmanReturn[];
   priceList: PriceListItem[];
   bankAccounts: BankAccount[];
   initialTab?: DetailTab;
@@ -63,6 +71,8 @@ export function SalesmanDetailClient({
   initialSalesman,
   initialInvoices,
   initialItemRequests,
+  initialAdvances = [],
+  initialReturns = [],
   priceList,
   bankAccounts,
   initialTab = "overview",
@@ -72,6 +82,14 @@ export function SalesmanDetailClient({
   const [salesman, setSalesman] = useState(initialSalesman);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [itemRequests, setItemRequests] = useState(initialItemRequests);
+  const [advances, setAdvances] = useState<SalesmanAdvance[]>(initialAdvances);
+  const [returns, setReturns] = useState<SalesmanReturn[]>(initialReturns);
+  const [addPaymentOpen, setAddPaymentOpen] = useState(false);
+  const [addReturnOpen, setAddReturnOpen] = useState(false);
+  const [deleteInvoiceOpen, setDeleteInvoiceOpen] = useState(false);
+  const [deleteInvoiceBusy, setDeleteInvoiceBusy] = useState(false);
+  const [deleteInvoiceError, setDeleteInvoiceError] = useState("");
+  const [deleteLockedOpen, setDeleteLockedOpen] = useState(false);
 
   const paymentCount = useMemo(
     () =>
@@ -79,8 +97,8 @@ export function SalesmanDetailClient({
         (inv) =>
           inv.amountPaid > 0 ||
           (inv.paymentEntries != null && inv.paymentEntries.length > 0),
-      ).length,
-    [invoices],
+      ).length + advances.length,
+    [invoices, advances],
   );
 
   const openRequestCount = useMemo(
@@ -103,7 +121,9 @@ export function SalesmanDetailClient({
     setSalesman(initialSalesman);
     setInvoices(initialInvoices);
     setItemRequests(initialItemRequests);
-  }, [initialSalesman, initialInvoices, initialItemRequests]);
+    setAdvances(initialAdvances);
+    setReturns(initialReturns);
+  }, [initialSalesman, initialInvoices, initialItemRequests, initialAdvances, initialReturns]);
 
   useEffect(() => {
     setTab(initialTab);
@@ -156,6 +176,43 @@ export function SalesmanDetailClient({
     startEditTransition(() => {
       router.push(`/orders/salesmen/${selectedInvoice.id}/edit`);
     });
+  }
+
+  function handleDeleteClick() {
+    if (!selectedInvoice) return;
+    if (!canEditInvoice(selectedInvoice)) {
+      setDeleteLockedOpen(true);
+      return;
+    }
+    setDeleteInvoiceError("");
+    setDeleteInvoiceOpen(true);
+  }
+
+  async function confirmDeleteInvoice() {
+    if (!selectedInvoice || deleteInvoiceBusy) return;
+    setDeleteInvoiceBusy(true);
+    setDeleteInvoiceError("");
+    try {
+      const res = await fetch(`/api/salesmen-invoices/${selectedInvoice.id}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Could not delete invoice.");
+      }
+      const deletedId = selectedInvoice.id;
+      setInvoices((prev) => prev.filter((inv) => inv.id !== deletedId));
+      setSelectedInvoice(null);
+      setDeleteInvoiceOpen(false);
+      setMobilePreviewOpen(false);
+      router.refresh();
+    } catch (err) {
+      setDeleteInvoiceError(
+        err instanceof Error ? err.message : "Could not delete invoice.",
+      );
+    } finally {
+      setDeleteInvoiceBusy(false);
+    }
   }
 
   function handlePrint(invoice: Invoice) {
@@ -293,6 +350,11 @@ export function SalesmanDetailClient({
               label={`Payments (${paymentCount})`}
             />
             <TabButton
+              active={tab === "returns"}
+              onClick={() => setTab("returns")}
+              label={`Returns (${returns.length})`}
+            />
+            <TabButton
               active={tab === "requests"}
               onClick={() => setTab("requests")}
               label={`Item Request(s) (${openRequestCount})`}
@@ -370,6 +432,7 @@ export function SalesmanDetailClient({
                       onClose={() => setSelectedInvoice(null)}
                       onEdit={handleEdit}
                       editPending={editPending}
+                      onDelete={handleDeleteClick}
                       onPrint={() => handlePrint(selectedInvoice)}
                       onWhatsApp={() => handleWhatsApp(selectedInvoice)}
                       whatsAppPending={whatsAppPending}
@@ -387,7 +450,22 @@ export function SalesmanDetailClient({
             </div>
           </div>
         ) : tab === "payments" ? (
-          <PaymentsList invoices={invoices} bankAccounts={bankAccounts} />
+          <PaymentsList
+            invoices={invoices}
+            advances={advances}
+            bankAccounts={bankAccounts}
+            onAdvancesChange={setAdvances}
+            onInvoicesChange={setInvoices}
+            onAddPayment={() => setAddPaymentOpen(true)}
+            onLedgerChanged={() => router.refresh()}
+          />
+        ) : tab === "returns" ? (
+          <ReturnsList
+            returns={returns}
+            onReturnsChange={setReturns}
+            onAddReturn={() => setAddReturnOpen(true)}
+            onLedgerChanged={() => router.refresh()}
+          />
         ) : tab === "requests" ? (
           <ItemRequestsList
             salesmanId={salesman.id}
@@ -415,6 +493,7 @@ export function SalesmanDetailClient({
             onClose={() => setMobilePreviewOpen(false)}
             onEdit={handleEdit}
             editPending={editPending}
+            onDelete={handleDeleteClick}
             onPrint={() => handlePrint(selectedInvoice)}
             onWhatsApp={() => handleWhatsApp(selectedInvoice)}
             whatsAppPending={whatsAppPending}
@@ -466,6 +545,113 @@ export function SalesmanDetailClient({
           1 day of generation so prices stay consistent.
         </p>
       </Modal>
+
+      <Modal
+        open={deleteLockedOpen}
+        onClose={() => setDeleteLockedOpen(false)}
+        title="Delete locked"
+        footer={
+          <button
+            type="button"
+            onClick={() => setDeleteLockedOpen(false)}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
+          >
+            Close
+          </button>
+        }
+      >
+        <p className="text-sm text-muted">
+          This invoice can no longer be deleted. Deletion is only allowed within
+          1 day of generation (same window as edit).
+        </p>
+      </Modal>
+
+      <Modal
+        open={deleteInvoiceOpen}
+        onClose={() => {
+          if (deleteInvoiceBusy) return;
+          setDeleteInvoiceOpen(false);
+          setDeleteInvoiceError("");
+        }}
+        title="Delete invoice"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={deleteInvoiceBusy}
+              onClick={() => {
+                setDeleteInvoiceOpen(false);
+                setDeleteInvoiceError("");
+              }}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              disabled={deleteInvoiceBusy}
+              onClick={() => void confirmDeleteInvoice()}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
+            >
+              {deleteInvoiceBusy ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted">
+          Permanently delete this invoice and restore any applied advances or
+          returns. This cannot be undone.
+        </p>
+        {deleteInvoiceError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {deleteInvoiceError}
+          </div>
+        )}
+      </Modal>
+
+      <AddAdvancePaymentModal
+        open={addPaymentOpen}
+        onClose={() => setAddPaymentOpen(false)}
+        salesmanId={salesman.id}
+        partyName={salesman.name}
+        bankAccounts={bankAccounts}
+        onCreated={(advance) => {
+          setAdvances((prev) => [advance, ...prev]);
+          if (advance.verificationStatus === "verified") {
+            setSalesman((prev) => ({
+              ...prev,
+              pendingBalance: Math.max(
+                0,
+                Math.round((prev.pendingBalance - advance.amount) * 100) / 100,
+              ),
+            }));
+          }
+          router.refresh();
+        }}
+      />
+
+      <AddReturnModal
+        open={addReturnOpen}
+        onClose={() => setAddReturnOpen(false)}
+        salesmanId={salesman.id}
+        partyName={salesman.name}
+        priceList={priceList}
+        onCreated={(returnRecord) => {
+          setReturns((prev) => [returnRecord, ...prev]);
+          if (returnRecord.verificationStatus === "verified") {
+            setSalesman((prev) => ({
+              ...prev,
+              pendingBalance: Math.max(
+                0,
+                Math.round(
+                  (prev.pendingBalance - returnRecord.totalAmount) * 100,
+                ) / 100,
+              ),
+            }));
+          }
+          router.refresh();
+        }}
+      />
     </>
   );
 }

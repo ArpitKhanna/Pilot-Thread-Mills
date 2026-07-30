@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  consumeAdvanceRemainingFromPayments,
+} from "@/lib/salesmen/advances";
+import {
+  consumeReturnRemainingFromInvoiceLines,
+} from "@/lib/salesmen/returns";
+import {
   lineInserts,
   paymentInserts,
   validateInvoicePayload,
@@ -88,6 +94,15 @@ export async function POST(request: Request) {
 
   const lines = lineInserts(invoiceRow.id, payload);
   if (lines.length > 0) {
+    const consumeReturns = await consumeReturnRemainingFromInvoiceLines(
+      supabase,
+      payload.returnItems ?? [],
+    );
+    if (consumeReturns.error) {
+      await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
+      return NextResponse.json({ error: consumeReturns.error }, { status: 400 });
+    }
+
     const { error: linesError } = await supabase
       .from("salesmen_invoice_lines")
       .insert(lines);
@@ -107,6 +122,15 @@ export async function POST(request: Request) {
     paymentVerificationFields(verification),
   );
   if (payments.length > 0) {
+    const consume = await consumeAdvanceRemainingFromPayments(
+      supabase,
+      payload.paymentEntries ?? [],
+    );
+    if (consume.error) {
+      await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
+      return NextResponse.json({ error: consume.error }, { status: 400 });
+    }
+
     const { error: payError } = await supabase
       .from("salesmen_invoice_payments")
       .insert(payments);

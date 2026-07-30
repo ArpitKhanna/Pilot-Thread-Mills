@@ -8,6 +8,8 @@ import {
   getSalesman,
   listInvoicesForSalesman,
 } from "@/lib/salesmen/queries";
+import { listAdvancesForSalesman } from "@/lib/salesmen/advances";
+import { listReturnsForSalesman } from "@/lib/salesmen/returns";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +18,7 @@ type DetailTab =
   | "overview"
   | "invoices"
   | "payments"
+  | "returns"
   | "requests"
   | "details";
 
@@ -29,6 +32,7 @@ function parseTab(raw: string | undefined): DetailTab {
     raw === "overview" ||
     raw === "invoices" ||
     raw === "payments" ||
+    raw === "returns" ||
     raw === "requests" ||
     raw === "details"
   ) {
@@ -53,17 +57,25 @@ export default async function SalesmanDetailPage({
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
 
-  const [{ data: items }, invoices, bankAccounts, itemRequests] =
-    await Promise.all([
-      supabase
-        .from("price_list_items")
-        .select("*")
-        .eq("status", "approved")
-        .order("item_name"),
-      listInvoicesForSalesman(supabase, id),
-      listBankAccounts(supabase).catch(() => []),
-      listItemRequestsForSalesman(supabase, id).catch(() => []),
-    ]);
+  const [
+    { data: items },
+    invoices,
+    bankAccounts,
+    itemRequests,
+    advances,
+    returns,
+  ] = await Promise.all([
+    supabase
+      .from("price_list_items")
+      .select("*")
+      .eq("status", "approved")
+      .order("item_name"),
+    listInvoicesForSalesman(supabase, id),
+    listBankAccounts(supabase).catch(() => []),
+    listItemRequestsForSalesman(supabase, id).catch(() => []),
+    listAdvancesForSalesman(supabase, id).catch(() => []),
+    listReturnsForSalesman(supabase, id).catch(() => []),
+  ]);
 
   return (
     <SalesmanDetailClient
@@ -71,6 +83,8 @@ export default async function SalesmanDetailPage({
       initialSalesman={salesman}
       initialInvoices={invoices}
       initialItemRequests={itemRequests}
+      initialAdvances={advances}
+      initialReturns={returns}
       priceList={(items ?? []) as PriceListItem[]}
       bankAccounts={bankAccounts}
       initialTab={parseTab(tab)}

@@ -6,6 +6,8 @@ import { listBankAccounts } from "@/lib/bank-accounts/queries";
 import { listClothPatchesForCustomer } from "@/lib/customer-orders/cloth-patches";
 import { listCustomerOrdersForCustomer } from "@/lib/customer-orders/queries";
 import { listPendingItemsForCustomer } from "@/lib/customer-orders/pending-dyeing";
+import { listAdvancesForSalesman } from "@/lib/salesmen/advances";
+import { listReturnsForSalesman } from "@/lib/salesmen/returns";
 import {
   getSalesman,
   listInvoicesForSalesman,
@@ -35,6 +37,8 @@ export default async function CustomerDetailPage({ params }: PageProps) {
     pending,
     patches,
     priceListResult,
+    advances,
+    returns,
   ] = await Promise.all([
     listCustomerOrdersForCustomer(supabase, id),
     listInvoicesForSalesman(supabase, id),
@@ -46,6 +50,8 @@ export default async function CustomerDetailPage({ params }: PageProps) {
       .select("*")
       .eq("status", "approved")
       .order("item_name"),
+    listAdvancesForSalesman(supabase, id).catch(() => []),
+    listReturnsForSalesman(supabase, id).catch(() => []),
   ]);
 
   return (
@@ -54,6 +60,8 @@ export default async function CustomerDetailPage({ params }: PageProps) {
       initialCustomer={customer}
       initialOrders={orders}
       initialInvoices={invoices}
+      initialAdvances={advances}
+      initialReturns={returns}
       initialPending={pending}
       initialPatches={patches}
       bankAccounts={bankAccounts}

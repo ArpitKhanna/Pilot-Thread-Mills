@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import {
+  consumeAdvanceRemainingFromPayments,
+  restoreAdvanceRemainingFromPayments,
+} from "@/lib/salesmen/advances";
+import {
+  consumeReturnRemainingFromInvoiceLines,
+  restoreReturnRemainingFromInvoiceLines,
+} from "@/lib/salesmen/returns";
+import {
   canEditInvoice,
   lineInserts,
   paymentInserts,
@@ -159,6 +167,31 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  const { data: existingLines, error: existingLinesError } = await supabase
+    .from("salesmen_invoice_lines")
+    .select("stand_alone_return_id, amount, is_return")
+    .eq("invoice_id", id);
+  if (existingLinesError) {
+    console.error(existingLinesError);
+    return NextResponse.json(
+      { error: "Failed to load existing lines" },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await restoreReturnRemainingFromInvoiceLines(
+      supabase,
+      existingLines ?? [],
+    );
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "Failed to restore return credits" },
+      { status: 500 },
+    );
+  }
+
   const { error: deleteLinesError } = await supabase
     .from("salesmen_invoice_lines")
     .delete()
@@ -167,6 +200,28 @@ export async function PATCH(request: Request, context: RouteContext) {
     console.error(deleteLinesError);
     return NextResponse.json(
       { error: "Failed to replace invoice lines" },
+      { status: 500 },
+    );
+  }
+
+  const { data: existingPays, error: existingPayError } = await supabase
+    .from("salesmen_invoice_payments")
+    .select("advance_id, amount, status")
+    .eq("invoice_id", id);
+  if (existingPayError) {
+    console.error(existingPayError);
+    return NextResponse.json(
+      { error: "Failed to load existing payments" },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await restoreAdvanceRemainingFromPayments(supabase, existingPays ?? []);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "Failed to restore advance credits" },
       { status: 500 },
     );
   }
@@ -185,6 +240,14 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const lines = lineInserts(id, { ...payload, salesmanId });
   if (lines.length > 0) {
+    const consumeReturns = await consumeReturnRemainingFromInvoiceLines(
+      supabase,
+      payload.returnItems ?? [],
+    );
+    if (consumeReturns.error) {
+      return NextResponse.json({ error: consumeReturns.error }, { status: 400 });
+    }
+
     const { error: linesError } = await supabase
       .from("salesmen_invoice_lines")
       .insert(lines);
@@ -203,6 +266,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     paymentVerificationFields(verification),
   );
   if (payments.length > 0) {
+    const consume = await consumeAdvanceRemainingFromPayments(
+      supabase,
+      payload.paymentEntries ?? [],
+    );
+    if (consume.error) {
+      return NextResponse.json({ error: consume.error }, { status: 400 });
+    }
+
     const { error: payError } = await supabase
       .from("salesmen_invoice_payments")
       .insert(payments);
@@ -226,4 +297,88 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const invoice = await getInvoiceById(supabase, id);
   return NextResponse.json({ invoice });
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await getAuthedProfile();
+  if ("error" in auth && auth.error) return auth.error;
+  const { supabase, profile } = auth;
+
+  if (!(await hasOrderSalesmenAccess(supabase, profile.role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await context.params;
+  const existing = await getInvoiceById(supabase, id);
+  if (!existing) {
+    return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  }
+
+  if (!canEditInvoice(existing)) {
+    return NextResponse.json(
+      {
+        error:
+          "This invoice can no longer be deleted. Verified invoices are only deletable within 1 day of generation.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const salesmanId = existing.salesmanId;
+
+  const { data: existingLines, error: linesLoadError } = await supabase
+    .from("salesmen_invoice_lines")
+    .select("stand_alone_return_id, amount, is_return")
+    .eq("invoice_id", id);
+  if (linesLoadError) {
+    return NextResponse.json(
+      { error: "Failed to load invoice lines" },
+      { status: 500 },
+    );
+  }
+
+  const { data: existingPays, error: paysLoadError } = await supabase
+    .from("salesmen_invoice_payments")
+    .select("advance_id, amount, status")
+    .eq("invoice_id", id);
+  if (paysLoadError) {
+    return NextResponse.json(
+      { error: "Failed to load invoice payments" },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await restoreReturnRemainingFromInvoiceLines(
+      supabase,
+      existingLines ?? [],
+    );
+    await restoreAdvanceRemainingFromPayments(supabase, existingPays ?? []);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "Failed to restore credits before delete" },
+      { status: 500 },
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("salesmen_invoices")
+    .delete()
+    .eq("id", id);
+  if (deleteError) {
+    console.error(deleteError);
+    return NextResponse.json(
+      { error: "Failed to delete invoice" },
+      { status: 500 },
+    );
+  }
+
+  try {
+    await refreshSalesmanTotals(supabase, salesmanId);
+  } catch (e) {
+    console.error(e);
+  }
+
+  return NextResponse.json({ ok: true });
 }
