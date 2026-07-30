@@ -172,11 +172,39 @@ export function SalesmanDetailClient({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  const invoiceBalances = useMemo(() => {
+    const sorted = [...invoices].sort((a, b) => {
+      const byDate =
+        new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime();
+      if (byDate !== 0) return byDate;
+      return a.number.localeCompare(b.number);
+    });
+    const previousById = new Map<string, number>();
+    const chargedById = new Map<string, number>();
+    const closingById = new Map<string, number>();
+    let running = salesman.openingBalance;
+    for (const inv of sorted) {
+      const previous = Math.max(0, Math.round(running * 100) / 100);
+      previousById.set(inv.id, previous);
+      const charged = Math.round((previous + inv.totalAmount) * 100) / 100;
+      chargedById.set(inv.id, charged);
+      running = Math.max(
+        0,
+        Math.round((previous + inv.totalAmount - inv.amountPaid) * 100) / 100,
+      );
+      closingById.set(inv.id, running);
+    }
+    return { previousById, chargedById, closingById };
+  }, [invoices, salesman.openingBalance]);
+
   function previousBalanceForInvoice(invoice: Invoice): number {
-    return Math.max(
-      0,
-      salesman.pendingBalance -
-        Math.max(0, invoice.totalAmount - invoice.amountPaid),
+    return (
+      invoiceBalances.previousById.get(invoice.id) ??
+      Math.max(
+        0,
+        salesman.pendingBalance -
+          Math.max(0, invoice.totalAmount - invoice.amountPaid),
+      )
     );
   }
 
@@ -310,6 +338,8 @@ export function SalesmanDetailClient({
                 invoices={filteredInvoices}
                 selectedId={selectedInvoice?.id ?? null}
                 onSelect={handleSelect}
+                chargedTotalById={invoiceBalances.chargedById}
+                closingDueById={invoiceBalances.closingById}
               />
 
               {selectedInvoice ? (

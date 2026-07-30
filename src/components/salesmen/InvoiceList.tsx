@@ -11,6 +11,10 @@ type InvoiceListProps = {
   invoices: Invoice[];
   selectedId: string | null;
   onSelect: (invoice: Invoice) => void;
+  /** Invoice total + previous balance (amount charged on the account). */
+  chargedTotalById?: Map<string, number>;
+  /** Closing balance after each invoice (prev + invoice − paid). */
+  closingDueById?: Map<string, number>;
 };
 
 function groupByMonth(invoices: Invoice[]) {
@@ -31,6 +35,8 @@ export function InvoiceList({
   invoices,
   selectedId,
   onSelect,
+  chargedTotalById,
+  closingDueById,
 }: InvoiceListProps) {
   if (invoices.length === 0) {
     return (
@@ -54,7 +60,14 @@ export function InvoiceList({
             {group.items.map((invoice) => {
               const date = formatInvoiceDate(invoice.issuedAt);
               const selected = selectedId === invoice.id;
-              const balance = invoice.totalAmount - invoice.amountPaid;
+              const invoiceDue = Math.max(
+                0,
+                invoice.totalAmount - invoice.amountPaid,
+              );
+              const chargedTotal =
+                chargedTotalById?.get(invoice.id) ?? invoice.totalAmount;
+              const balance =
+                closingDueById?.get(invoice.id) ?? invoiceDue;
               const statusLabel = verificationStatusLabel(
                 invoice.verificationStatus,
               );
@@ -110,7 +123,7 @@ export function InvoiceList({
 
                     <div className="shrink-0 text-right">
                       <p className="text-sm font-medium tabular-nums">
-                        {formatINR(invoice.totalAmount)}
+                        {formatINR(chargedTotal)}
                       </p>
                       <p
                         className={`mt-0.5 text-xs tabular-nums ${
