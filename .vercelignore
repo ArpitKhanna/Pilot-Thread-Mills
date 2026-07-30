@@ -1,0 +1,5 @@
+# Local-only / WIP paths that break production builds if uploaded
+scripts/backup
+.cursor
+tsc-*.txt
+backups
