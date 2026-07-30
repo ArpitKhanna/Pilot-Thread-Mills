@@ -172,6 +172,14 @@ export function SalesmanDetailClient({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function previousBalanceForInvoice(invoice: Invoice): number {
+    return Math.max(
+      0,
+      salesman.pendingBalance -
+        Math.max(0, invoice.totalAmount - invoice.amountPaid),
+    );
+  }
+
   return (
     <>
       <TopBar
@@ -315,6 +323,9 @@ export function SalesmanDetailClient({
                       editPending={editPending}
                       onPrint={() => handlePrint(selectedInvoice)}
                       onWhatsApp={() => handleWhatsApp(selectedInvoice)}
+                      previousBalance={previousBalanceForInvoice(
+                        selectedInvoice,
+                      )}
                     />
                   </div>
                 </div>
@@ -356,6 +367,7 @@ export function SalesmanDetailClient({
             editPending={editPending}
             onPrint={() => handlePrint(selectedInvoice)}
             onWhatsApp={() => handleWhatsApp(selectedInvoice)}
+            previousBalance={previousBalanceForInvoice(selectedInvoice)}
           />
         </div>
       )}
@@ -370,6 +382,7 @@ export function SalesmanDetailClient({
             onEdit={() => undefined}
             onPrint={() => undefined}
             onWhatsApp={() => undefined}
+            previousBalance={previousBalanceForInvoice(selectedInvoice)}
           />
         </div>
       )}
