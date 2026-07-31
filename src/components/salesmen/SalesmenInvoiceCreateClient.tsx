@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
@@ -27,6 +27,14 @@ import type {
   SalesmanAdvance,
   SalesmanReturn,
 } from "@/lib/salesmen/types";
+
+function mergeSalesmenBalances(
+  current: Salesman[],
+  fresh: Salesman[],
+): Salesman[] {
+  const freshById = new Map(fresh.map((s) => [s.id, s]));
+  return current.map((s) => freshById.get(s.id) ?? s);
+}
 
 type SalesmenInvoiceCreateClientProps = {
   context: AppContext;
@@ -147,6 +155,7 @@ export function SalesmenInvoiceCreateClient({
   const [salesmanId, setSalesmanId] = useState(
     () => initialInvoice?.salesmanId ?? "",
   );
+  const [salesmenList, setSalesmenList] = useState(salesmen);
   const [salesmanQuery, setSalesmanQuery] = useState("");
   const [salesmanOpen, setSalesmanOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>(() =>
@@ -185,6 +194,27 @@ export function SalesmenInvoiceCreateClient({
   const [saving, setSaving] = useState(false);
   const [hydratedDiscount, setHydratedDiscount] = useState(!isEdit);
 
+  const refreshSalesmenBalances = useCallback(async () => {
+    try {
+      const res = await fetch("/api/salesmen");
+      const data = (await res.json()) as { salesmen?: Salesman[] };
+      if (!data.salesmen) return;
+      setSalesmenList((prev) => mergeSalesmenBalances(prev, data.salesmen!));
+    } catch {
+      // Keep SSR snapshot on failure.
+    }
+  }, []);
+
+  useEffect(() => {
+    setSalesmenList(salesmen);
+    void refreshSalesmenBalances();
+  }, [salesmen, refreshSalesmenBalances]);
+
+  useEffect(() => {
+    if (!salesmanOpen || isEdit) return;
+    void refreshSalesmenBalances();
+  }, [salesmanOpen, isEdit, refreshSalesmenBalances]);
+
   useEffect(() => {
     const id = initialInvoice?.salesmanId ?? initialSalesmanId;
     if (!id) return;
@@ -209,10 +239,14 @@ export function SalesmenInvoiceCreateClient({
     setDismissedReturnIds([]);
     void (async () => {
       try {
-        const [advRes, retRes] = await Promise.all([
+        const [salesmanRes, advRes, retRes] = await Promise.all([
+          fetch(`/api/salesmen/${salesmanId}`),
           fetch(`/api/salesmen/${salesmanId}/advances`),
           fetch(`/api/salesmen/${salesmanId}/returns`),
         ]);
+        const salesmanData = (await salesmanRes.json()) as {
+          salesman?: Salesman;
+        };
         const advData = (await advRes.json()) as {
           advances?: SalesmanAdvance[];
         };
@@ -220,6 +254,15 @@ export function SalesmenInvoiceCreateClient({
           returns?: SalesmanReturn[];
         };
         if (cancelled) return;
+        if (salesmanData.salesman) {
+          setSalesmenList((prev) => {
+            const idx = prev.findIndex((s) => s.id === salesmanId);
+            if (idx === -1) return [...prev, salesmanData.salesman!];
+            const next = [...prev];
+            next[idx] = salesmanData.salesman!;
+            return next;
+          });
+        }
         setOpenAdvances(
           (advData.advances ?? []).filter(
             (a) =>
@@ -254,7 +297,7 @@ export function SalesmenInvoiceCreateClient({
   // After salesman + lines known in edit mode, split stored discount into rule vs additional
   useEffect(() => {
     if (!isEdit || !initialInvoice || hydratedDiscount) return;
-    const salesman = salesmen.find((s) => s.id === salesmanId);
+    const salesman = salesmenList.find((s) => s.id === salesmanId);
     if (!salesmanId) return;
     const rule = calculateSalesmanDiscount(
       lines
@@ -276,20 +319,20 @@ export function SalesmenInvoiceCreateClient({
     initialInvoice,
     hydratedDiscount,
     salesmanId,
-    salesmen,
+    salesmenList,
     lines,
     priceList,
   ]);
 
-  const salesman = salesmen.find((s) => s.id === salesmanId) ?? null;
+  const salesman = salesmenList.find((s) => s.id === salesmanId) ?? null;
 
   const filteredSalesmen = useMemo(() => {
     const q = salesmanQuery.trim().toLowerCase();
     if (!q || (salesman && salesman.name.toLowerCase() === q)) {
-      return salesmen;
+      return salesmenList;
     }
-    return salesmen.filter((s) => s.name.toLowerCase().includes(q));
-  }, [salesmen, salesmanQuery, salesman]);
+    return salesmenList.filter((s) => s.name.toLowerCase().includes(q));
+  }, [salesmenList, salesmanQuery, salesman]);
 
   const filledLines = useMemo(
     () =>

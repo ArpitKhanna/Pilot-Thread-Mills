@@ -7,6 +7,8 @@ import { canEditInvoice } from "@/lib/salesmen/invoice-api";
 import { getInvoiceById, listSalesmen } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };

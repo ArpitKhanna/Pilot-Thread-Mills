@@ -20,6 +20,43 @@ async function hasEntitySalesmenAccess(
   return Boolean(data);
 }
 
+async function hasPartyAccess(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  role: string | null,
+) {
+  if (role === "admin") return true;
+  const { data } = await supabase
+    .from("role_module_access")
+    .select("module_id")
+    .eq("role", role ?? "picker")
+    .in("module_id", [
+      "entity-salesmen",
+      "order-salesmen",
+      "entity-customers",
+      "order-customers",
+    ]);
+  return (data ?? []).length > 0;
+}
+
+export async function GET(_request: Request, context: RouteContext) {
+  const auth = await getAuthedProfile();
+  if ("error" in auth && auth.error) return auth.error;
+  const { supabase, profile } = auth;
+
+  if (!(await hasPartyAccess(supabase, profile.role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await context.params;
+  const salesman = await getSalesman(supabase, id);
+  if (!salesman) {
+    return NextResponse.json({ error: "Salesman not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ salesman });
+}
+
 function parseDiscountRules(raw: unknown): SalesmanDiscountRule[] | { error: string } {
   if (!Array.isArray(raw)) {
     return { error: "Discount rules must be an array" };

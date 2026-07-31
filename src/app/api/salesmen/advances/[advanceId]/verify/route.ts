@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { mapAdvanceRow, type DbAdvanceRow } from "@/lib/salesmen/mappers";
 import { refreshSalesmanTotals } from "@/lib/salesmen/queries";
@@ -91,11 +92,16 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const salesmanId = updated.salesman_id as string;
+
   try {
-    await refreshSalesmanTotals(supabase, updated.salesman_id as string);
+    await refreshSalesmanTotals(supabase, salesmanId);
   } catch (e) {
     console.error(e);
   }
+
+  revalidatePath("/orders/salesmen");
+  revalidatePath(`/entities/salesmen/${salesmanId}`);
 
   return NextResponse.json({
     advance: mapAdvanceRow(updated as DbAdvanceRow),

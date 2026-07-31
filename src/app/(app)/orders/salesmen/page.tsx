@@ -6,6 +6,8 @@ import { listActiveBankAccounts } from "@/lib/bank-accounts/queries";
 import { listSalesmen } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type SalesmenOrdersPageProps = {
   searchParams: Promise<{ salesmanId?: string }>;
 };
