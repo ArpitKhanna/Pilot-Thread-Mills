@@ -333,7 +333,7 @@ export function SalesmanDetailClient({
             </p>
           </div>
 
-          <div className="inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 lg:w-auto lg:max-w-[min(100%,42rem)]">
+          <div className="inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5">
             <TabButton
               active={tab === "overview"}
               onClick={() => setTab("overview")}

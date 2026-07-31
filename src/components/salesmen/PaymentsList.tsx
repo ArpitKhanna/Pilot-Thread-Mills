@@ -222,14 +222,23 @@ export function PaymentsList({
             <button
               type="button"
               onClick={onAddPayment}
-              className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent/90"
+              className="rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
             >
               Add payment
             </button>
           </div>
         )}
-        <div className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-          No payments recorded yet
+        <div className="rounded-xl border border-dashed border-border bg-surface px-4 py-12 text-center">
+          <p className="text-sm text-muted">No payments recorded yet</p>
+          {onAddPayment && (
+            <button
+              type="button"
+              onClick={onAddPayment}
+              className="mt-4 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
+            >
+              Add payment
+            </button>
+          )}
         </div>
       </div>
     );
@@ -244,7 +253,7 @@ export function PaymentsList({
           <button
             type="button"
             onClick={onAddPayment}
-            className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent/90"
+            className="rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
           >
             Add payment
           </button>

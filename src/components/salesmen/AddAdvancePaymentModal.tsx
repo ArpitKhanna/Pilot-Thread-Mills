@@ -128,7 +128,7 @@ export function AddAdvancePaymentModal({
             type="button"
             disabled={busy}
             onClick={() => void submit()}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+            className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
           >
             {busy ? "Saving…" : "Save payment"}
           </button>
@@ -161,7 +161,7 @@ export function AddAdvancePaymentModal({
                 onClick={() => setMethod(m)}
                 className={`rounded-lg border px-3 py-1.5 text-sm ${
                   method === m
-                    ? "border-accent bg-accent/10 text-accent"
+                    ? "border-foreground bg-foreground/10 text-foreground"
                     : "border-border bg-surface hover:bg-sidebar"
                 }`}
               >
