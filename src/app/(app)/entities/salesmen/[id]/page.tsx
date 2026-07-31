@@ -15,7 +15,6 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 type DetailTab =
-  | "overview"
   | "invoices"
   | "payments"
   | "returns"
@@ -28,8 +27,8 @@ type PageProps = {
 };
 
 function parseTab(raw: string | undefined): DetailTab {
+  if (raw === "overview") return "invoices";
   if (
-    raw === "overview" ||
     raw === "invoices" ||
     raw === "payments" ||
     raw === "returns" ||
@@ -38,7 +37,7 @@ function parseTab(raw: string | undefined): DetailTab {
   ) {
     return raw;
   }
-  return "overview";
+  return "invoices";
 }
 
 export default async function SalesmanDetailPage({
@@ -53,6 +52,9 @@ export default async function SalesmanDetailPage({
 
   const { id } = await params;
   const { tab } = await searchParams;
+  if (tab === "overview") {
+    redirect(`/entities/salesmen/${id}?tab=invoices`);
+  }
   const supabase = await createClient();
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();

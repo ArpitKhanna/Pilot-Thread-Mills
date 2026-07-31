@@ -180,7 +180,7 @@ export function EntitySearch({ context }: EntitySearchProps) {
     const href =
       party.entityType === "customer"
         ? `/entities/customers/${party.id}`
-        : `/entities/salesmen/${party.id}`;
+        : `/entities/salesmen/${party.id}?tab=invoices`;
     setQuery("");
     setOpen(false);
     inputRef.current?.blur();

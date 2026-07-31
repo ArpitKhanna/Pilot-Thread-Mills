@@ -265,7 +265,7 @@ export function SalesmenListClient({
                 className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-foreground/20 hover:bg-sidebar/40"
               >
                 <PendingLink
-                  href={`/entities/salesmen/${salesman.id}`}
+                  href={`/entities/salesmen/${salesman.id}?tab=invoices`}
                   className="block"
                 >
                   <div className="flex items-start justify-between gap-3">

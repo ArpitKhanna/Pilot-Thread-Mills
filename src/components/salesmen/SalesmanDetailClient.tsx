@@ -14,7 +14,6 @@ import { AddReturnModal } from "@/components/salesmen/AddReturnModal";
 import { PaymentsList } from "@/components/salesmen/PaymentsList";
 import { ReturnsList } from "@/components/salesmen/ReturnsList";
 import { PersonalDetailsForm } from "@/components/salesmen/PersonalDetailsForm";
-import { SalesmanOverview } from "@/components/salesmen/SalesmanOverview";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
@@ -32,7 +31,6 @@ import type {
 import { ENTITY_TYPE_LABELS } from "@/lib/salesmen/types";
 
 type DetailTab =
-  | "overview"
   | "invoices"
   | "payments"
   | "returns"
@@ -75,7 +73,7 @@ export function SalesmanDetailClient({
   initialReturns = [],
   priceList,
   bankAccounts,
-  initialTab = "overview",
+  initialTab = "invoices",
 }: SalesmanDetailClientProps) {
   const router = useRouter();
   const [editPending, startEditTransition] = useTransition();
@@ -297,7 +295,7 @@ export function SalesmanDetailClient({
 
       <div className="flex min-h-0 flex-1 flex-col print:hidden">
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-5 flex flex-col gap-4 sm:mb-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
               {salesman.name}
@@ -318,27 +316,25 @@ export function SalesmanDetailClient({
               <span className="text-muted">
                 {ENTITY_TYPE_LABELS[salesman.entityType]}
               </span>
-              <span className="text-border" aria-hidden>
-                |
-              </span>
-              <span
-                className={
-                  salesman.pendingBalance > 0
-                    ? "font-medium text-[#c45c26]"
-                    : "text-muted"
-                }
-              >
-                Balance {formatINR(salesman.pendingBalance)}
-              </span>
             </p>
           </div>
+          <div className="shrink-0 text-left sm:text-right">
+            <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+              Pending Balance
+            </p>
+            <p
+              className={`mt-0.5 text-xl font-medium tracking-tight sm:text-2xl ${
+                salesman.pendingBalance > 0
+                  ? "text-[#c45c26]"
+                  : "text-foreground"
+              }`}
+            >
+              {formatINR(salesman.pendingBalance)}
+            </p>
+          </div>
+        </div>
 
-          <div className="inline-flex w-full max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5">
-            <TabButton
-              active={tab === "overview"}
-              onClick={() => setTab("overview")}
-              label="Overview"
-            />
+        <div className="mb-5 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface p-0.5 sm:mb-6">
             <TabButton
               active={tab === "invoices"}
               onClick={() => setTab("invoices")}
@@ -364,12 +360,9 @@ export function SalesmanDetailClient({
               onClick={() => setTab("details")}
               label="Personal Details"
             />
-          </div>
         </div>
 
-        {tab === "overview" ? (
-          <SalesmanOverview invoices={invoices} />
-        ) : tab === "invoices" ? (
+        {tab === "invoices" ? (
           <div>
             <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-col gap-3 bg-background px-4 py-3 sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:-mx-8 lg:px-8">
               <h2 className="text-lg font-medium tracking-tight">
