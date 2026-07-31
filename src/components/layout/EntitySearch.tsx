@@ -271,7 +271,7 @@ export function EntitySearch({ context }: EntitySearchProps) {
                 )}
               </span>
               <span className="shrink-0 text-xs text-muted">
-                {[ENTITY_LABEL[party.entityType], party.area || null]
+                {[party.area || null, ENTITY_LABEL[party.entityType]]
                   .filter(Boolean)
                   .join(" · ")}
               </span>
