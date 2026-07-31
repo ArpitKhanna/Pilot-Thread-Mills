@@ -37,6 +37,7 @@ export function EntitySearch({ context }: EntitySearchProps) {
   const router = useRouter();
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -95,10 +96,10 @@ export function EntitySearch({ context }: EntitySearchProps) {
   }
 
   function updatePosition() {
-    const el = inputRef.current;
+    const el = anchorRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 16);
+    const width = Math.min(rect.width, window.innerWidth - 16);
     const left = Math.min(
       Math.max(8, rect.left),
       window.innerWidth - width - 8,
@@ -252,7 +253,7 @@ export function EntitySearch({ context }: EntitySearchProps) {
               type="button"
               role="option"
               aria-selected={index === highlight}
-              className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm ${
+              className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
                 index === highlight ? "bg-sidebar" : "hover:bg-sidebar"
               }`}
               onMouseEnter={() => setHighlight(index)}
@@ -261,24 +262,18 @@ export function EntitySearch({ context }: EntitySearchProps) {
                 navigateTo(party);
               }}
             >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-foreground">
-                  {party.name}
-                  {!party.isActive && (
-                    <span className="ml-1.5 text-xs font-normal text-muted">
-                      (inactive)
-                    </span>
-                  )}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-muted">
-                  {[
-                    ENTITY_LABEL[party.entityType],
-                    party.area || null,
-                    party.phone || null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {party.name}
+                {!party.isActive && (
+                  <span className="ml-1.5 text-xs font-normal text-muted">
+                    (inactive)
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-xs text-muted">
+                {[ENTITY_LABEL[party.entityType], party.area || null]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             </button>
           ))
@@ -289,7 +284,10 @@ export function EntitySearch({ context }: EntitySearchProps) {
 
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1 sm:max-w-xs lg:max-w-sm">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5">
+      <div
+        ref={anchorRef}
+        className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5"
+      >
         <svg
           width="14"
           height="14"
