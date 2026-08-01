@@ -70,8 +70,10 @@ export function resolveDateRange(
   }
 }
 
+type InvoiceTotalsLike = Pick<Invoice, "issuedAt" | "totalAmount" | "amountPaid">;
+
 export function summarizePurchasesAndPayments(
-  invoices: Invoice[],
+  invoices: InvoiceTotalsLike[],
   range: DateRange | null,
 ): PurchasePaymentsSummary {
   const filtered = range

@@ -7,7 +7,7 @@ import {
   type DbInvoiceRow,
   type DbSalesmanRow,
 } from "./mappers";
-import type { Invoice, Salesman } from "./types";
+import type { Invoice, InvoiceSummary, Salesman } from "./types";
 
 export async function listSalesmen(
   supabase: SupabaseClient,
@@ -222,6 +222,27 @@ async function attachInvoiceChildren(
       paymentRows.filter((p) => p.invoice_id === inv.id),
     ),
   );
+}
+
+/** Verified invoice totals for all salesmen — used for list-page aggregate stats */
+export async function listInvoiceSummariesForSalesmen(
+  supabase: SupabaseClient,
+  salesmanIds: string[],
+): Promise<InvoiceSummary[]> {
+  if (salesmanIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("salesmen_invoices")
+    .select("issued_at, total_amount, amount_paid")
+    .in("salesman_id", salesmanIds)
+    .eq("verification_status", "verified");
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    issuedAt: row.issued_at as string,
+    totalAmount: Number(row.total_amount),
+    amountPaid: Number(row.amount_paid),
+  }));
 }
 
 export async function listInvoicesForSalesman(

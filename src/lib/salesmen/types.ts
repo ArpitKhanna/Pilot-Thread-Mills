@@ -289,6 +289,15 @@ export type PurchasePaymentsSummary = {
   pending: number;
 };
 
+/** Minimal invoice fields for aggregate stats on list pages */
+export type InvoiceSummary = {
+  issuedAt: string;
+  totalAmount: number;
+  amountPaid: number;
+};
+
+export type SalesmenListTimePreset = "max" | "week" | "month" | "6m";
+
 export type ItemRequestStatus = "open" | "fulfilled";
 
 export type ItemRequestUrgency = "high" | "medium" | "low";

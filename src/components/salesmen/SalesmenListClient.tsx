@@ -4,14 +4,16 @@ import { useMemo, useState } from "react";
 import { TopBar } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import { PendingLink } from "@/components/ui/PendingLink";
+import { SalesmenSummaryCounters } from "@/components/salesmen/SalesmenSummaryCounters";
 import type { AppContext } from "@/app/(app)/layout";
 import { formatINR, formatShortDate } from "@/lib/salesmen/mock-data";
 import { useSyncedState } from "@/lib/realtime/use-synced-state";
-import type { Salesman } from "@/lib/salesmen/types";
+import type { InvoiceSummary, Salesman } from "@/lib/salesmen/types";
 
 type SalesmenListClientProps = {
   context: AppContext;
   initialSalesmen: Salesman[];
+  initialInvoiceSummaries: InvoiceSummary[];
 };
 
 type FormState = {
@@ -31,6 +33,7 @@ const emptyForm: FormState = {
 export function SalesmenListClient({
   context,
   initialSalesmen,
+  initialInvoiceSummaries,
 }: SalesmenListClientProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [salesmen, setSalesmen] = useSyncedState(initialSalesmen, !modalOpen);
@@ -204,6 +207,11 @@ export function SalesmenListClient({
             </button>
           </div>
         </div>
+
+        <SalesmenSummaryCounters
+          salesmen={salesmen}
+          invoiceSummaries={initialInvoiceSummaries}
+        />
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="inline-flex w-full rounded-lg border border-border bg-surface p-0.5 sm:w-auto">
