@@ -468,7 +468,8 @@ export function ApprovalsClient({
                           </div>
                           <p className="mt-1 text-sm text-muted">
                             {invoice.number}
-                            <span className="mx-1.5 text-border">·</span>
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted">
                             {date.monthYear} {date.day}, {date.time}
                           </p>
                         </div>
@@ -509,39 +510,14 @@ export function ApprovalsClient({
                               </div>
                             ) : null}
 
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div>
-                                <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
-                                  Payments
-                                </h3>
-                                {(invoice.paymentEntries ?? []).length === 0 ? (
-                                  <p className="mt-2 text-sm text-muted">
-                                    No payments recorded
-                                  </p>
-                                ) : (
-                                  <ul className="mt-2 space-y-1.5 text-sm">
-                                    {(invoice.paymentEntries ?? []).map((p) => (
-                                      <li
-                                        key={p.id}
-                                        className="flex justify-between gap-3"
-                                      >
-                                        <span className="min-w-0 capitalize">
-                                          {formatPaymentLabel(p)}
-                                        </span>
-                                        <span className="shrink-0 tabular-nums">
-                                          {formatINR(p.amount)}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
+                            <div className="sm:flex sm:justify-end">
+                              <div className="w-full sm:max-w-md">
+                                <ApprovalInvoiceTotals
+                                  invoice={invoice}
+                                  previousBalance={previousBalance}
+                                  closingBalance={closingBalance}
+                                />
                               </div>
-
-                              <ApprovalInvoiceTotals
-                                invoice={invoice}
-                                previousBalance={previousBalance}
-                                closingBalance={closingBalance}
-                              />
                             </div>
                           </div>
 
@@ -607,12 +583,13 @@ export function ApprovalsClient({
   );
 }
 
-function formatPaymentLabel(payment: InvoicePaymentEntry): string {
-  const parts: string[] = [payment.method];
-  if (payment.advanceId) parts.push("(advance)");
-  if (payment.chequeNumber) parts.push(`#${payment.chequeNumber}`);
-  if (payment.senderName) parts.push(payment.senderName);
-  return parts.join(" · ");
+function formatPaidLabel(payment: InvoicePaymentEntry): string {
+  const method =
+    payment.method.charAt(0).toUpperCase() + payment.method.slice(1);
+  if (payment.advanceId) return `${method} (advance)`;
+  if (payment.chequeNumber) return `${method} #${payment.chequeNumber}`;
+  if (payment.senderName) return `${method} · ${payment.senderName}`;
+  return method;
 }
 
 function ApprovalInvoiceLineTable({
@@ -633,6 +610,7 @@ function ApprovalInvoiceLineTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-table-header text-left text-xs text-muted">
+              <th className="w-8 px-2 py-1.5 font-medium text-right">#</th>
               <th className="px-2.5 py-1.5 font-medium">Item</th>
               <th className="w-14 px-2.5 py-1.5 font-medium text-right">Qty</th>
               <th className="hidden w-16 px-2.5 py-1.5 font-medium text-right sm:table-cell">
@@ -644,11 +622,14 @@ function ApprovalInvoiceLineTable({
             </tr>
           </thead>
           <tbody>
-            {items.map((line) => (
+            {items.map((line, index) => (
               <tr
                 key={line.id}
                 className="border-b border-border last:border-0"
               >
+                <td className="px-2 py-2 text-right text-xs tabular-nums text-muted">
+                  {index + 1}
+                </td>
                 <td className="max-w-0 px-2.5 py-2">
                   <span className="block truncate" title={line.name}>
                     {line.name}
@@ -746,7 +727,17 @@ function ApprovalInvoiceTotals({
           label="Prev. balance"
           value={formatINR(previousBalance)}
         />
-        <ApprovalTotalRow label="Paid" value={formatINR(invoice.amountPaid)} />
+        {(invoice.paymentEntries ?? []).length === 0 ? (
+          <ApprovalTotalRow label="Paid" value={formatINR(invoice.amountPaid)} />
+        ) : (
+          (invoice.paymentEntries ?? []).map((payment) => (
+            <ApprovalTotalRow
+              key={payment.id}
+              label={`Paid · ${formatPaidLabel(payment)}`}
+              value={formatINR(payment.amount)}
+            />
+          ))
+        )}
         <div className="border-t border-border pt-1.5">
           <ApprovalTotalRow
             label="Closing"
