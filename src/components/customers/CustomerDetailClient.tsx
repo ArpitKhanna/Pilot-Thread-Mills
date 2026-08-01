@@ -14,6 +14,7 @@ import {
   type CustomerOrderInvoiceCreated,
   type CustomerOrderInvoiceSubmitPayload,
 } from "@/components/customer-orders/CustomerOrderInvoiceModal";
+import { CustomerDirectInvoiceModal } from "@/components/customers/CustomerDirectInvoiceModal";
 import { CustomerPastOrdersTab } from "@/components/customers/CustomerPastOrdersTab";
 import { CustomerPendingPatchesTab } from "@/components/customers/CustomerPendingPatchesTab";
 import { CustomerPersonalDetailsForm } from "@/components/customers/CustomerPersonalDetailsForm";
@@ -42,6 +43,8 @@ import {
 import { shareInvoicePdfOnWhatsApp } from "@/lib/salesmen/share-invoice-pdf";
 import type {
   Invoice,
+  InvoiceLineItem,
+  InvoicePaymentEntry,
   Salesman,
   SalesmanAdvance,
   SalesmanReturn,
@@ -126,6 +129,9 @@ export function CustomerDetailClient({
   const [invoiceOrders, setInvoiceOrders] = useState<CustomerOrder[]>([]);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [invoiceError, setInvoiceError] = useState("");
+  const [directInvoiceModalOpen, setDirectInvoiceModalOpen] = useState(false);
+  const [directInvoiceBusy, setDirectInvoiceBusy] = useState(false);
+  const [directInvoiceError, setDirectInvoiceError] = useState("");
   const [editLockedOpen, setEditLockedOpen] = useState(false);
   const [deleteInvoiceOpen, setDeleteInvoiceOpen] = useState(false);
   const [deleteInvoiceBusy, setDeleteInvoiceBusy] = useState(false);
@@ -338,6 +344,50 @@ export function CustomerDetailClient({
     }
   }
 
+  async function submitDirectInvoice(payload: {
+    lineItems: InvoiceLineItem[];
+    discountAmount: number;
+    paymentEntries: InvoicePaymentEntry[];
+    totalAmount: number;
+    amountPaid: number;
+    number: string;
+    issuedAt: string;
+  }): Promise<Invoice> {
+    setDirectInvoiceBusy(true);
+    setDirectInvoiceError("");
+    try {
+      const res = await fetch(`/api/customers/${customer.id}/invoices`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: payload.number,
+          issuedAt: payload.issuedAt,
+          lineItems: payload.lineItems,
+          discountAmount: payload.discountAmount,
+          paymentEntries: payload.paymentEntries,
+          totalAmount: payload.totalAmount,
+          amountPaid: payload.amountPaid,
+        }),
+      });
+      const json = (await res.json()) as { invoice?: Invoice; error?: string };
+      if (!res.ok || !json.invoice) {
+        throw new Error(json.error ?? "Failed to generate invoice");
+      }
+      setInvoices((prev) => [json.invoice!, ...prev]);
+      setSelectedInvoice(json.invoice);
+      setDirectInvoiceModalOpen(false);
+      router.refresh();
+      return json.invoice;
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to generate invoice";
+      setDirectInvoiceError(message);
+      throw e instanceof Error ? e : new Error(message);
+    } finally {
+      setDirectInvoiceBusy(false);
+    }
+  }
+
   async function submitInvoices(
     payload: CustomerOrderInvoiceSubmitPayload,
   ): Promise<CustomerOrderInvoiceCreated[]> {
@@ -544,34 +594,38 @@ export function CustomerDetailClient({
                 <h2 className="text-lg font-medium tracking-tight">
                   Invoices ({invoices.length})
                 </h2>
-                <button
-                  type="button"
-                  disabled={packedOrders.length === 0}
-                  onClick={() => {
-                    setInvoiceError("");
-                    setInvoiceOrders(packedOrders);
-                    setInvoiceModalOpen(true);
-                  }}
-                  title={
-                    packedOrders.length === 0
-                      ? "No packed orders ready to invoice"
-                      : undefined
-                  }
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
-                >
-                  <span className="text-base leading-none">+</span>
-                  Generate invoice
-                  {packedOrders.length > 0
-                    ? ` (${packedOrders.length})`
-                    : ""}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDirectInvoiceError("");
+                      setDirectInvoiceModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-surface hover:bg-foreground/90"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    Generate invoice
+                  </button>
+                  {packedOrders.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInvoiceError("");
+                        setInvoiceOrders(packedOrders);
+                        setInvoiceModalOpen(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium hover:bg-sidebar"
+                    >
+                      From packed orders ({packedOrders.length})
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {invoices.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border bg-surface px-4 py-16 text-center text-sm text-muted">
-                  {packedOrders.length > 0
-                    ? "No invoices yet. Generate one from packed orders."
-                    : "No invoices yet."}
+                  No invoices yet. Use Generate invoice above to create one
+                  {packedOrders.length > 0 ? " or bill from packed orders." : "."}
                 </div>
               ) : (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
@@ -684,6 +738,21 @@ export function CustomerDetailClient({
           {whatsAppError}
         </p>
       ) : null}
+
+      <CustomerDirectInvoiceModal
+        open={directInvoiceModalOpen}
+        onClose={() => {
+          if (directInvoiceBusy) return;
+          setDirectInvoiceModalOpen(false);
+          setDirectInvoiceError("");
+        }}
+        customer={customer}
+        priceList={priceList}
+        bankAccounts={bankAccounts}
+        busy={directInvoiceBusy}
+        error={directInvoiceError}
+        onSubmit={submitDirectInvoice}
+      />
 
       <CustomerOrderInvoiceModal
         open={invoiceModalOpen}
