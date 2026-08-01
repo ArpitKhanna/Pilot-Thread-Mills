@@ -1,57 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
+import {
+  computeCustomerRuleDiscount,
+  createInitialCustomerDraftLines,
+  CustomerInvoiceLineEntry,
+  type CustomerDraftLine,
+} from "@/components/customers/CustomerInvoiceLineEntry";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
-import {
-  matchCustomerPriceRule,
-  resolveCustomerUnitPrice,
-} from "@/lib/customers/price-rules";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { Invoice, InvoiceLineItem, Salesman } from "@/lib/salesmen/types";
-
-type PricedLine = {
-  key: string;
-  priceListItemId: string | null;
-  itemName: string;
-  qty: string;
-  unitPrice: number;
-  amount: number;
-  listPrice: number;
-  ruleDescription: string | null;
-};
-
-const BLANK_ROWS = 5;
-
-function emptyLine(): PricedLine {
-  return {
-    key: crypto.randomUUID(),
-    priceListItemId: null,
-    itemName: "",
-    qty: "",
-    unitPrice: 0,
-    amount: 0,
-    listPrice: 0,
-    ruleDescription: null,
-  };
-}
-
-function isBlankLine(line: PricedLine): boolean {
-  return (
-    !line.itemName.trim() &&
-    !line.qty &&
-    line.priceListItemId == null &&
-    line.unitPrice <= 0
-  );
-}
-
-function withTrailingBlanks(lines: PricedLine[]): PricedLine[] {
-  const filled = lines.filter((l) => !isBlankLine(l));
-  const blanks = Array.from({ length: BLANK_ROWS }, () => emptyLine());
-  return [...filled, ...blanks];
-}
 
 type CustomerDirectInvoiceModalProps = {
   open: boolean;
@@ -78,8 +38,8 @@ export function CustomerDirectInvoiceModal({
   error,
   onSubmit,
 }: CustomerDirectInvoiceModalProps) {
-  const [lines, setLines] = useState<PricedLine[]>(() =>
-    withTrailingBlanks([]),
+  const [lines, setLines] = useState<CustomerDraftLine[]>(() =>
+    createInitialCustomerDraftLines(),
   );
   const [additionalDiscount, setAdditionalDiscount] = useState("");
   const [localError, setLocalError] = useState("");
@@ -90,7 +50,7 @@ export function CustomerDirectInvoiceModal({
 
   useEffect(() => {
     if (!open) {
-      setLines(withTrailingBlanks([]));
+      setLines(createInitialCustomerDraftLines());
       setAdditionalDiscount("");
       setLocalError("");
     }
@@ -110,12 +70,29 @@ export function CustomerDirectInvoiceModal({
     [filledLines],
   );
 
+  const ruleDiscount = useMemo(
+    () => computeCustomerRuleDiscount(filledLines),
+    [filledLines],
+  );
+
+  const activeRuleDescriptions = useMemo(() => {
+    const seen = new Set<string>();
+    const descriptions: string[] = [];
+    for (const line of filledLines) {
+      const text = line.ruleDescription?.trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      descriptions.push(text);
+    }
+    return descriptions;
+  }, [filledLines]);
+
   const additionalNum = Number(additionalDiscount);
-  const discountAmount =
+  const additionalDiscountAmount =
     Number.isFinite(additionalNum) && additionalNum > 0 ? additionalNum : 0;
   const invoiceTotal = Math.max(
     0,
-    Math.round((subtotal - discountAmount) * 100) / 100,
+    Math.round((subtotal - additionalDiscountAmount) * 100) / 100,
   );
 
   const liveInvoice: Invoice = useMemo(() => {
@@ -136,7 +113,8 @@ export function CustomerDirectInvoiceModal({
       totalAmount: invoiceTotal,
       amountPaid: 0,
       lineItems,
-      discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      discountAmount:
+        additionalDiscountAmount > 0 ? additionalDiscountAmount : undefined,
       verificationStatus: "pending_verification",
     };
   }, [
@@ -145,53 +123,8 @@ export function CustomerDirectInvoiceModal({
     customer.id,
     issuedAt,
     invoiceTotal,
-    discountAmount,
+    additionalDiscountAmount,
   ]);
-
-  function updateLine(key: string, patch: Partial<PricedLine>) {
-    setLines((prev) =>
-      withTrailingBlanks(
-        prev.map((line) => {
-          if (line.key !== key) return line;
-          const merged = { ...line, ...patch };
-          const qtyNum = Number(merged.qty);
-          const q = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0;
-          merged.amount = Math.round(merged.unitPrice * q * 100) / 100;
-          return merged;
-        }),
-      ),
-    );
-  }
-
-  function removeLine(key: string) {
-    setLines((prev) =>
-      withTrailingBlanks(prev.filter((l) => l.key !== key)),
-    );
-  }
-
-  function selectCatalogItem(key: string, item: PriceListItem) {
-    const unitPrice = resolveCustomerUnitPrice(
-      item.customer_price,
-      priceRules,
-      {
-        priceListItemId: item.id,
-        itemName: item.item_name,
-        priceList,
-      },
-    );
-    const rule = matchCustomerPriceRule(priceRules, {
-      priceListItemId: item.id,
-      itemName: item.item_name,
-      priceList,
-    });
-    updateLine(key, {
-      itemName: item.item_name,
-      priceListItemId: item.id,
-      unitPrice,
-      listPrice: Number(item.customer_price),
-      ruleDescription: rule?.description ?? null,
-    });
-  }
 
   function validateDraft(): boolean {
     if (filledLines.length === 0) {
@@ -209,7 +142,7 @@ export function CustomerDirectInvoiceModal({
     try {
       await onSubmit({
         lineItems: liveInvoice.lineItems,
-        discountAmount,
+        discountAmount: additionalDiscountAmount,
         totalAmount: invoiceTotal,
         number: draftNumber,
         issuedAt,
@@ -249,81 +182,44 @@ export function CustomerDirectInvoiceModal({
                 />
               </label>
 
-              <div className="space-y-2">
-                <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] gap-2 px-0.5 text-[11px] font-medium tracking-wide text-muted uppercase">
-                  <span>Item</span>
-                  <span className="text-right">Qty</span>
-                  <span className="text-right">Rate</span>
-                  <span className="text-right">Amount</span>
-                  <span />
+              <div>
+                <h2 className="mb-2 text-base font-medium">Items</h2>
+                <CustomerInvoiceLineEntry
+                  priceList={priceList}
+                  priceRules={priceRules}
+                  lines={lines}
+                  onChange={setLines}
+                  disabled={busy}
+                />
+                {priceList.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted">
+                    No approved price list items available.
+                  </p>
+                ) : null}
+              </div>
+
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-muted">
+                  Rule discount
+                </span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5">
+                  <p className="text-sm tabular-nums text-foreground">
+                    {formatINR(ruleDiscount)}
+                  </p>
+                  {activeRuleDescriptions.length > 0 ? (
+                    <p className="text-xs text-muted">
+                      {activeRuleDescriptions.join(" · ")}
+                    </p>
+                  ) : priceRules.length > 0 ? (
+                    <p className="text-xs text-muted">
+                      No matching price rules on entered items
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted">
+                      No price rules on this customer
+                    </p>
+                  )}
                 </div>
-                {lines.map((line) => {
-                  const blank = isBlankLine(line);
-                  return (
-                    <div
-                      key={line.key}
-                      className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem_5.5rem_1.5rem] items-start gap-2"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <ItemNameCombobox
-                          items={priceList}
-                          value={line.itemName}
-                          disabled={busy}
-                          showPrice={false}
-                          placeholder="Item"
-                          onChange={(value) =>
-                            updateLine(line.key, {
-                              itemName: value,
-                              priceListItemId: null,
-                              unitPrice: 0,
-                              listPrice: 0,
-                              ruleDescription: null,
-                            })
-                          }
-                          onSelect={(item) => selectCatalogItem(line.key, item)}
-                          onTabToQty={() => undefined}
-                        />
-                        {line.ruleDescription ? (
-                          <p className="truncate text-xs text-muted">
-                            {line.ruleDescription}
-                          </p>
-                        ) : null}
-                      </div>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        inputMode="decimal"
-                        disabled={busy}
-                        value={line.qty}
-                        placeholder="0"
-                        onChange={(e) =>
-                          updateLine(line.key, { qty: e.target.value })
-                        }
-                        className="w-full rounded-md border border-border bg-surface px-2 py-2 text-right text-sm tabular-nums outline-none focus:border-foreground/40 disabled:opacity-50"
-                      />
-                      <span className="py-2 text-right text-sm tabular-nums text-muted">
-                        {line.unitPrice > 0 ? formatINR(line.unitPrice) : "—"}
-                      </span>
-                      <span className="py-2 text-right text-sm tabular-nums">
-                        {line.amount > 0 ? formatINR(line.amount) : "—"}
-                      </span>
-                      <div className="flex justify-center pt-2">
-                        {!blank ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => removeLine(line.key)}
-                            className="text-sm text-muted hover:text-foreground disabled:opacity-50"
-                            aria-label="Remove line"
-                          >
-                            ×
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
 
               <label className="block">
