@@ -56,86 +56,116 @@ export function buildGoogleMapsUrl(opts: {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+export function isGoogleMapsUrl(text: string): boolean {
+  const trimmed = text.trim();
+  return /^(https?:\/\/)?((maps\.app\.)?goo\.gl\/|(www\.)?google\.com\/maps|maps\.google\.com|g\.co\/)/i.test(
+    trimmed,
+  );
+}
+
+function normalizeMapPinText(raw: string): string {
+  const trimmed = raw.trim();
+  try {
+    return decodeURIComponent(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+function parseCoordinatePair(
+  latRaw: string,
+  lngRaw: string,
+): { lat: number; lng: number } | null {
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+  return { lat, lng };
+}
+
+function extractCoordinatesFromText(text: string): {
+  lat: number;
+  lng: number;
+} | null {
+  const placeMatch = text.match(
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/i,
+  );
+  if (placeMatch) {
+    const parsed = parseCoordinatePair(placeMatch[1], placeMatch[2]);
+    if (parsed) return parsed;
+  }
+
+  const queryParamMatch = text.match(
+    /[?&](?:q|query|ll|center)=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i,
+  );
+  if (queryParamMatch) {
+    const parsed = parseCoordinatePair(queryParamMatch[1], queryParamMatch[2]);
+    if (parsed) return parsed;
+  }
+
+  const atMatch = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (atMatch) {
+    const parsed = parseCoordinatePair(atMatch[1], atMatch[2]);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
 /** Parse plus code, "lat,lng", or common Google Maps URL forms into coordinates. */
 export function parseMapPinInput(raw: string): {
   lat: number;
   lng: number;
 } | null {
-  const text = raw.trim();
+  const text = normalizeMapPinText(raw);
   if (!text) return null;
+
+  const fromUrl = extractCoordinatesFromText(text);
+  if (fromUrl) return fromUrl;
+
+  const pair = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (pair) {
+    const parsed = parseCoordinatePair(pair[1], pair[2]);
+    if (parsed) return parsed;
+  }
 
   const fromPlusCode = parsePlusCodeInput(text);
   if (fromPlusCode) return fromPlusCode;
 
-  const pair = text.match(
-    /^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/,
-  );
-  if (pair) {
-    const lat = Number(pair[1]);
-    const lng = Number(pair[2]);
-    if (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lng >= -180 &&
-      lng <= 180
-    ) {
-      return { lat, lng };
-    }
-  }
-
-  const atMatch = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-  if (atMatch) {
-    const lat = Number(atMatch[1]);
-    const lng = Number(atMatch[2]);
-    if (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lng >= -180 &&
-      lng <= 180
-    ) {
-      return { lat, lng };
-    }
-  }
-
-  const qMatch = text.match(/[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);
-  if (qMatch) {
-    const lat = Number(qMatch[1]);
-    const lng = Number(qMatch[2]);
-    if (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lng >= -180 &&
-      lng <= 180
-    ) {
-      return { lat, lng };
-    }
-  }
-
-  const llMatch = text.match(
-    /[?&](?:ll|center)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i,
-  );
-  if (llMatch) {
-    const lat = Number(llMatch[1]);
-    const lng = Number(llMatch[2]);
-    if (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lng >= -180 &&
-      lng <= 180
-    ) {
-      return { lat, lng };
-    }
-  }
-
   return null;
+}
+
+/** Follow Google Maps short-link redirects and extract coordinates. */
+export async function resolveGoogleMapsUrl(
+  url: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const trimmed = url.trim();
+  if (!isGoogleMapsUrl(trimmed)) return null;
+
+  const direct = parseMapPinInput(trimmed);
+  if (direct) return direct;
+
+  try {
+    const response = await fetch(trimmed, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; PilotThreadMills/1.0; +https://pilot-thread-mills.vercel.app)",
+      },
+    });
+    return parseMapPinInput(response.url);
+  } catch {
+    return null;
+  }
 }
 
 export function buildCustomerWhatsAppShareUrl(

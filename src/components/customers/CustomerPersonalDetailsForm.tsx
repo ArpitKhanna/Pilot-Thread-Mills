@@ -8,6 +8,7 @@ import {
   buildGoogleMapsUrl,
   formatCustomerAddressLines,
   formatPlusCode,
+  isGoogleMapsUrl,
   parseMapPinInput,
 } from "@/lib/customers/share";
 import type { CustomerTierInsight } from "@/lib/customers/tier";
@@ -79,6 +80,35 @@ function locationInputFromCustomer(customer: Salesman): string {
   return "";
 }
 
+async function resolveLocationInput(
+  input: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const direct = parseMapPinInput(trimmed);
+  if (direct) return direct;
+
+  if (!isGoogleMapsUrl(trimmed)) return null;
+
+  const res = await fetch("/api/maps/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: trimmed }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { lat?: number; lng?: number };
+  if (
+    data.lat == null ||
+    data.lng == null ||
+    !Number.isFinite(data.lat) ||
+    !Number.isFinite(data.lng)
+  ) {
+    return null;
+  }
+  return { lat: data.lat, lng: data.lng };
+}
+
 function syncFromCustomer(customer: Salesman) {
   return {
     name: customer.name,
@@ -140,11 +170,17 @@ export function CustomerPersonalDetailsForm({
 
   const displayMapsUrl = useMemo(() => {
     const parsed = parseMapPinInput(locationInput);
-    const lat = parsed?.lat ?? customer.mapLat;
-    const lng = parsed?.lng ?? customer.mapLng;
+    if (parsed) {
+      return buildGoogleMapsUrl({ lat: parsed.lat, lng: parsed.lng });
+    }
+    const lat = customer.mapLat;
+    const lng = customer.mapLng;
+    if (lat != null && lng != null) {
+      return buildGoogleMapsUrl({ lat, lng });
+    }
+    const trimmed = locationInput.trim();
+    if (isGoogleMapsUrl(trimmed)) return trimmed;
     return buildGoogleMapsUrl({
-      lat,
-      lng,
       addressLines: formatCustomerAddressLines({ addressArea }),
     });
   }, [locationInput, customer.mapLat, customer.mapLng, addressArea]);
@@ -200,6 +236,14 @@ export function CustomerPersonalDetailsForm({
 
   function clearLocation() {
     setLocationInput("");
+  }
+
+  function handleLocationPaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const text = event.clipboardData.getData("text/plain").trim();
+    if (!text) return;
+    event.preventDefault();
+    setLocationInput(text);
+    setError(null);
   }
 
   function updateRule(key: string, patch: Partial<DraftPriceRule>) {
@@ -260,7 +304,7 @@ export function CustomerPersonalDetailsForm({
     let parsedLat: number | null = null;
     let parsedLng: number | null = null;
     if (locationInput.trim() !== "") {
-      const parsed = parseMapPinInput(locationInput);
+      const parsed = await resolveLocationInput(locationInput);
       if (!parsed) {
         setError(
           "Could not read location. Paste a plus code, lat,lng, or Google Maps link.",
@@ -507,6 +551,9 @@ export function CustomerPersonalDetailsForm({
               }
               disabled={!editing}
               onChange={(e) => setLocationInput(e.target.value)}
+              onPaste={handleLocationPaste}
+              autoComplete="off"
+              spellCheck={false}
               placeholder={editing ? "7JVW52HG+2Q or paste a Google Maps link" : "—"}
               className={inputClass}
             />
