@@ -7,7 +7,7 @@ import { formatINR, formatInvoiceDate } from "@/lib/salesmen/mock-data";
 import type { PendingAdvanceApproval } from "@/lib/salesmen/advances";
 import type { PendingReturnApproval } from "@/lib/salesmen/returns";
 import type { PendingInvoiceApproval } from "@/lib/salesmen/queries";
-import { formatVerificationAttribution } from "@/lib/salesmen/verification";
+import type { InvoiceLineItem, InvoicePaymentEntry } from "@/lib/salesmen/types";
 
 type ApprovalsClientProps = {
   context: AppContext;
@@ -423,10 +423,25 @@ export function ApprovalsClient({
                 Invoices
               </h2>
               <ul className="space-y-3">
-                {items.map(({ invoice, salesmanName, salesmanId }) => {
+                {items.map(
+                  ({
+                    invoice,
+                    salesmanName,
+                    previousBalance,
+                    chargedTotal,
+                  }) => {
                   const date = formatInvoiceDate(invoice.issuedAt);
                   const expanded = expandedId === invoice.id;
                   const busy = busyId === invoice.id;
+                  const closingBalance = Math.max(
+                    0,
+                    Math.round(
+                      (previousBalance +
+                        invoice.totalAmount -
+                        invoice.amountPaid) *
+                        100,
+                    ) / 100,
+                  );
 
                   return (
                     <li
@@ -444,28 +459,21 @@ export function ApprovalsClient({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-medium">
-                              {invoice.number}
+                              {salesmanName}
                             </p>
                             <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
                               Pending
                             </span>
                           </div>
                           <p className="mt-1 text-sm text-muted">
-                            {salesmanName}
+                            {invoice.number}
                             <span className="mx-1.5 text-border">·</span>
                             {date.monthYear} {date.day}, {date.time}
-                          </p>
-                          <p className="mt-1 text-[11px] text-muted">
-                            {formatVerificationAttribution({
-                              verificationStatus: invoice.verificationStatus,
-                              createdByName: invoice.createdByName,
-                              verifiedByName: invoice.verifiedByName,
-                            })}
                           </p>
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-sm font-medium tabular-nums">
-                            {formatINR(invoice.totalAmount)}
+                            {formatINR(chargedTotal)}
                           </p>
                           <p className="mt-0.5 text-xs text-muted tabular-nums">
                             Paid {formatINR(invoice.amountPaid)}
@@ -475,56 +483,64 @@ export function ApprovalsClient({
 
                       {expanded && (
                         <div className="border-t border-border px-4 py-4 sm:px-5">
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div>
-                              <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
-                                Line items
-                              </h3>
-                              <ul className="mt-2 space-y-1.5 text-sm">
-                                {invoice.lineItems.map((line) => (
-                                  <li
-                                    key={line.id}
-                                    className="flex justify-between gap-3"
-                                  >
-                                    <span className="min-w-0 truncate">
-                                      {line.name}{" "}
-                                      <span className="text-muted">
-                                        ×{line.qty}
-                                      </span>
-                                    </span>
-                                    <span className="shrink-0 tabular-nums">
-                                      {formatINR(line.amount)}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
-                                Payments
-                              </h3>
-                              {(invoice.paymentEntries ?? []).length === 0 ? (
-                                <p className="mt-2 text-sm text-muted">
-                                  No payments recorded
+                          <div className="space-y-4">
+                            <ApprovalInvoiceLineTable
+                              title="Line items"
+                              items={invoice.lineItems}
+                            />
+
+                            {(invoice.returnItems?.length ?? 0) > 0 && (
+                              <ApprovalInvoiceLineTable
+                                title="Returns"
+                                items={invoice.returnItems!}
+                                isReturn
+                              />
+                            )}
+
+                            {invoice.notes ? (
+                              <div>
+                                <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
+                                  Notes
+                                </h3>
+                                <p className="mt-2 text-sm leading-relaxed text-foreground">
+                                  {invoice.notes}
                                 </p>
-                              ) : (
-                                <ul className="mt-2 space-y-1.5 text-sm">
-                                  {(invoice.paymentEntries ?? []).map((p) => (
-                                    <li
-                                      key={p.id}
-                                      className="flex justify-between gap-3"
-                                    >
-                                      <span className="capitalize">
-                                        {p.method}
-                                        {p.advanceId ? " (advance)" : ""}
-                                      </span>
-                                      <span className="tabular-nums">
-                                        {formatINR(p.amount)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
+                              </div>
+                            ) : null}
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
+                                  Payments
+                                </h3>
+                                {(invoice.paymentEntries ?? []).length === 0 ? (
+                                  <p className="mt-2 text-sm text-muted">
+                                    No payments recorded
+                                  </p>
+                                ) : (
+                                  <ul className="mt-2 space-y-1.5 text-sm">
+                                    {(invoice.paymentEntries ?? []).map((p) => (
+                                      <li
+                                        key={p.id}
+                                        className="flex justify-between gap-3"
+                                      >
+                                        <span className="min-w-0 capitalize">
+                                          {formatPaymentLabel(p)}
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                          {formatINR(p.amount)}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+
+                              <ApprovalInvoiceTotals
+                                invoice={invoice}
+                                previousBalance={previousBalance}
+                                closingBalance={closingBalance}
+                              />
                             </div>
                           </div>
 
@@ -571,12 +587,10 @@ export function ApprovalsClient({
                             >
                               Send back
                             </button>
-                            <a
-                              href={`/entities/salesmen/${salesmanId}?tab=invoices`}
-                              className="ml-auto text-sm text-muted underline underline-offset-2"
-                            >
-                              Open entity
-                            </a>
+                            <p className="ml-auto text-sm text-muted">
+                              Created by{" "}
+                              {invoice.createdByName ?? "Unknown"}
+                            </p>
                           </div>
                         </div>
                       )}
@@ -589,5 +603,157 @@ export function ApprovalsClient({
         </div>
       )}
     </main>
+  );
+}
+
+function formatPaymentLabel(payment: InvoicePaymentEntry): string {
+  const parts: string[] = [payment.method];
+  if (payment.advanceId) parts.push("(advance)");
+  if (payment.chequeNumber) parts.push(`#${payment.chequeNumber}`);
+  if (payment.senderName) parts.push(payment.senderName);
+  return parts.join(" · ");
+}
+
+function ApprovalInvoiceLineTable({
+  title,
+  items,
+  isReturn = false,
+}: {
+  title: string;
+  items: InvoiceLineItem[];
+  isReturn?: boolean;
+}) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
+        {title}
+      </h3>
+      <div className="mt-2 overflow-hidden rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-table-header text-left text-xs text-muted">
+              <th className="px-2.5 py-1.5 font-medium">Item</th>
+              <th className="w-14 px-2.5 py-1.5 font-medium text-right">Qty</th>
+              <th className="hidden w-16 px-2.5 py-1.5 font-medium text-right sm:table-cell">
+                Rate
+              </th>
+              <th className="w-20 px-2.5 py-1.5 font-medium text-right">
+                Amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((line) => (
+              <tr
+                key={line.id}
+                className="border-b border-border last:border-0"
+              >
+                <td className="max-w-0 px-2.5 py-2">
+                  <span className="block truncate" title={line.name}>
+                    {line.name}
+                  </span>
+                </td>
+                <td className="px-2.5 py-2 text-right font-medium tabular-nums">
+                  {line.qty}
+                </td>
+                <td className="hidden px-2.5 py-2 text-right tabular-nums sm:table-cell">
+                  {formatINR(line.unitPrice)}
+                </td>
+                <td
+                  className={`px-2.5 py-2 text-right tabular-nums ${
+                    isReturn ? "text-[#c45c26]" : ""
+                  }`}
+                >
+                  {isReturn ? "−" : ""}
+                  {formatINR(line.amount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalTotalRow({
+  label,
+  value,
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <div
+      className={`flex justify-between gap-4 ${
+        emphasize ? "font-medium" : ""
+      }`}
+    >
+      <span className={emphasize ? undefined : "text-muted"}>{label}</span>
+      <span
+        className={`tabular-nums ${emphasize ? "text-[#c45c26]" : ""}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ApprovalInvoiceTotals({
+  invoice,
+  previousBalance,
+  closingBalance,
+}: {
+  invoice: PendingInvoiceApproval["invoice"];
+  previousBalance: number;
+  closingBalance: number;
+}) {
+  const grossSubtotal = invoice.lineItems.reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
+  const returnsTotal =
+    invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
+  const discountAmount = invoice.discountAmount ?? 0;
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
+        Summary
+      </h3>
+      <div className="mt-2 space-y-1.5 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 text-sm">
+        <ApprovalTotalRow label="Subtotal" value={formatINR(grossSubtotal)} />
+        {returnsTotal > 0 && (
+          <ApprovalTotalRow
+            label="Returns"
+            value={`−${formatINR(returnsTotal)}`}
+          />
+        )}
+        {discountAmount > 0 && (
+          <ApprovalTotalRow
+            label="Discount"
+            value={`−${formatINR(discountAmount)}`}
+          />
+        )}
+        <ApprovalTotalRow
+          label="Invoice total"
+          value={formatINR(invoice.totalAmount)}
+        />
+        <ApprovalTotalRow
+          label="Prev. balance"
+          value={formatINR(previousBalance)}
+        />
+        <ApprovalTotalRow label="Paid" value={formatINR(invoice.amountPaid)} />
+        <div className="border-t border-border pt-1.5">
+          <ApprovalTotalRow
+            label="Closing"
+            value={formatINR(closingBalance)}
+            emphasize={closingBalance > 0}
+          />
+        </div>
+      </div>
+    </div>
   );
 }

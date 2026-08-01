@@ -66,7 +66,7 @@ export default async function DashboardPage() {
             </div>
 
             <div className="space-y-3 md:hidden">
-              {pendingInvoices.map(({ invoice, salesmanName }) => (
+              {pendingInvoices.map(({ invoice, salesmanName, chargedTotal }) => (
                 <div
                   key={invoice.id}
                   className="rounded-xl border border-border bg-surface p-4"
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
                   <p className="font-medium">{invoice.number}</p>
                   <p className="mt-1 text-xs text-muted">{salesmanName}</p>
                   <p className="mt-2 text-sm text-muted">
-                    {formatINR(invoice.totalAmount)} · Paid{" "}
+                    {formatINR(chargedTotal)} · Paid{" "}
                     {formatINR(invoice.amountPaid)}
                   </p>
                   <p className="mt-1 text-xs text-muted">
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingInvoices.map(({ invoice, salesmanName }) => (
+                  {pendingInvoices.map(({ invoice, salesmanName, chargedTotal }) => (
                     <tr
                       key={invoice.id}
                       className="border-b border-border last:border-0"
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
                       </td>
                       <td className="px-5 py-3 text-muted">{salesmanName}</td>
                       <td className="px-5 py-3 text-muted tabular-nums">
-                        {formatINR(invoice.totalAmount)}
+                        {formatINR(chargedTotal)}
                       </td>
                       <td className="px-5 py-3 text-muted">
                         @{invoice.createdByName ?? "Unknown"}

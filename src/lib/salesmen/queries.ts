@@ -279,7 +279,38 @@ export type PendingInvoiceApproval = {
   invoice: Invoice;
   salesmanName: string;
   salesmanId: string;
+  /** Prior balance before this invoice (opening + earlier invoices). */
+  previousBalance: number;
+  /** previousBalance + invoice.totalAmount — amount charged on the account. */
+  chargedTotal: number;
 };
+
+function computeInvoiceChargedTotals(
+  openingBalance: number,
+  invoices: Invoice[],
+): Map<string, { previousBalance: number; chargedTotal: number }> {
+  const sorted = [...invoices].sort((a, b) => {
+    const byDate =
+      new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime();
+    if (byDate !== 0) return byDate;
+    return a.number.localeCompare(b.number);
+  });
+  const result = new Map<
+    string,
+    { previousBalance: number; chargedTotal: number }
+  >();
+  let running = openingBalance;
+  for (const inv of sorted) {
+    const previous = Math.max(0, Math.round(running * 100) / 100);
+    const charged = Math.round((previous + inv.totalAmount) * 100) / 100;
+    result.set(inv.id, { previousBalance: previous, chargedTotal: charged });
+    running = Math.max(
+      0,
+      Math.round((previous + inv.totalAmount - inv.amountPaid) * 100) / 100,
+    );
+  }
+  return result;
+}
 
 /** Invoices awaiting admin verification */
 export async function listPendingInvoiceApprovals(
@@ -296,21 +327,56 @@ export async function listPendingInvoiceApprovals(
 
   const invoices = await attachInvoiceChildren(supabase, rows);
   const salesmanIds = [...new Set(invoices.map((i) => i.salesmanId))];
-  const { data: salesmenRows, error: salesmenError } = await supabase
-    .from("salesmen")
-    .select("id, name")
-    .in("id", salesmanIds);
+  const [{ data: salesmenRows, error: salesmenError }, ...allInvoiceSets] =
+    await Promise.all([
+      supabase
+        .from("salesmen")
+        .select("id, name, opening_balance")
+        .in("id", salesmanIds),
+      ...salesmanIds.map((id) => listInvoicesForSalesman(supabase, id)),
+    ]);
   if (salesmenError) throw salesmenError;
 
-  const nameById = new Map(
-    (salesmenRows ?? []).map((s) => [s.id as string, s.name as string]),
+  const salesmanById = new Map(
+    (salesmenRows ?? []).map((s) => [
+      s.id as string,
+      {
+        name: s.name as string,
+        openingBalance: Number(s.opening_balance ?? 0),
+      },
+    ]),
   );
 
-  return invoices.map((invoice) => ({
-    invoice,
-    salesmanId: invoice.salesmanId,
-    salesmanName: nameById.get(invoice.salesmanId) ?? "Unknown",
-  }));
+  const chargedBySalesman = new Map<
+    string,
+    Map<string, { previousBalance: number; chargedTotal: number }>
+  >();
+  salesmanIds.forEach((id, index) => {
+    const salesman = salesmanById.get(id);
+    chargedBySalesman.set(
+      id,
+      computeInvoiceChargedTotals(
+        salesman?.openingBalance ?? 0,
+        allInvoiceSets[index] ?? [],
+      ),
+    );
+  });
+
+  return invoices.map((invoice) => {
+    const salesman = salesmanById.get(invoice.salesmanId);
+    const charged =
+      chargedBySalesman.get(invoice.salesmanId)?.get(invoice.id) ?? {
+        previousBalance: 0,
+        chargedTotal: invoice.totalAmount,
+      };
+    return {
+      invoice,
+      salesmanId: invoice.salesmanId,
+      salesmanName: salesman?.name ?? "Unknown",
+      previousBalance: charged.previousBalance,
+      chargedTotal: charged.chargedTotal,
+    };
+  });
 }
 
 /** Recompute salesman pending balance + last invoice timestamp from opening + invoices − advances − returns */

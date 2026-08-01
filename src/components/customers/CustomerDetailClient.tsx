@@ -553,7 +553,7 @@ export function CustomerDetailClient({
             <TabButton
               active={tab === "pending"}
               onClick={() => setTab("pending")}
-              label={`Missing / Patches (${openPendingCount})`}
+              label={`Dyeing Requests (${openPendingCount})`}
             />
             <TabButton
               active={tab === "details"}
