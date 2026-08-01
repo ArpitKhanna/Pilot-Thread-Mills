@@ -347,9 +347,7 @@ export function CustomerDetailClient({
   async function submitDirectInvoice(payload: {
     lineItems: InvoiceLineItem[];
     discountAmount: number;
-    paymentEntries: InvoicePaymentEntry[];
     totalAmount: number;
-    amountPaid: number;
     number: string;
     issuedAt: string;
   }): Promise<Invoice> {
@@ -364,9 +362,9 @@ export function CustomerDetailClient({
           issuedAt: payload.issuedAt,
           lineItems: payload.lineItems,
           discountAmount: payload.discountAmount,
-          paymentEntries: payload.paymentEntries,
+          paymentEntries: [],
           totalAmount: payload.totalAmount,
-          amountPaid: payload.amountPaid,
+          amountPaid: 0,
         }),
       });
       const json = (await res.json()) as { invoice?: Invoice; error?: string };
@@ -748,7 +746,6 @@ export function CustomerDetailClient({
         }}
         customer={customer}
         priceList={priceList}
-        bankAccounts={bankAccounts}
         busy={directInvoiceBusy}
         error={directInvoiceError}
         onSubmit={submitDirectInvoice}
