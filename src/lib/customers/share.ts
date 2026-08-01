@@ -1,27 +1,41 @@
+import { decode as decodePlusCode, encode as encodePlusCode } from "open-location-code";
 import type { Salesman } from "@/lib/salesmen/types";
 
+const PLUS_CODE_PATTERN =
+  /[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}/i;
+
 export function formatCustomerAddressLines(customer: {
-  addressBuilding: string;
   addressArea: string;
-  addressCity: string;
-  addressState: string;
-  addressPincode: string;
 }): string[] {
-  const lines: string[] = [];
-  const building = customer.addressBuilding.trim();
   const area = customer.addressArea.trim();
-  if (building || area) {
-    lines.push([building, area].filter(Boolean).join(", "));
+  return area ? [area] : [];
+}
+
+/** Full-length plus code for display (e.g. 7JVW52HG+2Q). */
+export function formatPlusCode(lat: number, lng: number): string {
+  return encodePlusCode(lat, lng);
+}
+
+function extractPlusCode(text: string): string | null {
+  const match = text.match(PLUS_CODE_PATTERN);
+  return match ? match[0].toUpperCase() : null;
+}
+
+function parsePlusCodeInput(text: string): { lat: number; lng: number } | null {
+  const code = extractPlusCode(text);
+  if (!code) return null;
+  try {
+    const decoded = decodePlusCode(code);
+    if (
+      !Number.isFinite(decoded.latitudeCenter) ||
+      !Number.isFinite(decoded.longitudeCenter)
+    ) {
+      return null;
+    }
+    return { lat: decoded.latitudeCenter, lng: decoded.longitudeCenter };
+  } catch {
+    return null;
   }
-  const cityLine = [
-    customer.addressCity.trim(),
-    customer.addressState.trim(),
-    customer.addressPincode.trim(),
-  ]
-    .filter(Boolean)
-    .join(", ");
-  if (cityLine) lines.push(cityLine);
-  return lines;
 }
 
 export function buildGoogleMapsUrl(opts: {
@@ -42,13 +56,16 @@ export function buildGoogleMapsUrl(opts: {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-/** Parse "lat,lng" or common Google Maps URL forms into coordinates. */
+/** Parse plus code, "lat,lng", or common Google Maps URL forms into coordinates. */
 export function parseMapPinInput(raw: string): {
   lat: number;
   lng: number;
 } | null {
   const text = raw.trim();
   if (!text) return null;
+
+  const fromPlusCode = parsePlusCodeInput(text);
+  if (fromPlusCode) return fromPlusCode;
 
   const pair = text.match(
     /^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/,
@@ -128,23 +145,27 @@ export function buildCustomerWhatsAppShareUrl(
     | "contactName"
     | "phone"
     | "alternatePhone"
-    | "addressBuilding"
     | "addressArea"
-    | "addressCity"
-    | "addressState"
-    | "addressPincode"
     | "mapLat"
     | "mapLng"
   >,
   opts?: { toPhone?: string },
 ): string {
   const addressLines = formatCustomerAddressLines(customer);
-  const pinUrl =
+  const hasPin =
     customer.mapLat != null &&
     customer.mapLng != null &&
     Number.isFinite(customer.mapLat) &&
-    Number.isFinite(customer.mapLng)
-      ? `https://www.google.com/maps?q=${customer.mapLat},${customer.mapLng}`
+    Number.isFinite(customer.mapLng);
+  const pinUrl = hasPin
+    ? buildGoogleMapsUrl({
+        lat: customer.mapLat,
+        lng: customer.mapLng,
+      })
+    : null;
+  const plusCode =
+    hasPin && customer.mapLat != null && customer.mapLng != null
+      ? formatPlusCode(customer.mapLat, customer.mapLng)
       : null;
 
   const lines = [
@@ -155,12 +176,15 @@ export function buildCustomerWhatsAppShareUrl(
   ];
 
   if (addressLines.length > 0) {
-    lines.push(`Address: ${addressLines.join(", ")}`);
+    lines.push(`Area: ${addressLines.join(", ")}`);
   } else {
-    lines.push("Address: —");
+    lines.push("Area: —");
   }
 
-  lines.push(`Google Pin: ${pinUrl ?? "—"}`);
+  lines.push(`Location: ${pinUrl ?? "—"}`);
+  if (plusCode) {
+    lines.push(`Plus code: ${plusCode}`);
+  }
 
   const text = lines.join("\n");
   const target = (opts?.toPhone ?? "").replace(/\D/g, "");

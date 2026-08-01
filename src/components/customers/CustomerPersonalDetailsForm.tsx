@@ -7,6 +7,7 @@ import {
   buildCustomerWhatsAppShareUrl,
   buildGoogleMapsUrl,
   formatCustomerAddressLines,
+  formatPlusCode,
   parseMapPinInput,
 } from "@/lib/customers/share";
 import type { CustomerTierInsight } from "@/lib/customers/tier";
@@ -71,6 +72,13 @@ function rulesToDraft(rules: CustomerPriceRule[]): DraftPriceRule[] {
   }));
 }
 
+function locationInputFromCustomer(customer: Salesman): string {
+  if (customer.mapLat != null && customer.mapLng != null) {
+    return formatPlusCode(customer.mapLat, customer.mapLng);
+  }
+  return "";
+}
+
 function syncFromCustomer(customer: Salesman) {
   return {
     name: customer.name,
@@ -79,14 +87,8 @@ function syncFromCustomer(customer: Salesman) {
     alternatePhone: customer.alternatePhone,
     isActive: customer.isActive,
     marketDay: customer.marketDay,
-    addressBuilding: customer.addressBuilding,
     addressArea: customer.addressArea || customer.area,
-    addressCity: customer.addressCity,
-    addressState: customer.addressState,
-    addressPincode: customer.addressPincode,
-    mapLat: customer.mapLat != null ? String(customer.mapLat) : "",
-    mapLng: customer.mapLng != null ? String(customer.mapLng) : "",
-    pinPaste: "",
+    locationInput: locationInputFromCustomer(customer),
     balanceThreshold:
       customer.balanceThreshold != null
         ? String(customer.balanceThreshold)
@@ -118,24 +120,12 @@ export function CustomerPersonalDetailsForm({
   const [marketDay, setMarketDay] = useState<MarketDay | "">(
     customer.marketDay,
   );
-  const [addressBuilding, setAddressBuilding] = useState(
-    customer.addressBuilding,
-  );
   const [addressArea, setAddressArea] = useState(
     customer.addressArea || customer.area,
   );
-  const [addressCity, setAddressCity] = useState(customer.addressCity);
-  const [addressState, setAddressState] = useState(customer.addressState);
-  const [addressPincode, setAddressPincode] = useState(
-    customer.addressPincode,
+  const [locationInput, setLocationInput] = useState(() =>
+    locationInputFromCustomer(customer),
   );
-  const [mapLat, setMapLat] = useState(
-    customer.mapLat != null ? String(customer.mapLat) : "",
-  );
-  const [mapLng, setMapLng] = useState(
-    customer.mapLng != null ? String(customer.mapLng) : "",
-  );
-  const [pinPaste, setPinPaste] = useState("");
   const [balanceThreshold, setBalanceThreshold] = useState(
     customer.balanceThreshold != null
       ? String(customer.balanceThreshold)
@@ -149,28 +139,24 @@ export function CustomerPersonalDetailsForm({
   const [savedFlash, setSavedFlash] = useState(false);
 
   const displayMapsUrl = useMemo(() => {
-    const lat = mapLat.trim() === "" ? null : Number(mapLat);
-    const lng = mapLng.trim() === "" ? null : Number(mapLng);
+    const parsed = parseMapPinInput(locationInput);
+    const lat = parsed?.lat ?? customer.mapLat;
+    const lng = parsed?.lng ?? customer.mapLng;
     return buildGoogleMapsUrl({
-      lat: Number.isFinite(lat as number) ? (lat as number) : null,
-      lng: Number.isFinite(lng as number) ? (lng as number) : null,
-      addressLines: formatCustomerAddressLines({
-        addressBuilding,
-        addressArea,
-        addressCity,
-        addressState,
-        addressPincode,
-      }),
+      lat,
+      lng,
+      addressLines: formatCustomerAddressLines({ addressArea }),
     });
-  }, [
-    mapLat,
-    mapLng,
-    addressBuilding,
-    addressArea,
-    addressCity,
-    addressState,
-    addressPincode,
-  ]);
+  }, [locationInput, customer.mapLat, customer.mapLng, addressArea]);
+
+  const displayPlusCode = useMemo(() => {
+    const parsed = parseMapPinInput(locationInput);
+    if (parsed) return formatPlusCode(parsed.lat, parsed.lng);
+    if (customer.mapLat != null && customer.mapLng != null) {
+      return formatPlusCode(customer.mapLat, customer.mapLng);
+    }
+    return null;
+  }, [locationInput, customer.mapLat, customer.mapLng]);
 
   useEffect(() => {
     if (editing) return;
@@ -181,14 +167,8 @@ export function CustomerPersonalDetailsForm({
     setAlternatePhone(next.alternatePhone);
     setIsActive(next.isActive);
     setMarketDay(next.marketDay);
-    setAddressBuilding(next.addressBuilding);
     setAddressArea(next.addressArea);
-    setAddressCity(next.addressCity);
-    setAddressState(next.addressState);
-    setAddressPincode(next.addressPincode);
-    setMapLat(next.mapLat);
-    setMapLng(next.mapLng);
-    setPinPaste("");
+    setLocationInput(next.locationInput);
     setBalanceThreshold(next.balanceThreshold);
     setPriceRules(next.priceRules);
   }, [customer, editing]);
@@ -200,14 +180,8 @@ export function CustomerPersonalDetailsForm({
     setAlternatePhone(next.alternatePhone);
     setIsActive(next.isActive);
     setMarketDay(next.marketDay);
-    setAddressBuilding(next.addressBuilding);
     setAddressArea(next.addressArea);
-    setAddressCity(next.addressCity);
-    setAddressState(next.addressState);
-    setAddressPincode(next.addressPincode);
-    setMapLat(next.mapLat);
-    setMapLng(next.mapLng);
-    setPinPaste("");
+    setLocationInput(next.locationInput);
     setBalanceThreshold(next.balanceThreshold);
     setPriceRules(next.priceRules);
   }
@@ -224,22 +198,8 @@ export function CustomerPersonalDetailsForm({
     setEditing(false);
   }
 
-  function applyPinPaste() {
-    const parsed = parseMapPinInput(pinPaste);
-    if (!parsed) {
-      setError("Could not read coordinates. Paste lat,lng or a Google Maps URL.");
-      return;
-    }
-    setMapLat(String(parsed.lat));
-    setMapLng(String(parsed.lng));
-    setPinPaste("");
-    setError(null);
-  }
-
-  function clearPin() {
-    setMapLat("");
-    setMapLng("");
-    setPinPaste("");
+  function clearLocation() {
+    setLocationInput("");
   }
 
   function updateRule(key: string, patch: Partial<DraftPriceRule>) {
@@ -260,20 +220,17 @@ export function CustomerPersonalDetailsForm({
   }
 
   function handleShareWhatsApp() {
-    const lat = mapLat.trim() === "" ? null : Number(mapLat);
-    const lng = mapLng.trim() === "" ? null : Number(mapLng);
+    const parsed = parseMapPinInput(locationInput);
+    const mapLat = parsed?.lat ?? customer.mapLat;
+    const mapLng = parsed?.lng ?? customer.mapLng;
     const url = buildCustomerWhatsAppShareUrl({
       name,
       contactName,
       phone,
       alternatePhone,
-      addressBuilding,
       addressArea,
-      addressCity,
-      addressState,
-      addressPincode,
-      mapLat: Number.isFinite(lat as number) ? (lat as number) : null,
-      mapLng: Number.isFinite(lng as number) ? (lng as number) : null,
+      mapLat,
+      mapLng,
     });
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -302,13 +259,16 @@ export function CustomerPersonalDetailsForm({
 
     let parsedLat: number | null = null;
     let parsedLng: number | null = null;
-    if (mapLat.trim() !== "" || mapLng.trim() !== "") {
-      parsedLat = Number(mapLat);
-      parsedLng = Number(mapLng);
-      if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
-        setError("Map pin needs both latitude and longitude.");
+    if (locationInput.trim() !== "") {
+      const parsed = parseMapPinInput(locationInput);
+      if (!parsed) {
+        setError(
+          "Could not read location. Paste a plus code, lat,lng, or Google Maps link.",
+        );
         return;
       }
+      parsedLat = parsed.lat;
+      parsedLng = parsed.lng;
     }
 
     const parsedPriceRules: CustomerPriceRule[] = [];
@@ -352,11 +312,7 @@ export function CustomerPersonalDetailsForm({
           alternatePhone: alternatePhone.trim(),
           isActive,
           marketDay,
-          addressBuilding: addressBuilding.trim(),
           addressArea: addressArea.trim(),
-          addressCity: addressCity.trim(),
-          addressState: addressState.trim(),
-          addressPincode: addressPincode.trim(),
           mapLat: parsedLat,
           mapLng: parsedLng,
           balanceThreshold: threshold,
@@ -514,7 +470,7 @@ export function CustomerPersonalDetailsForm({
           <div>
             <h3 className="text-sm font-medium">Address</h3>
             <p className="mt-1 text-sm text-muted">
-              Typed address and optional Google Maps pin
+              Area name and a Google Maps location
             </p>
           </div>
           {displayMapsUrl ? (
@@ -529,123 +485,48 @@ export function CustomerPersonalDetailsForm({
           ) : null}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Building number
-            </label>
-            <input
-              type="text"
-              value={addressBuilding}
-              disabled={!editing}
-              onChange={(e) => setAddressBuilding(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="mb-1.5 block text-sm font-medium">Area</label>
             <input
               type="text"
               value={addressArea}
               disabled={!editing}
               onChange={(e) => setAddressArea(e.target.value)}
+              placeholder={editing ? "e.g. Ring Road, Udhna" : "—"}
               className={inputClass}
             />
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">City</label>
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-sm font-medium">
+              Plus code or Maps link
+            </label>
             <input
               type="text"
-              value={addressCity}
+              value={
+                editing ? locationInput : displayPlusCode ?? ""
+              }
               disabled={!editing}
-              onChange={(e) => setAddressCity(e.target.value)}
+              onChange={(e) => setLocationInput(e.target.value)}
+              placeholder={editing ? "7JVW52HG+2Q or paste a Google Maps link" : "—"}
               className={inputClass}
             />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">State</label>
-            <input
-              type="text"
-              value={addressState}
-              disabled={!editing}
-              onChange={(e) => setAddressState(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Pincode</label>
-            <input
-              type="text"
-              value={addressPincode}
-              disabled={!editing}
-              onChange={(e) => setAddressPincode(e.target.value)}
-              className={`${inputClass} tabular-nums`}
-            />
+            {editing ? (
+              <p className="mt-1.5 text-xs text-muted">
+                Copy from Google Maps: tap the pin → share or copy plus code /
+                link
+              </p>
+            ) : null}
           </div>
         </div>
-
-        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
-          <p className="text-sm font-medium">Map pin</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted">
-                Latitude
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={mapLat}
-                disabled={!editing}
-                onChange={(e) => setMapLat(e.target.value)}
-                placeholder="e.g. 21.1702"
-                className={`${inputClass} tabular-nums`}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted">
-                Longitude
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={mapLng}
-                disabled={!editing}
-                onChange={(e) => setMapLng(e.target.value)}
-                placeholder="e.g. 72.8311"
-                className={`${inputClass} tabular-nums`}
-              />
-            </div>
-          </div>
-          {editing && (
-            <div className="space-y-2">
-              <label className="mb-1.5 block text-xs font-medium text-muted">
-                Paste lat,lng or Google Maps URL
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="text"
-                  value={pinPaste}
-                  onChange={(e) => setPinPaste(e.target.value)}
-                  placeholder="21.17, 72.83 or maps.google.com/…"
-                  className={inputClass}
-                />
-                <button
-                  type="button"
-                  onClick={applyPinPaste}
-                  className="shrink-0 rounded-lg border border-border px-3.5 py-2.5 text-sm font-medium hover:bg-sidebar"
-                >
-                  Apply pin
-                </button>
-                <button
-                  type="button"
-                  onClick={clearPin}
-                  className="shrink-0 rounded-lg border border-border px-3.5 py-2.5 text-sm text-muted hover:bg-sidebar hover:text-foreground"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {editing && locationInput.trim() !== "" && (
+          <button
+            type="button"
+            onClick={clearLocation}
+            className="text-sm text-muted hover:text-foreground"
+          >
+            Clear location
+          </button>
+        )}
       </section>
 
       <section className="space-y-4">
