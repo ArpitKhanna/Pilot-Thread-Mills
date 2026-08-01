@@ -8,6 +8,7 @@ import type { PendingAdvanceApproval } from "@/lib/salesmen/advances";
 import type { PendingReturnApproval } from "@/lib/salesmen/returns";
 import type { PendingInvoiceApproval } from "@/lib/salesmen/queries";
 import type { InvoiceLineItem, InvoicePaymentEntry } from "@/lib/salesmen/types";
+import { formatVerificationAttribution } from "@/lib/salesmen/verification";
 
 type ApprovalsClientProps = {
   context: AppContext;
