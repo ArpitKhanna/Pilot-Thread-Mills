@@ -3,7 +3,7 @@ import {
   consumeAdvanceRemainingFromPayments,
 } from "@/lib/salesmen/advances";
 import {
-  consumeReturnRemainingFromInvoiceLines,
+  prepareInvoiceReturnItems,
 } from "@/lib/salesmen/returns";
 import {
   lineInserts,
@@ -92,17 +92,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const preparedReturns = await prepareInvoiceReturnItems(
+    supabase,
+    payload.salesmanId,
+    payload.returnItems,
+    verification,
+    issuedAt,
+    number,
+  );
+  if (preparedReturns.error) {
+    await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
+    return NextResponse.json({ error: preparedReturns.error }, { status: 400 });
+  }
+  payload.returnItems =
+    preparedReturns.items.length > 0 ? preparedReturns.items : undefined;
+
   const lines = lineInserts(invoiceRow.id, payload);
   if (lines.length > 0) {
-    const consumeReturns = await consumeReturnRemainingFromInvoiceLines(
-      supabase,
-      payload.returnItems ?? [],
-    );
-    if (consumeReturns.error) {
-      await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
-      return NextResponse.json({ error: consumeReturns.error }, { status: 400 });
-    }
-
     const { error: linesError } = await supabase
       .from("salesmen_invoice_lines")
       .insert(lines);

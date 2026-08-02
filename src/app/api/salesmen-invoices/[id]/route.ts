@@ -4,7 +4,7 @@ import {
   restoreAdvanceRemainingFromPayments,
 } from "@/lib/salesmen/advances";
 import {
-  consumeReturnRemainingFromInvoiceLines,
+  prepareInvoiceReturnItems,
   restoreReturnRemainingFromInvoiceLines,
 } from "@/lib/salesmen/returns";
 import {
@@ -238,16 +238,22 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  const preparedReturns = await prepareInvoiceReturnItems(
+    supabase,
+    payload.salesmanId,
+    payload.returnItems,
+    verification,
+    existing.issuedAt,
+    existing.number,
+  );
+  if (preparedReturns.error) {
+    return NextResponse.json({ error: preparedReturns.error }, { status: 400 });
+  }
+  payload.returnItems =
+    preparedReturns.items.length > 0 ? preparedReturns.items : undefined;
+
   const lines = lineInserts(id, { ...payload, salesmanId });
   if (lines.length > 0) {
-    const consumeReturns = await consumeReturnRemainingFromInvoiceLines(
-      supabase,
-      payload.returnItems ?? [],
-    );
-    if (consumeReturns.error) {
-      return NextResponse.json({ error: consumeReturns.error }, { status: 400 });
-    }
-
     const { error: linesError } = await supabase
       .from("salesmen_invoice_lines")
       .insert(lines);

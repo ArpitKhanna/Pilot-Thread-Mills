@@ -40,6 +40,13 @@ export const CUSTOMER_TIER_LABELS: Record<CustomerTier, string> = {
   D: "Tier D",
 };
 
+/** Returns recorded directly on an invoice — never sat in the credit pool. */
+export const INVOICE_BORN_RETURN_NOTE_PREFIX = "Applied on INV-";
+
+export function isInvoiceBornReturn(notes: string | null | undefined): boolean {
+  return Boolean(notes?.startsWith(INVOICE_BORN_RETURN_NOTE_PREFIX));
+}
+
 export type TierRubricScore = 1 | 2 | 3 | 4 | 5;
 
 export type CustomerTierRubric = {

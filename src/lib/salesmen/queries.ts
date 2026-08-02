@@ -8,6 +8,7 @@ import {
   type DbSalesmanRow,
 } from "./mappers";
 import type { Invoice, InvoiceSummary, Salesman } from "./types";
+import { isInvoiceBornReturn } from "./types";
 
 export async function listSalesmen(
   supabase: SupabaseClient,
@@ -392,7 +393,7 @@ export async function refreshSalesmanTotals(
       .maybeSingle(),
     supabase
       .from("salesmen_invoices")
-      .select("total_amount, amount_paid, issued_at")
+      .select("id, total_amount, amount_paid, issued_at")
       .eq("salesman_id", salesmanId)
       .eq("verification_status", "verified"),
     supabase
@@ -415,6 +416,7 @@ export async function refreshSalesmanTotals(
 
   const opening = Number(salesman?.opening_balance ?? 0);
   const rows = data ?? [];
+  const invoiceIds = rows.map((row) => row.id as string);
   let invoiceNet = 0;
   let lastInvoiceAt: string | null = null;
 
@@ -438,9 +440,40 @@ export async function refreshSalesmanTotals(
     credit += Number(row.remaining_amount);
   }
 
+  // Invoice totals are stored net of on-invoice returns. When a stand-alone
+  // return credit is applied on an invoice, remaining drops to 0 but the net
+  // total already reflects the return — subtract applied amounts to avoid
+  // double-counting (invoice-born returns never entered the credit pool).
+  let consumedReturnCreditsOnInvoices = 0;
+  if (invoiceIds.length > 0) {
+    const { data: appliedLines, error: appliedError } = await supabase
+      .from("salesmen_invoice_lines")
+      .select("amount, salesmen_returns(notes)")
+      .in("invoice_id", invoiceIds)
+      .eq("is_return", true)
+      .not("stand_alone_return_id", "is", null);
+    if (appliedError) throw appliedError;
+
+    for (const line of appliedLines ?? []) {
+      const linked = line.salesmen_returns as
+        | { notes?: string | null }
+        | { notes?: string | null }[]
+        | null;
+      const notes = Array.isArray(linked) ? linked[0]?.notes : linked?.notes;
+      if (isInvoiceBornReturn(notes)) continue;
+      consumedReturnCreditsOnInvoices += Number(line.amount);
+    }
+  }
+
   const pending = Math.max(
     0,
-    Math.round((opening + invoiceNet - credit) * 100) / 100,
+    Math.round(
+      (opening +
+        invoiceNet -
+        credit -
+        consumedReturnCreditsOnInvoices) *
+        100,
+    ) / 100,
   );
 
   const { error: updateError } = await supabase

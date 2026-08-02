@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/auth/types";
 import { consumeAdvanceRemainingFromPayments } from "@/lib/salesmen/advances";
-import { consumeReturnRemainingFromInvoiceLines } from "@/lib/salesmen/returns";
+import { prepareInvoiceReturnItems } from "@/lib/salesmen/returns";
 import {
   lineInserts,
   paymentInserts,
@@ -58,17 +58,23 @@ export async function createDirectCustomerInvoice(
     throw new Error(insertError?.message ?? "Failed to create invoice");
   }
 
+  const preparedReturns = await prepareInvoiceReturnItems(
+    supabase,
+    customerId,
+    payload.returnItems,
+    verification,
+    issuedAt,
+    number,
+  );
+  if (preparedReturns.error) {
+    await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
+    throw new Error(preparedReturns.error);
+  }
+  payload.returnItems =
+    preparedReturns.items.length > 0 ? preparedReturns.items : undefined;
+
   const lines = lineInserts(invoiceRow.id, payload);
   if (lines.length > 0) {
-    const consumeReturns = await consumeReturnRemainingFromInvoiceLines(
-      supabase,
-      payload.returnItems ?? [],
-    );
-    if (consumeReturns.error) {
-      await supabase.from("salesmen_invoices").delete().eq("id", invoiceRow.id);
-      throw new Error(consumeReturns.error);
-    }
-
     const { error: linesError } = await supabase
       .from("salesmen_invoice_lines")
       .insert(lines);

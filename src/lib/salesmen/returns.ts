@@ -6,16 +6,21 @@ import {
 } from "./mappers";
 import { parseBusinessReceivedAt } from "./record-window";
 import { canMutateWithinWindow } from "./record-window";
-import type { InvoiceLineItem, SalesmanReturn } from "./types";
+import type { InvoiceLineItem, InvoiceVerificationStatus, SalesmanReturn } from "./types";
+import { INVOICE_BORN_RETURN_NOTE_PREFIX } from "./types";
 import { refreshSalesmanTotals } from "./queries";
 import type { VerificationInsert } from "./verification";
 
 export { buildAutoAppliedReturnItems } from "./return-apply";
 
+export { INVOICE_BORN_RETURN_NOTE_PREFIX, isInvoiceBornReturn } from "./types";
+
 export async function listReturnsForSalesman(
   supabase: SupabaseClient,
   salesmanId: string,
 ): Promise<SalesmanReturn[]> {
+  await backfillOrphanInvoiceReturnLines(supabase, salesmanId);
+
   const { data, error } = await supabase
     .from("salesmen_returns")
     .select("*")
@@ -235,6 +240,217 @@ export async function createReturn(
     data as DbReturnRow,
     (insertedLines ?? []) as DbReturnLineRow[],
   );
+}
+
+/** Return created and fully applied on an invoice in the same save. */
+async function createReturnAppliedOnInvoice(
+  supabase: SupabaseClient,
+  salesmanId: string,
+  lineItems: InvoiceLineItem[],
+  verification: VerificationInsert,
+  receivedAt: string,
+  invoiceNumber: string,
+): Promise<SalesmanReturn> {
+  const totalAmount =
+    Math.round(lineItems.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+
+  const { data, error } = await supabase
+    .from("salesmen_returns")
+    .insert({
+      salesman_id: salesmanId,
+      total_amount: totalAmount,
+      remaining_amount: 0,
+      notes: `${INVOICE_BORN_RETURN_NOTE_PREFIX}${invoiceNumber.replace(/^INV-/, "")}`,
+      received_at: receivedAt,
+      status: "active",
+      verification_status: verification.verification_status,
+      created_by: verification.created_by,
+      created_by_name: verification.created_by_name,
+      verified_by: verification.verified_by,
+      verified_by_name: verification.verified_by_name,
+      verified_at: verification.verified_at,
+      verification_note: verification.verification_note,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to create return");
+  }
+
+  const returnId = data.id as string;
+  const lines = lineItems.map((line, index) => ({
+    return_id: returnId,
+    name: line.name,
+    qty: line.qty,
+    unit_price: line.unitPrice,
+    amount: line.amount,
+    price_list_item_id: line.priceListItemId ?? null,
+    sort_order: index,
+  }));
+
+  const { data: insertedLines, error: linesError } = await supabase
+    .from("salesmen_return_lines")
+    .insert(lines)
+    .select("*");
+  if (linesError) {
+    await supabase.from("salesmen_returns").delete().eq("id", returnId);
+    throw new Error(linesError.message);
+  }
+
+  return mapReturnRow(
+    data as DbReturnRow,
+    (insertedLines ?? []) as DbReturnLineRow[],
+  );
+}
+
+/**
+ * Invoice return lines added directly on the invoice (not from Returns tab)
+ * are recorded in the returns ledger and linked back to the invoice line.
+ */
+export async function prepareInvoiceReturnItems(
+  supabase: SupabaseClient,
+  salesmanId: string,
+  returnItems: InvoiceLineItem[] | undefined,
+  verification: VerificationInsert,
+  receivedAt: string,
+  invoiceNumber: string,
+): Promise<{ items: InvoiceLineItem[]; error?: string }> {
+  const items = returnItems ?? [];
+  if (items.length === 0) return { items: [] };
+
+  const linked = items.filter((line) => line.standAloneReturnId);
+  const manual = items.filter(
+    (line) => !line.standAloneReturnId && line.amount > 0,
+  );
+
+  const consume = await consumeReturnRemainingFromInvoiceLines(supabase, linked);
+  if (consume.error) return { items, error: consume.error };
+
+  if (manual.length === 0) {
+    return { items: linked };
+  }
+
+  try {
+    const created = await createReturnAppliedOnInvoice(
+      supabase,
+      salesmanId,
+      manual,
+      verification,
+      receivedAt,
+      invoiceNumber,
+    );
+    const materialized = manual.map((line) => ({
+      ...line,
+      standAloneReturnId: created.id,
+    }));
+    return { items: [...linked, ...materialized] };
+  } catch (err) {
+    return {
+      items,
+      error: err instanceof Error ? err.message : "Failed to record return",
+    };
+  }
+}
+
+/** Link historical invoice-only return lines into the returns ledger. */
+async function backfillOrphanInvoiceReturnLines(
+  supabase: SupabaseClient,
+  salesmanId: string,
+): Promise<void> {
+  const { data: rows, error } = await supabase
+    .from("salesmen_invoice_lines")
+    .select(
+      "id, invoice_id, name, qty, unit_price, amount, price_list_item_id, salesmen_invoices!inner(number, issued_at, verification_status, created_by, created_by_name, verified_by, verified_by_name, verified_at, verification_note, salesman_id)",
+    )
+    .eq("is_return", true)
+    .is("stand_alone_return_id", null)
+    .eq("salesmen_invoices.salesman_id", salesmanId);
+  if (error || !rows?.length) return;
+
+  type InvoiceMeta = {
+    number: string;
+    issued_at: string;
+    verification_status: string | null;
+    created_by: string | null;
+    created_by_name: string | null;
+    verified_by: string | null;
+    verified_by_name: string | null;
+    verified_at: string | null;
+    verification_note: string | null;
+    salesman_id: string;
+  };
+
+  type OrphanRow = {
+    id: string;
+    invoice_id: string;
+    name: string;
+    qty: number | string;
+    unit_price: number | string;
+    amount: number | string;
+    price_list_item_id: string | null;
+    salesmen_invoices: InvoiceMeta | InvoiceMeta[];
+  };
+
+  function invoiceFromRow(row: OrphanRow): InvoiceMeta | null {
+    const invoice = row.salesmen_invoices;
+    return Array.isArray(invoice) ? (invoice[0] ?? null) : invoice;
+  }
+
+  const byInvoice = new Map<string, OrphanRow[]>();
+  for (const raw of rows as OrphanRow[]) {
+    const list = byInvoice.get(raw.invoice_id) ?? [];
+    list.push(raw);
+    byInvoice.set(raw.invoice_id, list);
+  }
+
+  for (const [, invoiceLines] of byInvoice) {
+    const invoice = invoiceFromRow(invoiceLines[0]!);
+    if (!invoice) continue;
+
+    const verification: VerificationInsert = {
+      verification_status: (invoice.verification_status ===
+      "pending_verification" ||
+      invoice.verification_status === "needs_edit"
+        ? invoice.verification_status
+        : "verified") as InvoiceVerificationStatus,
+      created_by: invoice.created_by ?? "",
+      created_by_name: invoice.created_by_name ?? "Unknown",
+      verified_by: invoice.verified_by,
+      verified_by_name: invoice.verified_by_name,
+      verified_at: invoice.verified_at,
+      verification_note: invoice.verification_note,
+    };
+
+    const lineItems: InvoiceLineItem[] = invoiceLines.map((row) => ({
+      id: row.id,
+      name: row.name,
+      qty: Number(row.qty),
+      unitPrice: Number(row.unit_price),
+      amount: Number(row.amount),
+      priceListItemId: row.price_list_item_id ?? undefined,
+    }));
+
+    try {
+      const created = await createReturnAppliedOnInvoice(
+        supabase,
+        salesmanId,
+        lineItems,
+        verification,
+        invoice.issued_at,
+        invoice.number,
+      );
+      const lineIds = invoiceLines.map((row) => row.id);
+      const { error: linkError } = await supabase
+        .from("salesmen_invoice_lines")
+        .update({ stand_alone_return_id: created.id })
+        .in("id", lineIds);
+      if (linkError) {
+        console.error("Failed to link backfilled return lines:", linkError);
+      }
+    } catch (err) {
+      console.error("Failed to backfill invoice return lines:", err);
+    }
+  }
 }
 
 export async function restoreReturnRemainingFromInvoiceLines(

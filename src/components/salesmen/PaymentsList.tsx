@@ -117,9 +117,6 @@ export function PaymentsList({
     [paidInvoices, advances],
   );
 
-  const [expandedId, setExpandedId] = useState<string | null>(() =>
-    ledger[0] ? ledgerItemId(ledger[0]) : null,
-  );
   const [cancelTarget, setCancelTarget] = useState<
     | { type: "invoice"; payment: InvoicePaymentEntry; invoiceId: string }
     | { type: "advance"; advance: SalesmanAdvance }
@@ -295,14 +292,6 @@ export function PaymentsList({
                   <AdvanceRow
                     key={ledgerItemId(item)}
                     advance={item.advance}
-                    expanded={expandedId === item.advance.id}
-                    onToggle={() =>
-                      setExpandedId(
-                        expandedId === item.advance.id
-                          ? null
-                          : item.advance.id,
-                      )
-                    }
                     accountById={accountById}
                     onCancelCheque={() =>
                       setCancelTarget({
@@ -335,11 +324,6 @@ export function PaymentsList({
                   invoice={item.invoice}
                   payment={item.payment}
                   receivedAt={item.at}
-                  expanded={expandedId === ledgerItemId(item)}
-                  onToggle={() => {
-                    const id = ledgerItemId(item);
-                    setExpandedId(expandedId === id ? null : id);
-                  }}
                   accountById={accountById}
                   onCancelCheque={() =>
                     setCancelTarget({
@@ -481,16 +465,12 @@ function InvoicePaymentRow({
   invoice,
   payment,
   receivedAt,
-  expanded,
-  onToggle,
   accountById,
   onCancelCheque,
 }: {
   invoice: Invoice;
   payment: InvoicePaymentEntry;
   receivedAt: string;
-  expanded: boolean;
-  onToggle: () => void;
   accountById: Map<string, BankAccount>;
   onCancelCheque: () => void;
 }) {
@@ -500,141 +480,97 @@ function InvoicePaymentRow({
   const account = payment.depositAccountId
     ? accountById.get(payment.depositAccountId)
     : undefined;
+  const detailParts = [
+    payment.method === "cheque" && payment.chequeNumber
+      ? `Cheque ${payment.chequeNumber}`
+      : null,
+    (payment.method === "upi" || payment.method === "imps") &&
+    payment.senderName
+      ? `Sender ${payment.senderName}`
+      : null,
+    account ? formatBankAccountLabel(account) : null,
+    !account && payment.depositAccountOther
+      ? payment.depositAccountOther
+      : null,
+    payment.method === "cash" ? "Received in cash" : null,
+    cancelled && payment.cancelReason ? payment.cancelReason : null,
+  ].filter((part): part is string => Boolean(part));
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
-          expanded ? "bg-sidebar" : "hover:bg-sidebar/60"
-        }`}
-        aria-expanded={expanded}
-      >
-        <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
-          <span className="text-[11px] text-muted">{date.weekday}</span>
-          <span className="text-xl font-semibold tracking-tight tabular-nums">
-            {date.day}
+    <li className="flex items-start gap-3 rounded-lg px-3 py-2.5 sm:gap-4 sm:px-3.5">
+      <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
+        <span className="text-[11px] text-muted">{date.weekday}</span>
+        <span className="text-xl font-semibold tracking-tight tabular-nums">
+          {date.day}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">{invoice.number}</p>
+          <span className="rounded bg-sidebar px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted uppercase">
+            {METHOD_LABELS[payment.method]}
           </span>
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-medium">{invoice.number}</p>
-            <span className="rounded bg-sidebar px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted uppercase">
-              {METHOD_LABELS[payment.method]}
+          {payment.advanceId && (
+            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
+              Advance
             </span>
-            {payment.advanceId && (
-              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
-                Advance
-              </span>
-            )}
-            {statusLabel && (
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
-                  invoice.verificationStatus === "needs_edit"
-                    ? "bg-amber-100 text-amber-800"
-                    : "bg-sky-100 text-sky-800"
-                }`}
-              >
-                {statusLabel}
-              </span>
-            )}
-            {cancelled && (
-              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
-                Cancelled
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 truncate text-xs text-muted">{date.time}</p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="text-right">
-            <p
-              className={`text-sm font-medium tabular-nums ${
-                cancelled ? "text-muted line-through" : ""
+          )}
+          {statusLabel && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
+                invoice.verificationStatus === "needs_edit"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-sky-100 text-sky-800"
               }`}
             >
-              {formatINR(payment.amount)}
-            </p>
-          </div>
-          <ChevronIcon open={expanded} />
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="mx-1 mb-1 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 sm:mx-1.5 sm:px-4">
-          <dl className="space-y-1 text-xs text-muted">
-            <div>
-              Invoice{" "}
-              <span className="text-foreground">{invoice.number}</span>
-            </div>
-            {payment.method === "cheque" && payment.chequeNumber && (
-              <div>
-                Cheque no.{" "}
-                <span className="text-foreground">{payment.chequeNumber}</span>
-              </div>
-            )}
-            {(payment.method === "upi" || payment.method === "imps") &&
-              payment.senderName && (
-                <div>
-                  Sender{" "}
-                  <span className="text-foreground">{payment.senderName}</span>
-                </div>
-              )}
-            {account && (
-              <div>
-                Account{" "}
-                <span className="text-foreground">
-                  {formatBankAccountLabel(account)}
-                </span>
-              </div>
-            )}
-            {!account && payment.depositAccountOther && (
-              <div>
-                Name{" "}
-                <span className="text-foreground">
-                  {payment.depositAccountOther}
-                </span>
-              </div>
-            )}
-            {payment.method === "cash" && (
-              <div className="text-muted">Received in cash</div>
-            )}
-            {cancelled && payment.cancelReason && (
-              <div>
-                Reason{" "}
-                <span className="text-foreground">{payment.cancelReason}</span>
-              </div>
-            )}
-          </dl>
-          {payment.method === "cheque" && !cancelled && (
-            <button
-              type="button"
-              onClick={onCancelCheque}
-              className="mt-3 text-xs font-medium text-red-700 hover:underline"
-            >
-              Cancel cheque
-            </button>
+              {statusLabel}
+            </span>
+          )}
+          {cancelled && (
+            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
+              Cancelled
+            </span>
           )}
         </div>
-      )}
+        <p className="mt-0.5 text-xs text-muted">
+          {date.time}
+          {detailParts.length > 0 && (
+            <>
+              <span className="mx-1.5 text-border">·</span>
+              {detailParts.join(" · ")}
+            </>
+          )}
+        </p>
+        {payment.method === "cheque" && !cancelled && (
+          <button
+            type="button"
+            onClick={onCancelCheque}
+            className="mt-2 text-xs font-medium text-red-700 hover:underline"
+          >
+            Cancel cheque
+          </button>
+        )}
+      </div>
+
+      <p
+        className={`shrink-0 text-sm font-medium tabular-nums ${
+          cancelled ? "text-muted line-through" : ""
+        }`}
+      >
+        {formatINR(payment.amount)}
+      </p>
     </li>
   );
 }
 
 function AdvanceRow({
   advance,
-  expanded,
-  onToggle,
   accountById,
   onCancelCheque,
   onDelete,
 }: {
   advance: SalesmanAdvance;
-  expanded: boolean;
-  onToggle: () => void;
   accountById: Map<string, BankAccount>;
   onCancelCheque: () => void;
   onDelete: () => void;
@@ -645,139 +581,98 @@ function AdvanceRow({
   const account = advance.depositAccountId
     ? accountById.get(advance.depositAccountId)
     : undefined;
-  const applied = Math.round((advance.amount - advance.remainingAmount) * 100) / 100;
+  const applied =
+    Math.round((advance.amount - advance.remainingAmount) * 100) / 100;
+  const detailParts = [
+    METHOD_LABELS[advance.method],
+    advance.method === "cheque" && advance.chequeNumber
+      ? `Cheque ${advance.chequeNumber}`
+      : null,
+    (advance.method === "upi" || advance.method === "imps") &&
+    advance.senderName
+      ? `Sender ${advance.senderName}`
+      : null,
+    account ? formatBankAccountLabel(account) : null,
+    advance.notes ? advance.notes : null,
+    !cancelled && advance.remainingAmount > 0
+      ? `${formatINR(advance.remainingAmount)} left`
+      : null,
+    cancelled && advance.cancelReason ? advance.cancelReason : null,
+  ].filter((part): part is string => Boolean(part));
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
-          expanded ? "bg-sidebar" : "hover:bg-sidebar/60"
-        }`}
-        aria-expanded={expanded}
-      >
-        <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
-          <span className="text-[11px] text-muted">{date.weekday}</span>
-          <span className="text-xl font-semibold tracking-tight tabular-nums">
-            {date.day}
-          </span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-medium">Advance</p>
-            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
-              Credit
-            </span>
-            {statusLabel && (
-              <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
-                {statusLabel}
-              </span>
-            )}
-            {cancelled && (
-              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
-                Cancelled
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 truncate text-xs text-muted">
-            {date.time}
-            <span className="mx-1.5 text-border">·</span>
-            {METHOD_LABELS[advance.method]}
-            {advance.remainingAmount > 0 &&
-              advance.remainingAmount < advance.amount && (
-                <>
-                  <span className="mx-1.5 text-border">·</span>
-                  {formatINR(advance.remainingAmount)} left
-                </>
-              )}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="text-right">
-            <p
-              className={`text-sm font-medium tabular-nums ${
-                cancelled ? "text-muted line-through" : ""
-              }`}
-            >
-              {formatINR(advance.amount)}
-            </p>
-            <p className="mt-0.5 text-xs text-muted">
-              {cancelled
-                ? "Cancelled"
-                : applied > 0
-                  ? `${formatINR(applied)} applied`
-                  : "Unapplied"}
-            </p>
-          </div>
-          <ChevronIcon open={expanded} />
-        </div>
-      </button>
+    <li className="flex items-start gap-3 rounded-lg px-3 py-2.5 sm:gap-4 sm:px-3.5">
+      <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
+        <span className="text-[11px] text-muted">{date.weekday}</span>
+        <span className="text-xl font-semibold tracking-tight tabular-nums">
+          {date.day}
+        </span>
+      </div>
 
-      {expanded && (
-        <div className="mx-1 mb-1 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 sm:mx-1.5 sm:px-4">
-          <dl className="space-y-1 text-xs text-muted">
-            {advance.method === "cheque" && advance.chequeNumber && (
-              <div>
-                Cheque no.{" "}
-                <span className="text-foreground">{advance.chequeNumber}</span>
-              </div>
-            )}
-            {(advance.method === "upi" || advance.method === "imps") &&
-              advance.senderName && (
-                <div>
-                  Sender{" "}
-                  <span className="text-foreground">{advance.senderName}</span>
-                </div>
-              )}
-            {account && (
-              <div>
-                Account{" "}
-                <span className="text-foreground">
-                  {formatBankAccountLabel(account)}
-                </span>
-              </div>
-            )}
-            {advance.notes && (
-              <div>
-                Notes <span className="text-foreground">{advance.notes}</span>
-              </div>
-            )}
-            {!cancelled && (
-              <div>
-                Remaining{" "}
-                <span className="text-foreground">
-                  {formatINR(advance.remainingAmount)}
-                </span>
-              </div>
-            )}
-            {cancelled && advance.cancelReason && (
-              <div>
-                Reason{" "}
-                <span className="text-foreground">{advance.cancelReason}</span>
-              </div>
-            )}
-          </dl>
-          {advance.method === "cheque" && !cancelled && (
-            <button
-              type="button"
-              onClick={onCancelCheque}
-              className="mt-3 text-xs font-medium text-red-700 hover:underline"
-            >
-              Cancel cheque
-            </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">Advance</p>
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
+            Credit
+          </span>
+          {statusLabel && (
+            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
+              {statusLabel}
+            </span>
           )}
-          {!cancelled && (
+          {cancelled && (
+            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
+              Cancelled
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-muted">
+          {date.time}
+          {detailParts.length > 0 && (
+            <>
+              <span className="mx-1.5 text-border">·</span>
+              {detailParts.join(" · ")}
+            </>
+          )}
+        </p>
+        {!cancelled && (
+          <div className="mt-2 flex flex-wrap gap-3">
+            {advance.method === "cheque" && (
+              <button
+                type="button"
+                onClick={onCancelCheque}
+                className="text-xs font-medium text-red-700 hover:underline"
+              >
+                Cancel cheque
+              </button>
+            )}
             <button
               type="button"
               onClick={onDelete}
-              className="mt-3 ml-3 text-xs font-medium text-red-700 hover:underline"
+              className="text-xs font-medium text-red-700 hover:underline"
             >
               Delete
             </button>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p
+          className={`text-sm font-medium tabular-nums ${
+            cancelled ? "text-muted line-through" : ""
+          }`}
+        >
+          {formatINR(advance.amount)}
+        </p>
+        <p className="mt-0.5 text-xs text-muted">
+          {cancelled
+            ? "Cancelled"
+            : applied > 0
+              ? `${formatINR(applied)} applied`
+              : "Unapplied"}
+        </p>
+      </div>
     </li>
   );
 }
@@ -797,25 +692,4 @@ function resolveEntries(invoice: Invoice): InvoicePaymentEntry[] {
     ];
   }
   return [];
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}
-    >
-      <path
-        d="M4 6l4 4 4-4"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
