@@ -2,12 +2,19 @@
 
 import Link from "next/link";
 import type { PriceListItem } from "@/lib/auth/types";
-import type { PendingInvoiceApproval } from "@/lib/salesmen/queries";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import { WidgetSection } from "./WidgetKpi";
 
+/** Client-safe subset — full Invoice objects cannot cross the RSC boundary. */
+export type PendingInvoiceApprovalSummary = {
+  invoiceId: string;
+  invoiceNumber: string;
+  salesmanName: string;
+  chargedTotal: number;
+};
+
 type ApprovalsWidgetProps = {
-  pendingInvoices: PendingInvoiceApproval[];
+  pendingInvoices: PendingInvoiceApprovalSummary[];
   pendingPriceItems: PriceListItem[];
 };
 
@@ -41,17 +48,17 @@ export function ApprovalsWidget({
               Invoices ({pendingInvoices.length})
             </p>
             <ul className="space-y-1.5">
-              {pendingInvoices.slice(0, 5).map(({ invoice, salesmanName, chargedTotal }) => (
+              {pendingInvoices.slice(0, 5).map((item) => (
                 <li
-                  key={invoice.id}
+                  key={item.invoiceId}
                   className="flex items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{invoice.number}</p>
-                    <p className="truncate text-xs text-muted">{salesmanName}</p>
+                    <p className="truncate font-medium">{item.invoiceNumber}</p>
+                    <p className="truncate text-xs text-muted">{item.salesmanName}</p>
                   </div>
                   <span className="shrink-0 tabular-nums text-muted">
-                    {formatINR(chargedTotal)}
+                    {formatINR(item.chargedTotal)}
                   </span>
                 </li>
               ))}

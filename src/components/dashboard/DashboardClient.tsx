@@ -4,9 +4,10 @@ import type { AppContext } from "@/app/(app)/layout";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { DailyLedgerSummary, DyeingStats, OrderStats } from "@/lib/ledger/types";
-import type { PendingInvoiceApproval } from "@/lib/salesmen/queries";
-import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
-import { ApprovalsWidget } from "./ApprovalsWidget";
+import {
+  ApprovalsWidget,
+  type PendingInvoiceApprovalSummary,
+} from "./ApprovalsWidget";
 import { DailyLedgerWidget } from "./DailyLedgerWidget";
 import { DyeingStatusWidget } from "./DyeingStatusWidget";
 import { OrderStatusWidget } from "./OrderStatusWidget";
@@ -17,7 +18,7 @@ type DashboardClientProps = {
   orderStats: OrderStats;
   dyeingStats: DyeingStats;
   bankAccounts: BankAccount[];
-  pendingInvoices: PendingInvoiceApproval[];
+  pendingInvoices: PendingInvoiceApprovalSummary[];
   pendingPriceItems: PriceListItem[];
   canAddReceipt: boolean;
   canAddExpense: boolean;
@@ -35,8 +36,6 @@ export function DashboardClient({
   canAddExpense,
 }: DashboardClientProps) {
   const isAdmin = context.profile.role === "admin";
-
-  useRealtimeRefresh();
 
   return (
     <div className="space-y-5 sm:space-y-6">

@@ -65,6 +65,14 @@ export default async function DashboardPage() {
   ]);
 
   const pendingPriceItems = (pendingPriceItemsRes.data ?? []) as PriceListItem[];
+  const pendingInvoiceSummaries = pendingInvoices.slice(0, 10).map(
+    ({ invoice, salesmanName, chargedTotal }) => ({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.number,
+      salesmanName,
+      chargedTotal,
+    }),
+  );
 
   return (
     <>
@@ -79,7 +87,7 @@ export default async function DashboardPage() {
           orderStats={orderStats}
           dyeingStats={dyeingStats}
           bankAccounts={bankAccounts}
-          pendingInvoices={pendingInvoices.slice(0, 10)}
+          pendingInvoices={pendingInvoiceSummaries}
           pendingPriceItems={pendingPriceItems}
           canAddReceipt={canAddReceipt}
           canAddExpense={canAddExpense}

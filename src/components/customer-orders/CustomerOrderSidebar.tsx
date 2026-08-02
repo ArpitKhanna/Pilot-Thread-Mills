@@ -1630,7 +1630,6 @@ export function CustomerOrderSidebar({
                 isDefaulter: false,
                 tier: "",
                 balanceThreshold: null,
-                contactName: "",
                 addressBuilding: "",
                 addressArea: "",
                 addressCity: "",
