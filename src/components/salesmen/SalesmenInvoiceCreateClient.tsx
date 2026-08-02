@@ -617,7 +617,6 @@ export function SalesmenInvoiceCreateClient({
     isDefaulter: false,
     tier: "",
     balanceThreshold: null,
-    contactName: "",
     addressBuilding: "",
     addressArea: "",
     addressCity: "",

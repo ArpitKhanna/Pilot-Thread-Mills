@@ -122,14 +122,12 @@ export type Salesman = {
   marketDay: MarketDay | "";
   /** Geographic / route area label (legacy; synced from addressArea) */
   area: string;
-  /** Flagged as payment defaulter */
+  /** Computed: pending balance reached/exceeded profile threshold */
   isDefaulter: boolean;
   /** Customer tier (empty when unset) */
   tier: CustomerTier | "";
   /** Alert when pending balance reaches/exceeds this amount (null = no alert) */
   balanceThreshold: number | null;
-  /** Person / contact name at the shop */
-  contactName: string;
   addressBuilding: string;
   addressArea: string;
   addressCity: string;

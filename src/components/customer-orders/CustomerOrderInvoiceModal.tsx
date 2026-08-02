@@ -142,7 +142,6 @@ function placeholderCustomer(name = "Customer"): Salesman {
     isDefaulter: false,
     tier: "",
     balanceThreshold: null,
-    contactName: "",
     addressBuilding: "",
     addressArea: "",
     addressCity: "",

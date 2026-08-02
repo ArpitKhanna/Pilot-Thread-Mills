@@ -100,7 +100,6 @@ export type CreateCustomerInput = {
   pendingBalance?: number;
   marketDay?: string;
   area?: string;
-  isDefaulter?: boolean;
   tier?: string;
   balanceThreshold?: number | null;
 };
@@ -126,10 +125,8 @@ export async function createSalesman(
       discount_rules: [],
       market_day: "",
       area: "",
-      is_defaulter: false,
       tier: "",
       balance_threshold: null,
-      contact_name: "",
       address_building: "",
       address_area: "",
       address_city: "",
@@ -168,10 +165,8 @@ export async function createCustomer(
       discount_rules: [],
       market_day: input.marketDay ?? "",
       area: addressArea,
-      is_defaulter: input.isDefaulter ?? false,
       tier: input.tier ?? "",
       balance_threshold: input.balanceThreshold ?? null,
-      contact_name: "",
       address_building: "",
       address_area: addressArea,
       address_city: "",

@@ -165,11 +165,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       ? String(body.alternatePhone ?? "").trim()
       : existing.alternatePhone;
 
-  const contactName =
-    body.contactName !== undefined
-      ? String(body.contactName ?? "").trim()
-      : existing.contactName;
-
   const addressBuilding =
     body.addressBuilding !== undefined
       ? String(body.addressBuilding ?? "").trim()
@@ -259,7 +254,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     category: "Customer",
     market_day: marketDay,
     area: addressArea,
-    contact_name: contactName,
     address_building: addressBuilding,
     address_area: addressArea,
     address_city: addressCity,
@@ -271,10 +265,6 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (typeof body.isActive === "boolean") {
     updates.is_active = body.isActive;
-  }
-
-  if (typeof body.isDefaulter === "boolean") {
-    updates.is_defaulter = body.isDefaulter;
   }
 
   if (body.tierRubric !== undefined) {

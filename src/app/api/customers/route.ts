@@ -80,8 +80,6 @@ export async function POST(request: Request) {
     pendingBalance = Math.round(pendingBalance * 100) / 100;
   }
 
-  const isDefaulter = Boolean(body.isDefaulter);
-
   try {
     const customer = await createCustomer(supabase, {
       name,
@@ -90,7 +88,6 @@ export async function POST(request: Request) {
       pendingBalance,
       marketDay: marketDayRaw,
       area,
-      isDefaulter,
     });
     return NextResponse.json({ customer }, { status: 201 });
   } catch (err) {

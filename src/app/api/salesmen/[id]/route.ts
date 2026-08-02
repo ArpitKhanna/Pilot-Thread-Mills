@@ -205,10 +205,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.area = String(body.area ?? "").trim();
   }
 
-  if (typeof body.isDefaulter === "boolean") {
-    updates.is_defaulter = body.isDefaulter;
-  }
-
   const { error: updateError } = await supabase
     .from("salesmen")
     .update(updates)

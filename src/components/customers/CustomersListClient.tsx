@@ -22,7 +22,6 @@ type FormState = {
   lastBalance: string;
   marketDay: MarketDay | "";
   area: string;
-  isDefaulter: boolean;
   isActive: boolean;
 };
 
@@ -35,7 +34,6 @@ const emptyForm: FormState = {
   lastBalance: "",
   marketDay: "",
   area: "",
-  isDefaulter: false,
   isActive: true,
 };
 
@@ -135,7 +133,6 @@ export function CustomersListClient({
         customer.pendingBalance > 0 ? String(customer.pendingBalance) : "",
       marketDay: customer.marketDay,
       area: customer.area,
-      isDefaulter: customer.isDefaulter,
       isActive: customer.isActive,
     });
     setError("");
@@ -159,7 +156,6 @@ export function CustomersListClient({
           form.lastBalance.trim() === "" ? 0 : Number(form.lastBalance),
         marketDay: form.marketDay,
         area: form.area.trim(),
-        isDefaulter: form.isDefaulter,
         ...(editing ? { isActive: form.isActive } : {}),
       };
 
@@ -604,18 +600,6 @@ export function CustomersListClient({
               />
             </div>
           </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.isDefaulter}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, isDefaulter: e.target.checked }))
-              }
-              className="rounded border-border"
-            />
-            Mark as defaulter
-          </label>
 
           {editing && (
             <label className="flex items-center gap-2 text-sm">

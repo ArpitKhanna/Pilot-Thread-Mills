@@ -115,7 +115,6 @@ async function resolveLocationInput(
 function syncFromCustomer(customer: Salesman) {
   return {
     name: customer.name,
-    contactName: customer.contactName,
     phone: customer.phone,
     alternatePhone: customer.alternatePhone,
     isActive: customer.isActive,
@@ -144,7 +143,6 @@ export function CustomerPersonalDetailsForm({
 }: CustomerPersonalDetailsFormProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(customer.name);
-  const [contactName, setContactName] = useState(customer.contactName);
   const [phone, setPhone] = useState(customer.phone);
   const [alternatePhone, setAlternatePhone] = useState(
     customer.alternatePhone,
@@ -201,7 +199,6 @@ export function CustomerPersonalDetailsForm({
     if (editing) return;
     const next = syncFromCustomer(customer);
     setName(next.name);
-    setContactName(next.contactName);
     setPhone(next.phone);
     setAlternatePhone(next.alternatePhone);
     setIsActive(next.isActive);
@@ -214,7 +211,6 @@ export function CustomerPersonalDetailsForm({
 
   function applySyncedState(next: ReturnType<typeof syncFromCustomer>) {
     setName(next.name);
-    setContactName(next.contactName);
     setPhone(next.phone);
     setAlternatePhone(next.alternatePhone);
     setIsActive(next.isActive);
@@ -272,7 +268,6 @@ export function CustomerPersonalDetailsForm({
     const mapLng = parsed?.lng ?? customer.mapLng;
     const url = buildCustomerWhatsAppShareUrl({
       name,
-      contactName,
       phone,
       alternatePhone,
       addressArea,
@@ -354,7 +349,6 @@ export function CustomerPersonalDetailsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: trimmedName,
-          contactName: contactName.trim(),
           phone: trimmedPhone,
           alternatePhone: alternatePhone.trim(),
           isActive,
@@ -439,19 +433,6 @@ export function CustomerPersonalDetailsForm({
               value={name}
               disabled={!editing}
               onChange={(e) => setName(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium">
-              Customer Name
-            </label>
-            <input
-              type="text"
-              value={contactName}
-              disabled={!editing}
-              onChange={(e) => setContactName(e.target.value)}
-              placeholder={editing ? "Contact person" : "—"}
               className={inputClass}
             />
           </div>

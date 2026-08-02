@@ -190,7 +190,6 @@ export function buildCustomerWhatsAppShareUrl(
   customer: Pick<
     Salesman,
     | "name"
-    | "contactName"
     | "phone"
     | "alternatePhone"
     | "addressArea"
@@ -218,7 +217,6 @@ export function buildCustomerWhatsAppShareUrl(
 
   const lines = [
     `Shop Name: ${customer.name.trim() || "—"}`,
-    `Customer Name: ${customer.contactName.trim() || "—"}`,
     `Phone Number: ${customer.phone.trim() || "—"}`,
     `Alternate Phone Number: ${customer.alternatePhone.trim() || "—"}`,
   ];

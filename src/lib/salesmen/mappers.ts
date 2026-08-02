@@ -1,3 +1,4 @@
+import { isCustomerDefaulter } from "@/lib/customers/defaulter";
 import type {
   CustomerPriceRule,
   CustomerTier,
@@ -36,10 +37,8 @@ export type DbSalesmanRow = {
   discount_rules: unknown;
   market_day: string | null;
   area: string | null;
-  is_defaulter: boolean | null;
   tier: string | null;
   balance_threshold: number | string | null;
-  contact_name: string | null;
   address_building: string | null;
   address_area: string | null;
   address_city: string | null;
@@ -308,23 +307,28 @@ function parsePriceRules(raw: unknown): CustomerPriceRule[] {
 
 export function mapSalesmanRow(row: DbSalesmanRow): Salesman {
   const addressArea = row.address_area ?? "";
+  const entityType = parseEntityType(row.entity_type);
+  const pendingBalance = num(row.pending_balance);
+  const balanceThreshold = parseBalanceThreshold(row.balance_threshold);
   return {
     id: row.id,
     name: row.name,
     phone: row.phone,
     alternatePhone: row.alternate_phone ?? "",
-    entityType: parseEntityType(row.entity_type),
+    entityType,
     isActive: row.is_active,
     openingBalance: num(row.opening_balance ?? 0),
-    pendingBalance: num(row.pending_balance),
+    pendingBalance,
     lastInvoiceAt: row.last_invoice_at,
     discountRules: parseDiscountRules(row.discount_rules),
     marketDay: parseMarketDay(row.market_day),
     area: addressArea || row.area || "",
-    isDefaulter: Boolean(row.is_defaulter),
+    isDefaulter:
+      entityType === "customer"
+        ? isCustomerDefaulter(pendingBalance, balanceThreshold)
+        : false,
     tier: parseTier(row.tier),
-    balanceThreshold: parseBalanceThreshold(row.balance_threshold),
-    contactName: row.contact_name ?? "",
+    balanceThreshold,
     addressBuilding: row.address_building ?? "",
     addressArea,
     addressCity: row.address_city ?? "",

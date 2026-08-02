@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
+import { isCustomerDefaulter, withPendingBalance } from "@/lib/customers/defaulter";
 import {
   CustomerOrderInvoiceModal,
   type CustomerOrderInvoiceCreated,
@@ -199,10 +200,10 @@ export function CustomerDetailClient({
     [orders, invoices],
   );
 
-  const balanceAlert =
-    customer.balanceThreshold != null &&
-    customer.balanceThreshold > 0 &&
-    customer.pendingBalance >= customer.balanceThreshold;
+  const isDefaulter = isCustomerDefaulter(
+    customer.pendingBalance,
+    customer.balanceThreshold,
+  );
 
   const metaParts: { key: string; node: ReactNode }[] = [
     {
@@ -468,28 +469,31 @@ export function CustomerDetailClient({
         ]}
       />
 
+      {isDefaulter && (
+        <div
+          role="alert"
+          className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950 sm:px-6 lg:px-8 print:hidden"
+        >
+          <div className="mx-auto flex max-w-6xl items-start gap-3">
+            <span
+              className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-500"
+              aria-hidden
+            />
+            <div>
+              <p className="font-medium">Defaulter — collect payment ASAP</p>
+              <p className="mt-0.5 text-red-900/80">
+                This customer&apos;s pending balance of{" "}
+                {formatINR(customer.pendingBalance)} has crossed the threshold
+                of {formatINR(customer.balanceThreshold!)}. Collect payment as
+                soon as possible.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1 flex-col print:hidden">
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-          {balanceAlert && (
-            <div
-              role="alert"
-              className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-            >
-              <span
-                className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
-                aria-hidden
-              />
-              <div>
-                <p className="font-medium">Pending balance alert</p>
-                <p className="mt-0.5 text-amber-900/80">
-                  Pending balance of {formatINR(customer.pendingBalance)} has
-                  reached the alert threshold of{" "}
-                  {formatINR(customer.balanceThreshold!)}.
-                </p>
-              </div>
-            </div>
-          )}
-
           <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -868,13 +872,9 @@ export function CustomerDetailClient({
         onCreated={(advance) => {
           setAdvances((prev) => [advance, ...prev]);
           if (advance.verificationStatus === "verified") {
-            setCustomer((prev) => ({
-              ...prev,
-              pendingBalance: Math.max(
-                0,
-                Math.round((prev.pendingBalance - advance.amount) * 100) / 100,
-              ),
-            }));
+            setCustomer((prev) =>
+              withPendingBalance(prev, prev.pendingBalance - advance.amount),
+            );
           }
           router.refresh();
         }}
@@ -889,15 +889,12 @@ export function CustomerDetailClient({
         onCreated={(returnRecord) => {
           setReturns((prev) => [returnRecord, ...prev]);
           if (returnRecord.verificationStatus === "verified") {
-            setCustomer((prev) => ({
-              ...prev,
-              pendingBalance: Math.max(
-                0,
-                Math.round(
-                  (prev.pendingBalance - returnRecord.totalAmount) * 100,
-                ) / 100,
+            setCustomer((prev) =>
+              withPendingBalance(
+                prev,
+                prev.pendingBalance - returnRecord.totalAmount,
               ),
-            }));
+            );
           }
           router.refresh();
         }}
