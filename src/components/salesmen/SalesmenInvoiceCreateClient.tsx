@@ -85,8 +85,29 @@ type PaymentFieldErrors = Record<
     amount?: string;
     chequeNumber?: string;
     depositAccountId?: string;
+    depositAccountOther?: string;
   }
 >;
+
+function hasDepositDestination(payment: InvoicePaymentEntry): boolean {
+  return Boolean(
+    payment.depositAccountId?.trim() || payment.depositAccountOther?.trim(),
+  );
+}
+
+function depositFieldErrors(
+  payment: InvoicePaymentEntry,
+): PaymentFieldErrors[string] {
+  const field: PaymentFieldErrors[string] = {};
+  if (payment.depositAccountOther !== undefined) {
+    if (!payment.depositAccountOther.trim()) {
+      field.depositAccountOther = "Enter a name.";
+    }
+  } else if (!payment.depositAccountId) {
+    field.depositAccountId = "Select a deposit account.";
+  }
+  return field;
+}
 
 function mapPaymentApiErrorToFields(
   message: string,
@@ -117,9 +138,9 @@ function mapPaymentApiErrorToFields(
         payment.method === "upi" ||
         payment.method === "imps") &&
       lower.includes("deposit account") &&
-      !payment.depositAccountId
+      !hasDepositDestination(payment)
     ) {
-      field.depositAccountId = "Select a deposit account.";
+      Object.assign(field, depositFieldErrors(payment));
     }
     if (Object.keys(field).length > 0) {
       next[payment.id] = field;
@@ -187,6 +208,7 @@ export function SalesmenInvoiceCreateClient({
         amount?: string;
         chequeNumber?: string;
         depositAccountId?: string;
+        depositAccountOther?: string;
       }
     >
   >({});
@@ -718,14 +740,10 @@ export function SalesmenInvoiceCreateClient({
         if (!payment.chequeNumber?.trim()) {
           field.chequeNumber = "Cheque number is required.";
         }
-        if (!payment.depositAccountId) {
-          field.depositAccountId = "Select a deposit account.";
-        }
+        Object.assign(field, depositFieldErrors(payment));
       }
       if (payment.method === "upi" || payment.method === "imps") {
-        if (!payment.depositAccountId) {
-          field.depositAccountId = "Select a deposit account.";
-        }
+        Object.assign(field, depositFieldErrors(payment));
       }
       if (Object.keys(field).length > 0) {
         next[payment.id] = field;

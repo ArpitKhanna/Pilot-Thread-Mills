@@ -89,6 +89,7 @@ export type DbInvoicePaymentRow = {
   amount: number | string;
   cheque_number: string | null;
   deposit_account_id: string | null;
+  deposit_account_other: string | null;
   sender_name: string | null;
   sort_order: number;
   status?: string | null;
@@ -386,6 +387,7 @@ export function mapInvoiceRows(
             amount: num(p.amount),
             chequeNumber: p.cheque_number ?? undefined,
             depositAccountId: p.deposit_account_id ?? undefined,
+            depositAccountOther: p.deposit_account_other ?? undefined,
             senderName: p.sender_name ?? undefined,
             advanceId: p.advance_id ?? undefined,
             receivedAt: p.received_at ?? undefined,

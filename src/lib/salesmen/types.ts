@@ -174,6 +174,8 @@ export type InvoicePaymentEntry = {
   chequeNumber?: string;
   /** Deposit bank account id (cheque / upi / imps) */
   depositAccountId?: string;
+  /** Free-text destination when not one of our bank accounts */
+  depositAccountOther?: string;
   /** Sender name for UPI / IMPS */
   senderName?: string;
   /** When set, this payment applies an existing advance */

@@ -38,6 +38,9 @@ function parsePayments(raw: unknown): InvoicePaymentEntry[] | { error: string } 
       depositAccountId: row.depositAccountId
         ? String(row.depositAccountId)
         : undefined,
+      depositAccountOther: row.depositAccountOther
+        ? String(row.depositAccountOther)
+        : undefined,
       senderName: row.senderName ? String(row.senderName) : undefined,
     });
   }

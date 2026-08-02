@@ -19,10 +19,13 @@ type InvoicePaymentsStepProps = {
       amount?: string;
       chequeNumber?: string;
       depositAccountId?: string;
+      depositAccountOther?: string;
       receivedAt?: string;
     }
   >;
 };
+
+const OTHER_ACCOUNT_VALUE = "__other__";
 
 const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
   cash: "Cash",
@@ -239,14 +242,14 @@ export function InvoicePaymentsStep({
                     )}
                   </label>
                   <AccountSelect
-                    value={payment.depositAccountId ?? ""}
+                    accountId={payment.depositAccountId}
+                    otherText={payment.depositAccountOther}
                     disabled={disabled}
                     accounts={accounts}
                     label="Deposit into account"
                     error={fieldErrors[payment.id]?.depositAccountId}
-                    onChange={(depositAccountId) =>
-                      updatePayment(payment.id, { depositAccountId })
-                    }
+                    otherError={fieldErrors[payment.id]?.depositAccountOther}
+                    onChange={(patch) => updatePayment(payment.id, patch)}
                   />
                 </>
               )}
@@ -302,14 +305,14 @@ export function InvoicePaymentsStep({
                     )}
                   </label>
                   <AccountSelect
-                    value={payment.depositAccountId ?? ""}
+                    accountId={payment.depositAccountId}
+                    otherText={payment.depositAccountOther}
                     disabled={disabled}
                     accounts={accounts}
                     label="Deposited to account"
                     error={fieldErrors[payment.id]?.depositAccountId}
-                    onChange={(depositAccountId) =>
-                      updatePayment(payment.id, { depositAccountId })
-                    }
+                    otherError={fieldErrors[payment.id]?.depositAccountOther}
+                    onChange={(patch) => updatePayment(payment.id, patch)}
                   />
                 </>
               )}
@@ -345,50 +348,112 @@ function SummaryTile({
 }
 
 function AccountSelect({
-  value,
+  accountId,
+  otherText,
   onChange,
   accounts,
   label,
   disabled,
   error,
+  otherError,
 }: {
-  value: string;
-  onChange: (id: string) => void;
+  accountId?: string;
+  otherText?: string;
+  onChange: (patch: {
+    depositAccountId?: string;
+    depositAccountOther?: string;
+  }) => void;
   accounts: BankAccount[];
   label: string;
   disabled?: boolean;
   error?: string;
+  otherError?: string;
 }) {
+  const isOther = otherText !== undefined;
+  const selectValue = isOther
+    ? OTHER_ACCOUNT_VALUE
+    : (accountId ?? accounts[0]?.id ?? "");
+
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-muted">
-        {label}
-      </span>
-      <select
-        value={value}
-        disabled={disabled || accounts.length === 0}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
-          error
-            ? "border-red-500 focus:border-red-500"
-            : "border-border focus:border-foreground/40"
-        }`}
-      >
-        {accounts.length === 0 ? (
-          <option value="">No bank accounts</option>
-        ) : (
-          accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {formatBankAccountLabel(account)}
-            </option>
-          ))
+    <div className="space-y-3">
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-muted">
+          {label}
+        </span>
+        <select
+          value={selectValue}
+          disabled={disabled}
+          onChange={(e) => {
+            if (e.target.value === OTHER_ACCOUNT_VALUE) {
+              onChange({
+                depositAccountId: undefined,
+                depositAccountOther: "",
+              });
+              return;
+            }
+            onChange({
+              depositAccountId: e.target.value,
+              depositAccountOther: undefined,
+            });
+          }}
+          className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+            error
+              ? "border-red-500 focus:border-red-500"
+              : "border-border focus:border-foreground/40"
+          }`}
+        >
+          {accounts.length === 0 ? (
+            <>
+              <option value="">Select account</option>
+              <option value={OTHER_ACCOUNT_VALUE}>Other</option>
+            </>
+          ) : (
+            <>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {formatBankAccountLabel(account)}
+                </option>
+              ))}
+              <option value={OTHER_ACCOUNT_VALUE}>Other</option>
+            </>
+          )}
+        </select>
+        {error && (
+          <p className="mt-1 text-xs text-red-600" role="alert">
+            {error}
+          </p>
         )}
-      </select>
-      {error && (
-        <p className="mt-1 text-xs text-red-600" role="alert">
-          {error}
-        </p>
+      </label>
+
+      {isOther && (
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted">
+            Name
+          </span>
+          <input
+            type="text"
+            disabled={disabled}
+            value={otherText}
+            placeholder="Recipient name"
+            className={`w-full rounded-lg border bg-surface px-3 py-2.5 text-sm outline-none disabled:opacity-50 ${
+              otherError
+                ? "border-red-500 focus:border-red-500"
+                : "border-border focus:border-foreground/40"
+            }`}
+            onChange={(e) =>
+              onChange({
+                depositAccountId: undefined,
+                depositAccountOther: e.target.value,
+              })
+            }
+          />
+          {otherError && (
+            <p className="mt-1 text-xs text-red-600" role="alert">
+              {otherError}
+            </p>
+          )}
+        </label>
       )}
-    </label>
+    </div>
   );
 }

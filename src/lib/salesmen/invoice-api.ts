@@ -163,12 +163,16 @@ export function validateInvoicePayload(
       if (!String(row.chequeNumber ?? "").trim()) {
         return { error: "Cheque payments need a cheque number" };
       }
-      if (!String(row.depositAccountId ?? "").trim()) {
+      const depositAccountId = String(row.depositAccountId ?? "").trim();
+      const depositAccountOther = String(row.depositAccountOther ?? "").trim();
+      if (!depositAccountId && !depositAccountOther) {
         return { error: "Cheque payments need a deposit account" };
       }
     }
     if (method === "upi" || method === "imps") {
-      if (!String(row.depositAccountId ?? "").trim()) {
+      const depositAccountId = String(row.depositAccountId ?? "").trim();
+      const depositAccountOther = String(row.depositAccountOther ?? "").trim();
+      if (!depositAccountId && !depositAccountOther) {
         return { error: "UPI / IMPS payments need a deposit account" };
       }
     }
@@ -193,6 +197,9 @@ export function validateInvoicePayload(
         : undefined,
       depositAccountId: row.depositAccountId
         ? String(row.depositAccountId)
+        : undefined,
+      depositAccountOther: row.depositAccountOther
+        ? String(row.depositAccountOther)
         : undefined,
       senderName: row.senderName ? String(row.senderName) : undefined,
       advanceId: row.advanceId ? String(row.advanceId) : undefined,
@@ -264,6 +271,9 @@ export function paymentInserts(
     amount: payment.amount,
     cheque_number: payment.chequeNumber ?? null,
     deposit_account_id: payment.depositAccountId ?? null,
+    deposit_account_other: payment.depositAccountOther?.trim()
+      ? payment.depositAccountOther.trim()
+      : null,
     sender_name: payment.senderName ?? null,
     sort_order: index,
     status: payment.status === "cancelled" ? "cancelled" : "active",

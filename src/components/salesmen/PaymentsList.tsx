@@ -28,7 +28,12 @@ type PaymentsListProps = {
 };
 
 type LedgerItem =
-  | { kind: "invoice"; invoice: Invoice; at: string }
+  | {
+      kind: "invoice-payment";
+      invoice: Invoice;
+      payment: InvoicePaymentEntry;
+      at: string;
+    }
   | { kind: "advance"; advance: SalesmanAdvance; at: string };
 
 const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
@@ -52,6 +57,42 @@ function groupByMonth(items: LedgerItem[]) {
   return groups;
 }
 
+function paymentReceivedAt(
+  payment: InvoicePaymentEntry,
+  invoice: Invoice,
+): string {
+  return payment.receivedAt ?? invoice.issuedAt;
+}
+
+function ledgerItemId(item: LedgerItem): string {
+  return item.kind === "advance"
+    ? item.advance.id
+    : `${item.invoice.id}-${item.payment.id}`;
+}
+
+function buildLedger(
+  paidInvoices: Invoice[],
+  advances: SalesmanAdvance[],
+): LedgerItem[] {
+  const items: LedgerItem[] = [
+    ...paidInvoices.flatMap((invoice) =>
+      resolveEntries(invoice).map((payment) => ({
+        kind: "invoice-payment" as const,
+        invoice,
+        payment,
+        at: paymentReceivedAt(payment, invoice),
+      })),
+    ),
+    ...advances.map((advance) => ({
+      kind: "advance" as const,
+      advance,
+      at: advance.receivedAt,
+    })),
+  ];
+  items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return items;
+}
+
 function invoicesWithPayments(invoices: Invoice[]): Invoice[] {
   return invoices.filter(
     (inv) =>
@@ -71,31 +112,13 @@ export function PaymentsList({
 }: PaymentsListProps) {
   const paidInvoices = invoicesWithPayments(invoices);
 
-  const ledger = useMemo(() => {
-    const items: LedgerItem[] = [
-      ...paidInvoices.map((invoice) => ({
-        kind: "invoice" as const,
-        invoice,
-        at: invoice.issuedAt,
-      })),
-      ...advances.map((advance) => ({
-        kind: "advance" as const,
-        advance,
-        at: advance.receivedAt,
-      })),
-    ];
-    items.sort(
-      (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-    );
-    return items;
-  }, [paidInvoices, advances]);
+  const ledger = useMemo(
+    () => buildLedger(paidInvoices, advances),
+    [paidInvoices, advances],
+  );
 
-  const [expandedId, setExpandedId] = useState<string | null>(
-    () => ledger[0]?.kind === "invoice"
-      ? ledger[0].invoice.id
-      : ledger[0]?.kind === "advance"
-        ? ledger[0].advance.id
-        : null,
+  const [expandedId, setExpandedId] = useState<string | null>(() =>
+    ledger[0] ? ledgerItemId(ledger[0]) : null,
   );
   const [cancelTarget, setCancelTarget] = useState<
     | { type: "invoice"; payment: InvoicePaymentEntry; invoiceId: string }
@@ -270,7 +293,7 @@ export function PaymentsList({
               if (item.kind === "advance") {
                 return (
                   <AdvanceRow
-                    key={item.advance.id}
+                    key={ledgerItemId(item)}
                     advance={item.advance}
                     expanded={expandedId === item.advance.id}
                     onToggle={() =>
@@ -306,198 +329,26 @@ export function PaymentsList({
                 );
               }
 
-              const invoice = item.invoice;
-              const date = formatInvoiceDate(invoice.issuedAt);
-              const expanded = expandedId === invoice.id;
-              const entries = resolveEntries(invoice);
-              const methodsSummary = summarizeMethods(entries);
-              const statusLabel = verificationStatusLabel(
-                invoice.verificationStatus,
-              );
-              const activePaid = entries
-                .filter((e) => e.status !== "cancelled")
-                .reduce((s, e) => s + e.amount, 0);
-
               return (
-                <li key={invoice.id}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedId(expanded ? null : invoice.id)
-                    }
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
-                      expanded ? "bg-sidebar" : "hover:bg-sidebar/60"
-                    }`}
-                    aria-expanded={expanded}
-                  >
-                    <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
-                      <span className="text-[11px] text-muted">
-                        {date.weekday}
-                      </span>
-                      <span className="text-xl font-semibold tracking-tight tabular-nums">
-                        {date.day}
-                      </span>
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-sm font-medium">
-                          {invoice.number}
-                        </p>
-                        {statusLabel && (
-                          <span
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
-                              invoice.verificationStatus === "needs_edit"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-sky-100 text-sky-800"
-                            }`}
-                          >
-                            {statusLabel}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        {date.time}
-                        <span className="mx-1.5 text-border">·</span>
-                        {methodsSummary}
-                      </p>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="text-right">
-                        <p className="text-sm font-medium tabular-nums">
-                          {formatINR(activePaid || invoice.amountPaid)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted">
-                          {entries.length} payment
-                          {entries.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                      <ChevronIcon open={expanded} />
-                    </div>
-                  </button>
-
-                  {expanded && (
-                    <div className="mx-1 mb-1 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 sm:mx-1.5 sm:px-4">
-                      <ul className="space-y-3">
-                        {entries.map((entry, index) => {
-                          const account = entry.depositAccountId
-                            ? accountById.get(entry.depositAccountId)
-                            : undefined;
-                          const cancelled = entry.status === "cancelled";
-
-                          return (
-                            <li
-                              key={entry.id}
-                              className="border-b border-border pb-3 last:border-0 last:pb-0"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-medium">
-                                    {METHOD_LABELS[entry.method]}
-                                    <span className="ml-1.5 font-normal text-muted">
-                                      #{index + 1}
-                                    </span>
-                                    {entry.advanceId && (
-                                      <span className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
-                                        Advance
-                                      </span>
-                                    )}
-                                    {cancelled && (
-                                      <span className="ml-1.5 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
-                                        Cancelled
-                                      </span>
-                                    )}
-                                  </p>
-                                  <dl className="mt-1.5 space-y-0.5 text-xs text-muted">
-                                    {entry.receivedAt &&
-                                      entry.method !== "cash" && (
-                                        <div>
-                                          <dt className="inline">Date </dt>
-                                          <dd className="inline text-foreground">
-                                            {
-                                              formatInvoiceDate(entry.receivedAt)
-                                                .monthYear
-                                            }{" "}
-                                            {formatInvoiceDate(entry.receivedAt).day}
-                                          </dd>
-                                        </div>
-                                      )}
-                                    {entry.method === "cheque" &&
-                                      entry.chequeNumber && (
-                                        <div>
-                                          <dt className="inline">Cheque no. </dt>
-                                          <dd className="inline text-foreground">
-                                            {entry.chequeNumber}
-                                          </dd>
-                                        </div>
-                                      )}
-                                    {(entry.method === "upi" ||
-                                      entry.method === "imps") &&
-                                      entry.senderName && (
-                                        <div>
-                                          <dt className="inline">Sender </dt>
-                                          <dd className="inline text-foreground">
-                                            {entry.senderName}
-                                          </dd>
-                                        </div>
-                                      )}
-                                    {account && (
-                                      <div>
-                                        <dt className="inline">Account </dt>
-                                        <dd className="inline text-foreground">
-                                          {formatBankAccountLabel(account)}
-                                        </dd>
-                                      </div>
-                                    )}
-                                    {entry.method === "cash" && (
-                                      <div className="text-muted">
-                                        Received in cash
-                                      </div>
-                                    )}
-                                    {cancelled && entry.cancelReason && (
-                                      <div>
-                                        Reason:{" "}
-                                        <span className="text-foreground">
-                                          {entry.cancelReason}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </dl>
-                                  {entry.method === "cheque" &&
-                                    !cancelled && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setCancelTarget({
-                                            type: "invoice",
-                                            payment: entry,
-                                            invoiceId: invoice.id,
-                                          })
-                                        }
-                                        className="mt-2 text-xs font-medium text-red-700 hover:underline"
-                                      >
-                                        Cancel cheque
-                                      </button>
-                                    )}
-                                </div>
-                                <p
-                                  className={`shrink-0 text-sm font-medium tabular-nums ${
-                                    cancelled
-                                      ? "text-muted line-through"
-                                      : ""
-                                  }`}
-                                >
-                                  {formatINR(entry.amount)}
-                                </p>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                </li>
+                <InvoicePaymentRow
+                  key={ledgerItemId(item)}
+                  invoice={item.invoice}
+                  payment={item.payment}
+                  receivedAt={item.at}
+                  expanded={expandedId === ledgerItemId(item)}
+                  onToggle={() => {
+                    const id = ledgerItemId(item);
+                    setExpandedId(expandedId === id ? null : id);
+                  }}
+                  accountById={accountById}
+                  onCancelCheque={() =>
+                    setCancelTarget({
+                      type: "invoice",
+                      payment: item.payment,
+                      invoiceId: item.invoice.id,
+                    })
+                  }
+                />
               );
             })}
           </ul>
@@ -623,6 +474,153 @@ export function PaymentsList({
         </p>
       </Modal>
     </div>
+  );
+}
+
+function InvoicePaymentRow({
+  invoice,
+  payment,
+  receivedAt,
+  expanded,
+  onToggle,
+  accountById,
+  onCancelCheque,
+}: {
+  invoice: Invoice;
+  payment: InvoicePaymentEntry;
+  receivedAt: string;
+  expanded: boolean;
+  onToggle: () => void;
+  accountById: Map<string, BankAccount>;
+  onCancelCheque: () => void;
+}) {
+  const date = formatInvoiceDate(receivedAt);
+  const statusLabel = verificationStatusLabel(invoice.verificationStatus);
+  const cancelled = payment.status === "cancelled";
+  const account = payment.depositAccountId
+    ? accountById.get(payment.depositAccountId)
+    : undefined;
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
+          expanded ? "bg-sidebar" : "hover:bg-sidebar/60"
+        }`}
+        aria-expanded={expanded}
+      >
+        <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
+          <span className="text-[11px] text-muted">{date.weekday}</span>
+          <span className="text-xl font-semibold tracking-tight tabular-nums">
+            {date.day}
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-medium">{invoice.number}</p>
+            <span className="rounded bg-sidebar px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted uppercase">
+              {METHOD_LABELS[payment.method]}
+            </span>
+            {payment.advanceId && (
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-emerald-800 uppercase">
+                Advance
+              </span>
+            )}
+            {statusLabel && (
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
+                  invoice.verificationStatus === "needs_edit"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-sky-100 text-sky-800"
+                }`}
+              >
+                {statusLabel}
+              </span>
+            )}
+            {cancelled && (
+              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-red-800 uppercase">
+                Cancelled
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted">{date.time}</p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="text-right">
+            <p
+              className={`text-sm font-medium tabular-nums ${
+                cancelled ? "text-muted line-through" : ""
+              }`}
+            >
+              {formatINR(payment.amount)}
+            </p>
+          </div>
+          <ChevronIcon open={expanded} />
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mx-1 mb-1 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 sm:mx-1.5 sm:px-4">
+          <dl className="space-y-1 text-xs text-muted">
+            <div>
+              Invoice{" "}
+              <span className="text-foreground">{invoice.number}</span>
+            </div>
+            {payment.method === "cheque" && payment.chequeNumber && (
+              <div>
+                Cheque no.{" "}
+                <span className="text-foreground">{payment.chequeNumber}</span>
+              </div>
+            )}
+            {(payment.method === "upi" || payment.method === "imps") &&
+              payment.senderName && (
+                <div>
+                  Sender{" "}
+                  <span className="text-foreground">{payment.senderName}</span>
+                </div>
+              )}
+            {account && (
+              <div>
+                Account{" "}
+                <span className="text-foreground">
+                  {formatBankAccountLabel(account)}
+                </span>
+              </div>
+            )}
+            {!account && payment.depositAccountOther && (
+              <div>
+                Name{" "}
+                <span className="text-foreground">
+                  {payment.depositAccountOther}
+                </span>
+              </div>
+            )}
+            {payment.method === "cash" && (
+              <div className="text-muted">Received in cash</div>
+            )}
+            {cancelled && payment.cancelReason && (
+              <div>
+                Reason{" "}
+                <span className="text-foreground">{payment.cancelReason}</span>
+              </div>
+            )}
+          </dl>
+          {payment.method === "cheque" && !cancelled && (
+            <button
+              type="button"
+              onClick={onCancelCheque}
+              className="mt-3 text-xs font-medium text-red-700 hover:underline"
+            >
+              Cancel cheque
+            </button>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -799,22 +797,6 @@ function resolveEntries(invoice: Invoice): InvoicePaymentEntry[] {
     ];
   }
   return [];
-}
-
-function summarizeMethods(entries: InvoicePaymentEntry[]): string {
-  const counts = new Map<InvoicePaymentMethod, number>();
-  for (const entry of entries) {
-    if (entry.status === "cancelled") continue;
-    counts.set(entry.method, (counts.get(entry.method) ?? 0) + 1);
-  }
-  if (counts.size === 0) return "No active payments";
-  return Array.from(counts.entries())
-    .map(([method, count]) =>
-      count > 1
-        ? `${METHOD_LABELS[method]} ×${count}`
-        : METHOD_LABELS[method],
-    )
-    .join(", ");
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
