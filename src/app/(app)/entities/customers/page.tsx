@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import { CustomersListClient } from "@/components/customers/CustomersListClient";
 import { getAppContext } from "@/app/(app)/layout";
-import { listCustomers } from "@/lib/salesmen/queries";
+import {
+  listCustomers,
+  listInvoiceSummariesForSalesmen,
+} from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
   const context = await getAppContext();
@@ -13,8 +18,16 @@ export default async function CustomersPage() {
 
   const supabase = await createClient();
   const customers = await listCustomers(supabase);
+  const invoiceSummaries = await listInvoiceSummariesForSalesmen(
+    supabase,
+    customers.map((c) => c.id),
+  );
 
   return (
-    <CustomersListClient context={context} initialCustomers={customers} />
+    <CustomersListClient
+      context={context}
+      initialCustomers={customers}
+      initialInvoiceSummaries={invoiceSummaries}
+    />
   );
 }
