@@ -1,8 +1,21 @@
-import { decode as decodePlusCode, encode as encodePlusCode } from "open-location-code";
+import { OpenLocationCode } from "open-location-code";
 import type { Salesman } from "@/lib/salesmen/types";
+
+const openLocationCode = new OpenLocationCode();
 
 const PLUS_CODE_PATTERN =
   /[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}/i;
+
+export function isValidMapCoordinate(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
 
 export function formatCustomerAddressLines(customer: {
   addressArea: string;
@@ -11,9 +24,14 @@ export function formatCustomerAddressLines(customer: {
   return area ? [area] : [];
 }
 
-/** Full-length plus code for display (e.g. 7JVW52HG+2Q). */
-export function formatPlusCode(lat: number, lng: number): string {
-  return encodePlusCode(lat, lng);
+/** Full-length plus code for display (e.g. 7JVW52HG+2Q). Returns null if encoding fails. */
+export function formatPlusCode(lat: number, lng: number): string | null {
+  if (!isValidMapCoordinate(lat, lng)) return null;
+  try {
+    return openLocationCode.encode(lat, lng);
+  } catch {
+    return null;
+  }
 }
 
 function extractPlusCode(text: string): string | null {
@@ -25,7 +43,7 @@ function parsePlusCodeInput(text: string): { lat: number; lng: number } | null {
   const code = extractPlusCode(text);
   if (!code) return null;
   try {
-    const decoded = decodePlusCode(code);
+    const decoded = openLocationCode.decode(code);
     if (
       !Number.isFinite(decoded.latitudeCenter) ||
       !Number.isFinite(decoded.longitudeCenter)

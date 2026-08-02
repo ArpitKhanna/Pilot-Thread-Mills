@@ -1,12 +1,14 @@
 declare module "open-location-code" {
-  export function encode(latitude: number, longitude: number): string;
-  export function decode(code: string): {
-    latitudeLo: number;
-    longitudeLo: number;
-    latitudeHi: number;
-    longitudeHi: number;
-    latitudeCenter: number;
-    longitudeCenter: number;
-    codeLength: number;
-  };
+  export class OpenLocationCode {
+    encode(latitude: number, longitude: number, codeLength?: number): string;
+    decode(code: string): {
+      latitudeLo: number;
+      longitudeLo: number;
+      latitudeHi: number;
+      longitudeHi: number;
+      latitudeCenter: number;
+      longitudeCenter: number;
+      codeLength: number;
+    };
+  }
 }

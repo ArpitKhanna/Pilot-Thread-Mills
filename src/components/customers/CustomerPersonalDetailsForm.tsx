@@ -75,7 +75,10 @@ function rulesToDraft(rules: CustomerPriceRule[]): DraftPriceRule[] {
 
 function locationInputFromCustomer(customer: Salesman): string {
   if (customer.mapLat != null && customer.mapLng != null) {
-    return formatPlusCode(customer.mapLat, customer.mapLng);
+    return (
+      formatPlusCode(customer.mapLat, customer.mapLng) ??
+      `${customer.mapLat}, ${customer.mapLng}`
+    );
   }
   return "";
 }
