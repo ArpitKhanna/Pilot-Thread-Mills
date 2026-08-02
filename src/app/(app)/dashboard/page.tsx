@@ -1,36 +1,70 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TopBar } from "@/components/layout/AppShell";
+import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import { getAppContext } from "@/app/(app)/layout";
-import { ITEM_TYPE_LABELS, type ItemType, type PriceListItem } from "@/lib/auth/types";
-import { formatINR } from "@/lib/salesmen/mock-data";
+import type { PriceListItem } from "@/lib/auth/types";
+import { listBankAccounts } from "@/lib/bank-accounts/queries";
+import { fetchDailyLedger } from "@/lib/ledger/daily-query";
+import { todayDateString } from "@/lib/ledger/date-utils";
+import { fetchDyeingStats } from "@/lib/ledger/dyeing-stats";
+import { fetchOrderStats } from "@/lib/ledger/order-stats";
 import { listPendingInvoiceApprovals } from "@/lib/salesmen/queries";
 import { createClient } from "@/lib/supabase/server";
+
+function hasModule(
+  modules: { id: string }[],
+  ids: string[],
+): boolean {
+  const set = new Set(modules.map((m) => m.id));
+  return ids.some((id) => set.has(id));
+}
 
 export default async function DashboardPage() {
   const context = await getAppContext();
   if (!context) redirect("/login");
 
+  const supabase = await createClient();
+  const today = todayDateString();
   const isAdmin = context.profile.role === "admin";
-  let pendingItems: PriceListItem[] = [];
-  let pendingInvoices: Awaited<
-    ReturnType<typeof listPendingInvoiceApprovals>
-  > = [];
 
-  if (isAdmin) {
-    const supabase = await createClient();
-    const [{ data }, invoices] = await Promise.all([
-      supabase
-        .from("price_list_items")
-        .select("*")
-        .eq("status", "pending_approval")
-        .order("created_at", { ascending: false })
-        .limit(10),
-      listPendingInvoiceApprovals(supabase),
-    ]);
-    pendingItems = (data ?? []) as PriceListItem[];
-    pendingInvoices = invoices.slice(0, 10);
-  }
+  const canAddReceipt = hasModule(context.modules, [
+    "entity-salesmen",
+    "order-salesmen",
+    "entity-customers",
+    "order-customers",
+    "dashboard",
+    "payments",
+  ]);
+  const canAddExpense = hasModule(context.modules, [
+    "expenses",
+    "dashboard",
+    "payments",
+  ]);
+
+  const [
+    ledger,
+    orderStats,
+    dyeingStats,
+    bankAccounts,
+    pendingInvoices,
+    pendingPriceItemsRes,
+  ] = await Promise.all([
+    fetchDailyLedger(supabase, today),
+    fetchOrderStats(supabase, today),
+    fetchDyeingStats(supabase),
+    listBankAccounts(supabase),
+    isAdmin ? listPendingInvoiceApprovals(supabase) : Promise.resolve([]),
+    isAdmin
+      ? supabase
+          .from("price_list_items")
+          .select("*")
+          .eq("status", "pending_approval")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const pendingPriceItems = (pendingPriceItemsRes.data ?? []) as PriceListItem[];
 
   return (
     <>
@@ -39,179 +73,17 @@ export default async function DashboardPage() {
         breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Dashboard" }]}
       />
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
-            Welcome, {context.profile.full_name}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Your operations hub for Pilot Thread Mills
-          </p>
-        </div>
-
-        {isAdmin && pendingInvoices.length > 0 && (
-          <section className="mb-8">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-medium">Invoice approvals</h2>
-                <p className="text-sm text-muted">
-                  Salesman invoices awaiting admin verification
-                </p>
-              </div>
-              <Link
-                href="/approvals"
-                className="text-sm font-medium underline underline-offset-2"
-              >
-                View all
-              </Link>
-            </div>
-
-            <div className="space-y-3 md:hidden">
-              {pendingInvoices.map(({ invoice, salesmanName, chargedTotal }) => (
-                <div
-                  key={invoice.id}
-                  className="rounded-xl border border-border bg-surface p-4"
-                >
-                  <p className="font-medium">{invoice.number}</p>
-                  <p className="mt-1 text-xs text-muted">{salesmanName}</p>
-                  <p className="mt-2 text-sm text-muted">
-                    {formatINR(chargedTotal)} · Paid{" "}
-                    {formatINR(invoice.amountPaid)}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    By @{invoice.createdByName ?? "Unknown"}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="hidden overflow-hidden rounded-xl border border-border bg-surface md:block">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-table-header">
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Invoice
-                    </th>
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Salesman
-                    </th>
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Amount
-                    </th>
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Created by
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingInvoices.map(({ invoice, salesmanName, chargedTotal }) => (
-                    <tr
-                      key={invoice.id}
-                      className="border-b border-border last:border-0"
-                    >
-                      <td className="px-5 py-3 font-medium">
-                        {invoice.number}
-                      </td>
-                      <td className="px-5 py-3 text-muted">{salesmanName}</td>
-                      <td className="px-5 py-3 text-muted tabular-nums">
-                        {formatINR(chargedTotal)}
-                      </td>
-                      <td className="px-5 py-3 text-muted">
-                        @{invoice.createdByName ?? "Unknown"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {isAdmin && pendingItems.length > 0 && (
-          <section className="mb-8">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-medium">Price list approvals</h2>
-                <p className="text-sm text-muted">
-                  Price list items submitted by accountants awaiting your review
-                </p>
-              </div>
-              <Link
-                href="/entities/price-list"
-                className="text-sm font-medium underline underline-offset-2"
-              >
-                View all
-              </Link>
-            </div>
-
-            {/* Mobile cards */}
-            <div className="space-y-3 md:hidden">
-              {pendingItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-border bg-surface p-4"
-                >
-                  <p className="font-medium">{item.item_name}</p>
-                  <p className="mt-1 text-xs text-muted">
-                    {ITEM_TYPE_LABELS[item.item_type as ItemType]}
-                  </p>
-                  <p className="mt-2 text-sm text-muted">
-                    ₹{item.salesmen_price} / ₹{item.customer_price}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="hidden overflow-hidden rounded-xl border border-border bg-surface md:block">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-table-header">
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Item
-                    </th>
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Type
-                    </th>
-                    <th className="px-5 py-3 text-left font-mono text-[11px] font-medium tracking-wider text-muted uppercase">
-                      Prices
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingItems.map((item) => (
-                    <tr key={item.id} className="border-b border-border last:border-0">
-                      <td className="px-5 py-3 font-medium">{item.item_name}</td>
-                      <td className="px-5 py-3 text-muted">
-                        {ITEM_TYPE_LABELS[item.item_type as ItemType]}
-                      </td>
-                      <td className="px-5 py-3 text-muted">
-                        ₹{item.salesmen_price} / ₹{item.customer_price}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        <section>
-          <h2 className="mb-4 text-lg font-medium">Quick access</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {context.modules
-              .filter((m) => m.id !== "dashboard")
-              .slice(0, 6)
-              .map((module) => (
-                <Link
-                  key={module.id}
-                  href={module.href}
-                  className="rounded-xl border border-border bg-surface p-5 shadow-sm transition hover:border-foreground/20"
-                >
-                  <h3 className="font-medium">{module.name}</h3>
-                  <p className="mt-1 text-sm text-muted">Open module</p>
-                </Link>
-              ))}
-          </div>
-        </section>
+        <DashboardClient
+          context={context}
+          ledger={ledger}
+          orderStats={orderStats}
+          dyeingStats={dyeingStats}
+          bankAccounts={bankAccounts}
+          pendingInvoices={pendingInvoices.slice(0, 10)}
+          pendingPriceItems={pendingPriceItems}
+          canAddReceipt={canAddReceipt}
+          canAddExpense={canAddExpense}
+        />
       </main>
     </>
   );

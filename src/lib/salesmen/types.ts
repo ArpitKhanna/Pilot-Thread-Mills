@@ -195,9 +195,16 @@ export type InvoicePaymentEntry = {
 };
 
 /** Stand-alone payment recorded before an invoice (advance / credit) */
+export type LedgerReceiptSource =
+  | "party_payment"
+  | "chitfund"
+  | "mutual_fund"
+  | "other";
+
 export type SalesmanAdvance = {
   id: string;
   salesmanId: string;
+  sourceCategory?: LedgerReceiptSource;
   method: InvoicePaymentMethod;
   amount: number;
   remainingAmount: number;

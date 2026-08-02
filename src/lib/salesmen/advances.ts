@@ -177,7 +177,9 @@ export async function createAdvance(
   if (error || !data) {
     throw new Error(error?.message ?? "Failed to create advance");
   }
-  await refreshSalesmanTotals(supabase, salesmanId);
+  if (salesmanId) {
+    await refreshSalesmanTotals(supabase, salesmanId);
+  }
   return mapAdvanceRow(data as DbAdvanceRow);
 }
 
@@ -301,7 +303,9 @@ export async function cancelAdvanceCheque(
   if (updError || !updated) {
     throw new Error(updError?.message ?? "Failed to cancel cheque");
   }
-  await refreshSalesmanTotals(supabase, advance.salesmanId);
+  if (advance.salesmanId) {
+    await refreshSalesmanTotals(supabase, advance.salesmanId);
+  }
   return mapAdvanceRow(updated as DbAdvanceRow);
 }
 
@@ -404,6 +408,8 @@ export async function deleteAdvance(
     .eq("id", advanceId);
   if (delError) throw delError;
 
-  await refreshSalesmanTotals(supabase, advance.salesmanId);
+  if (advance.salesmanId) {
+    await refreshSalesmanTotals(supabase, advance.salesmanId);
+  }
   return { salesmanId: advance.salesmanId };
 }

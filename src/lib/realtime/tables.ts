@@ -9,6 +9,7 @@ export const APP_REALTIME_TABLES = [
   "salesmen_invoices",
   "salesmen_invoice_lines",
   "salesmen_invoice_payments",
+  "salesmen_advances",
   "salesmen_item_requests",
   "item_shades",
   "customer_orders",
@@ -22,6 +23,7 @@ export const APP_REALTIME_TABLES = [
   "delivery_runs",
   "delivery_run_orders",
   "dyeing_jobs",
+  "daily_expenses",
 ] as const;
 
 export type AppRealtimeTable = (typeof APP_REALTIME_TABLES)[number];

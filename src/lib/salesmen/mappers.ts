@@ -109,7 +109,8 @@ export type DbInvoicePaymentRow = {
 
 export type DbAdvanceRow = {
   id: string;
-  salesman_id: string;
+  salesman_id: string | null;
+  source_category?: string | null;
   method: InvoicePaymentMethod;
   amount: number | string;
   remaining_amount: number | string;
@@ -428,9 +429,11 @@ export function mapInvoiceRows(
 }
 
 export function mapAdvanceRow(row: DbAdvanceRow): SalesmanAdvance {
+  const sourceCategory = row.source_category as SalesmanAdvance["sourceCategory"];
   return {
     id: row.id,
-    salesmanId: row.salesman_id,
+    salesmanId: row.salesman_id ?? "",
+    sourceCategory: sourceCategory ?? "party_payment",
     method: row.method,
     amount: num(row.amount),
     remainingAmount: num(row.remaining_amount),
