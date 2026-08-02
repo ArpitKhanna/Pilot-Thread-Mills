@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 
-type DashboardErrorProps = {
+type AppErrorProps = {
   error: Error & { digest?: string };
   reset: () => void;
 };
 
-export default function DashboardError({ error, reset }: DashboardErrorProps) {
+export default function AppError({ error, reset }: AppErrorProps) {
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <h1 className="text-xl font-medium tracking-tight">
-        Dashboard could not load
-      </h1>
+      <h1 className="text-xl font-medium tracking-tight">Something went wrong</h1>
       <p className="mt-2 max-w-md text-sm text-muted">
-        {error.message || "Something went wrong while loading your dashboard."}
+        {error.message || "This page could not load. You can try again or return to the dashboard."}
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <button
