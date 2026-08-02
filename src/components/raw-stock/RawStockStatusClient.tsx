@@ -3,69 +3,63 @@
 import { useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import { TopBar } from "@/components/layout/AppShell";
-import { RawStockModals, type MovementModalKind } from "@/components/raw-stock/RawStockModals";
 import {
-  buildRawStockAnalytics,
+  RawStockModals,
+  type MovementModalKind,
+} from "@/components/raw-stock/RawStockModals";
+import {
+  buildMonthReport,
   formatKg,
+  listAvailableMonthKeys,
 } from "@/lib/raw-stock/balance";
-import {
-  formatINR,
-  formatInvoiceDate,
-  formatShortDate,
-} from "@/lib/salesmen/mock-data";
+import { formatInvoiceDate, formatShortDate } from "@/lib/salesmen/mock-data";
 import type {
+  CountBalance,
+  MonthReportRow,
   RawStockBalances,
-  RawStockCustomerOption,
+  RawStockCategory,
   RawStockMovement,
   RawStockMovementType,
-  RawStockShadeOption,
   RawStockSupplier,
-  RawStockTimeRangePreset,
+} from "@/lib/raw-stock/types";
+import {
+  CATEGORY_LABELS,
+  COUNTS_BY_CATEGORY,
+  MOVEMENT_TYPE_LABELS,
 } from "@/lib/raw-stock/types";
 import { useSyncedState } from "@/lib/realtime/use-synced-state";
-import { MOVEMENT_TYPE_LABELS } from "@/lib/raw-stock/types";
 
-type TabId = "stock" | "timeline" | "analytics" | "suppliers";
+type TabId = "stock" | "timeline" | "reports" | "suppliers";
 
 type RawStockStatusClientProps = {
   context: AppContext;
   initialMovements: RawStockMovement[];
   initialSuppliers: RawStockSupplier[];
-  initialCounts: string[];
-  initialCustomers: RawStockCustomerOption[];
-  initialShades: RawStockShadeOption[];
   initialBalances: RawStockBalances;
 };
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "stock", label: "Stock" },
   { id: "timeline", label: "Timeline" },
-  { id: "analytics", label: "Analytics" },
+  { id: "reports", label: "Reports" },
   { id: "suppliers", label: "Suppliers" },
 ];
 
-const RANGE_OPTIONS: { id: RawStockTimeRangePreset; label: string }[] = [
-  { id: "month", label: "1M" },
-  { id: "6m", label: "6M" },
-  { id: "1y", label: "1Y" },
-  { id: "max", label: "Max" },
-];
-
 const ACTION_BUTTONS: { kind: MovementModalKind; label: string }[] = [
-  { kind: "purchase", label: "Purchase" },
-  { kind: "send_to_narela", label: "Send to Narela" },
-  { kind: "mark_dyed", label: "Record dyeing" },
-  { kind: "receive_from_narela", label: "Receive" },
+  { kind: "stock_in", label: "Add stock" },
+  { kind: "stock_out", label: "Send to Rama Road" },
   { kind: "opening_balance", label: "Opening" },
 ];
+
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
 
 export function RawStockStatusClient({
   context,
   initialMovements,
   initialSuppliers,
-  initialCounts,
-  initialCustomers,
-  initialShades,
   initialBalances,
 }: RawStockStatusClientProps) {
   const [tab, setTab] = useState<TabId>("stock");
@@ -74,7 +68,6 @@ export function RawStockStatusClient({
   const pauseSync = modalKind != null || supplierModalOpen;
   const [movements, setMovements] = useSyncedState(initialMovements, !pauseSync);
   const [suppliers, setSuppliers] = useSyncedState(initialSuppliers, !pauseSync);
-  const [counts, setCounts] = useSyncedState(initialCounts, !pauseSync);
   const [balances, setBalances] = useSyncedState(initialBalances, !pauseSync);
   const [editingSupplier, setEditingSupplier] = useState<RawStockSupplier | null>(
     null,
@@ -83,22 +76,52 @@ export function RawStockStatusClient({
   const [timelineType, setTimelineType] = useState<"all" | RawStockMovementType>(
     "all",
   );
-  const [timelineCount, setTimelineCount] = useState("");
-  const [rangePreset, setRangePreset] = useState<RawStockTimeRangePreset>("6m");
-  const [expandedCounts, setExpandedCounts] = useState<Set<string>>(new Set());
-
-  const analytics = useMemo(
-    () => buildRawStockAnalytics(movements, rangePreset),
-    [movements, rangePreset],
+  const [timelineCategory, setTimelineCategory] = useState<"all" | RawStockCategory>(
+    "all",
   );
+  const [timelineCount, setTimelineCount] = useState("");
+  const [reportMonth, setReportMonth] = useState(currentMonthKey);
+
+  const monthKeys = useMemo(
+    () => listAvailableMonthKeys(movements),
+    [movements],
+  );
+
+  const monthReport = useMemo(
+    () => buildMonthReport(movements, reportMonth),
+    [movements, reportMonth],
+  );
+
+  const timelineCountOptions = useMemo(() => {
+    if (timelineCategory === "all") {
+      return [
+        ...COUNTS_BY_CATEGORY.hank.map((c) => ({ category: "hank" as const, c })),
+        ...COUNTS_BY_CATEGORY.cone.map((c) => ({ category: "cone" as const, c })),
+      ];
+    }
+    return COUNTS_BY_CATEGORY[timelineCategory].map((c) => ({
+      category: timelineCategory,
+      c,
+    }));
+  }, [timelineCategory]);
 
   const filteredTimeline = useMemo(() => {
     return movements.filter((m) => {
       if (timelineType !== "all" && m.movementType !== timelineType) return false;
-      if (timelineCount && m.countLabel !== timelineCount) return false;
+      if (timelineCategory !== "all" && m.category !== timelineCategory) {
+        return false;
+      }
+      if (timelineCount) {
+        if (timelineCount.includes("::")) {
+          const [cat, count] = timelineCount.split("::");
+          if (m.category !== cat || m.countLabel !== count) return false;
+        } else if (m.countLabel !== timelineCount) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [movements, timelineType, timelineCount]);
+  }, [movements, timelineType, timelineCategory, timelineCount]);
 
   const timelineGroups = useMemo(() => {
     const groups: { label: string; items: RawStockMovement[] }[] = [];
@@ -117,35 +140,14 @@ export function RawStockStatusClient({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [suppliers, supplierTab]);
 
-  const maxBar = Math.max(
-    1,
-    ...analytics.monthlyTrend.flatMap((p) => [
-      p.purchasedKg,
-      p.sentKg,
-      p.dyedKg,
-      p.receivedKg,
-    ]),
-  );
-
   function onDataRefresh(next: {
     movements: RawStockMovement[];
     suppliers: RawStockSupplier[];
-    counts: string[];
     balances: RawStockBalances;
   }) {
     setMovements(next.movements);
     setSuppliers(next.suppliers);
-    setCounts(next.counts);
     setBalances(next.balances);
-  }
-
-  function toggleExpanded(countLabel: string) {
-    setExpandedCounts((prev) => {
-      const next = new Set(prev);
-      if (next.has(countLabel)) next.delete(countLabel);
-      else next.add(countLabel);
-      return next;
-    });
   }
 
   async function refreshFromServer() {
@@ -155,7 +157,6 @@ export function RawStockStatusClient({
     onDataRefresh({
       movements: data.movements,
       suppliers: data.suppliers,
-      counts: data.counts,
       balances: data.balances,
     });
   }
@@ -186,6 +187,9 @@ export function RawStockStatusClient({
               <h1 className="text-xl font-medium tracking-tight">
                 Raw Stock Status
               </h1>
+              <p className="mt-0.5 text-sm text-muted">
+                Narela inventory by Hank and Cone count
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {ACTION_BUTTONS.map((btn) => (
@@ -201,21 +205,12 @@ export function RawStockStatusClient({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Kpi label="Rama undyed" value={formatKg(balances.totals.ramaUndyedKg)} />
-            <Kpi
-              label="Narela undyed"
-              value={formatKg(balances.totals.narelaUndyedKg)}
-            />
-            <Kpi
-              label="Narela dyed"
-              value={formatKg(balances.totals.narelaDyedKg)}
-            />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Kpi label="Hank total" value={formatKg(balances.totals.hankKg)} />
+            <Kpi label="Cone total" value={formatKg(balances.totals.coneKg)} />
             <Kpi
               label="Narela total"
-              value={formatKg(
-                balances.totals.narelaUndyedKg + balances.totals.narelaDyedKg,
-              )}
+              value={formatKg(balances.totals.narelaKg)}
             />
           </div>
 
@@ -238,93 +233,18 @@ export function RawStockStatusClient({
 
           {tab === "stock" && (
             <div className="grid gap-4 lg:grid-cols-2">
-              <StockPanel
-                title="Rama Road"
-                subtitle="Undyed raw yarn on hand"
-                rows={balances.byCount
-                  .filter((r) => r.ramaUndyedKg > 0.0005)
-                  .map((r) => ({
-                    countLabel: r.countLabel,
-                    kg: r.ramaUndyedKg,
-                  }))}
-                empty="No undyed stock at Rama Road"
+              <CategoryStockPanel
+                title="Hank"
+                subtitle="Narela stock on hand"
+                rows={balances.byCategory.hank}
+                totalKg={balances.totals.hankKg}
               />
-              <section className="rounded-xl border border-border bg-surface">
-                <div className="border-b border-border px-4 py-3">
-                  <h2 className="font-medium">Narela</h2>
-                  <p className="text-sm text-muted">
-                    Undyed waiting to dye + dyed awaiting return
-                  </p>
-                </div>
-                {balances.byCount.filter(
-                  (r) =>
-                    r.narelaUndyedKg > 0.0005 || r.narelaDyedKg > 0.0005,
-                ).length === 0 ? (
-                  <p className="px-4 py-10 text-center text-sm text-muted">
-                    No stock at Narela
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {balances.byCount
-                      .filter(
-                        (r) =>
-                          r.narelaUndyedKg > 0.0005 ||
-                          r.narelaDyedKg > 0.0005,
-                      )
-                      .map((row) => {
-                        const lots = balances.dyedLots.filter(
-                          (l) => l.countLabel === row.countLabel,
-                        );
-                        const open = expandedCounts.has(row.countLabel);
-                        return (
-                          <li key={row.countLabel} className="px-4 py-3">
-                            <button
-                              type="button"
-                              className="flex w-full items-start justify-between gap-3 text-left"
-                              onClick={() => toggleExpanded(row.countLabel)}
-                              disabled={lots.length === 0}
-                            >
-                              <div>
-                                <p className="font-medium">{row.countLabel}</p>
-                                <p className="mt-0.5 text-xs text-muted">
-                                  Undyed {formatKg(row.narelaUndyedKg)}
-                                  {" · "}
-                                  Dyed {formatKg(row.narelaDyedKg)}
-                                </p>
-                              </div>
-                              {lots.length > 0 && (
-                                <span className="text-xs text-muted">
-                                  {open ? "Hide lots" : `${lots.length} lot(s)`}
-                                </span>
-                              )}
-                            </button>
-                            {open && lots.length > 0 && (
-                              <ul className="mt-2 space-y-1.5 border-l border-border pl-3">
-                                {lots.map((lot) => (
-                                  <li
-                                    key={lot.movementId}
-                                    className="text-sm text-muted"
-                                  >
-                                    <span className="text-foreground">
-                                      {formatKg(lot.remainingKg)}
-                                    </span>
-                                    {" · "}
-                                    {lot.shadeCodeText ||
-                                      lot.colorLabel ||
-                                      "Shade n/a"}
-                                    {lot.customerName
-                                      ? ` · ${lot.customerName}`
-                                      : " · Internal"}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </li>
-                        );
-                      })}
-                  </ul>
-                )}
-              </section>
+              <CategoryStockPanel
+                title="Cone"
+                subtitle="Narela stock on hand"
+                rows={balances.byCategory.cone}
+                totalKg={balances.totals.coneKg}
+              />
             </div>
           )}
 
@@ -350,14 +270,35 @@ export function RawStockStatusClient({
                   ))}
                 </select>
                 <select
+                  value={timelineCategory}
+                  onChange={(e) => {
+                    setTimelineCategory(
+                      e.target.value as "all" | RawStockCategory,
+                    );
+                    setTimelineCount("");
+                  }}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                >
+                  <option value="all">All categories</option>
+                  <option value="hank">{CATEGORY_LABELS.hank}</option>
+                  <option value="cone">{CATEGORY_LABELS.cone}</option>
+                </select>
+                <select
                   value={timelineCount}
                   onChange={(e) => setTimelineCount(e.target.value)}
                   className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
                 >
                   <option value="">All counts</option>
-                  {counts.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {timelineCountOptions.map(({ category, c }) => (
+                    <option
+                      key={`${category}-${c}`}
+                      value={
+                        timelineCategory === "all" ? `${category}::${c}` : c
+                      }
+                    >
+                      {timelineCategory === "all"
+                        ? `${CATEGORY_LABELS[category]} · ${c}`
+                        : c}
                     </option>
                   ))}
                 </select>
@@ -383,25 +324,19 @@ export function RawStockStatusClient({
                             <p className="text-sm font-medium">
                               {MOVEMENT_TYPE_LABELS[m.movementType]}
                               {" · "}
+                              {CATEGORY_LABELS[m.category]}
+                              {" · "}
                               {m.countLabel}
                             </p>
                             <p className="text-xs text-muted">
                               {formatShortDate(m.movementDate)}
                               {m.supplierName ? ` · ${m.supplierName}` : ""}
-                              {m.shadeCodeText || m.colorLabel
-                                ? ` · ${m.shadeCodeText || m.colorLabel}`
-                                : ""}
-                              {m.customerName ? ` · ${m.customerName}` : ""}
                               {m.notes ? ` · ${m.notes}` : ""}
                             </p>
                           </div>
                           <div className="shrink-0 text-sm font-medium tabular-nums">
+                            {m.movementType === "stock_out" ? "−" : "+"}
                             {formatKg(m.quantityKg)}
-                            {m.pricePerKg != null && (
-                              <span className="ml-2 text-xs font-normal text-muted">
-                                @ {formatINR(m.pricePerKg)}/kg
-                              </span>
-                            )}
                           </div>
                         </li>
                       ))}
@@ -412,115 +347,90 @@ export function RawStockStatusClient({
             </div>
           )}
 
-          {tab === "analytics" && (
-            <div className="space-y-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {tab === "reports" && (
+            <div className="space-y-5 print:space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
                 <div>
                   <h2 className="text-lg font-medium tracking-tight">
-                    Month over month
+                    Month report
                   </h2>
                   <p className="mt-0.5 text-sm text-muted">
-                    Purchased, sent, dyed, and received volumes
+                    Opening, stock in, sent to Rama Road, and closing by count
                   </p>
                 </div>
-                <div className="inline-flex flex-wrap rounded-lg border border-border bg-surface p-0.5">
-                  {RANGE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setRangePreset(opt.id)}
-                      className={`rounded-md px-3 py-1.5 text-sm ${
-                        rangePreset === opt.id
-                          ? "bg-sidebar font-medium"
-                          : "text-muted hover:text-foreground"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={reportMonth}
+                    onChange={(e) => setReportMonth(e.target.value)}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  >
+                    {monthKeys.map((key) => {
+                      const [y, m] = key.split("-").map(Number);
+                      const label = new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString(
+                        "en-IN",
+                        { month: "long", year: "numeric" },
+                      );
+                      return (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-sidebar"
+                  >
+                    Print
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <Kpi
-                  label="Purchased"
-                  value={formatKg(analytics.summary.purchasedKg)}
-                />
-                <Kpi label="Sent" value={formatKg(analytics.summary.sentKg)} />
-                <Kpi label="Dyed" value={formatKg(analytics.summary.dyedKg)} />
-                <Kpi
-                  label="Received"
-                  value={formatKg(analytics.summary.receivedKg)}
-                />
-                <Kpi
-                  label="Purchase spend"
-                  value={formatINR(analytics.summary.purchaseSpend)}
-                />
+              <div className="hidden print:block">
+                <h2 className="text-lg font-medium">
+                  Raw Stock — {monthReport.label}
+                </h2>
+                <p className="text-sm text-muted">Narela inventory report</p>
               </div>
 
-              <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
-                <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-                  Volume trend (kg)
-                </p>
-                {analytics.monthlyTrend.every(
-                  (p) =>
-                    p.purchasedKg === 0 &&
-                    p.sentKg === 0 &&
-                    p.dyedKg === 0 &&
-                    p.receivedKg === 0,
-                ) ? (
-                  <p className="mt-6 text-center text-sm text-muted">
-                    No movement activity in this period
-                  </p>
-                ) : (
-                  <>
-                    <div
-                      className="mt-4 flex h-44 items-end gap-1.5 sm:gap-2"
-                      role="img"
-                      aria-label="Monthly stock movement volumes"
-                    >
-                      {analytics.monthlyTrend.map((point) => (
-                        <div
-                          key={point.key}
-                          className="flex min-w-0 flex-1 flex-col items-center gap-1"
-                        >
-                          <div className="flex h-36 w-full items-end justify-center gap-0.5">
-                            {(
-                              [
-                                ["purchasedKg", "#f8d4b8"],
-                                ["sentKg", "#e86f2a"],
-                                ["dyedKg", "#3b6ea5"],
-                                ["receivedKg", "#2f6f4e"],
-                              ] as const
-                            ).map(([key, color]) => (
-                              <div
-                                key={key}
-                                className="w-[22%] max-w-3 rounded-t-sm"
-                                style={{
-                                  backgroundColor: color,
-                                  height:
-                                    point[key] > 0
-                                      ? `${Math.max(2, (point[key] / maxBar) * 100)}%`
-                                      : "0%",
-                                }}
-                                title={`${key} ${point[key]} kg`}
-                              />
-                            ))}
-                          </div>
-                          <span className="truncate text-[10px] text-muted">
-                            {point.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted">
-                      <LegendDot className="bg-[#f8d4b8]" label="Purchased" />
-                      <LegendDot className="bg-[#e86f2a]" label="Sent" />
-                      <LegendDot className="bg-[#3b6ea5]" label="Dyed" />
-                      <LegendDot className="bg-[#2f6f4e]" label="Received" />
-                    </div>
-                  </>
-                )}
+              <ReportTable
+                title="Hank"
+                rows={monthReport.byCategory.hank}
+                totals={monthReport.totals.hank}
+              />
+              <ReportTable
+                title="Cone"
+                rows={monthReport.byCategory.cone}
+                totals={monthReport.totals.cone}
+              />
+
+              <section className="rounded-xl border border-border bg-surface px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-medium">Overall</p>
+                  <div className="flex flex-wrap gap-4 text-sm tabular-nums">
+                    <span>
+                      Opening{" "}
+                      <strong>{formatKg(monthReport.totals.overall.openingKg)}</strong>
+                    </span>
+                    <span>
+                      In{" "}
+                      <strong>{formatKg(monthReport.totals.overall.stockInKg)}</strong>
+                    </span>
+                    <span>
+                      Out{" "}
+                      <strong>
+                        {formatKg(monthReport.totals.overall.stockOutKg)}
+                      </strong>
+                    </span>
+                    <span>
+                      Closing{" "}
+                      <strong>
+                        {formatKg(monthReport.totals.overall.closingKg)}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
               </section>
             </div>
           )}
@@ -613,10 +523,7 @@ export function RawStockStatusClient({
           setSupplierModalOpen(false);
           setEditingSupplier(null);
         }}
-        counts={counts}
         suppliers={suppliers}
-        customers={initialCustomers}
-        shades={initialShades}
         balances={balances}
         onMovementSaved={async () => {
           await refreshFromServer();
@@ -651,47 +558,108 @@ function Kpi({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LegendDot({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`inline-block h-2.5 w-2.5 rounded-sm ${className}`} />
-      {label}
-    </span>
-  );
-}
-
-function StockPanel({
+function CategoryStockPanel({
   title,
   subtitle,
   rows,
-  empty,
+  totalKg,
 }: {
   title: string;
   subtitle: string;
-  rows: { countLabel: string; kg: number }[];
-  empty: string;
+  rows: CountBalance[];
+  totalKg: number;
 }) {
   return (
     <section className="rounded-xl border border-border bg-surface">
-      <div className="border-b border-border px-4 py-3">
-        <h2 className="font-medium">{title}</h2>
-        <p className="text-sm text-muted">{subtitle}</p>
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <h2 className="font-medium">{title}</h2>
+          <p className="text-sm text-muted">{subtitle}</p>
+        </div>
+        <p className="text-sm font-medium tabular-nums">{formatKg(totalKg)}</p>
       </div>
-      {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-muted">{empty}</p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {rows.map((row) => (
-            <li
-              key={row.countLabel}
-              className="flex items-center justify-between px-4 py-3"
+      <ul className="divide-y divide-border">
+        {rows.map((row) => (
+          <li
+            key={row.countLabel}
+            className="flex items-center justify-between px-4 py-3"
+          >
+            <span className="font-medium">{row.countLabel}</span>
+            <span
+              className={`tabular-nums text-sm ${
+                row.narelaKg < 0.0005 ? "text-muted" : ""
+              }`}
             >
-              <span className="font-medium">{row.countLabel}</span>
-              <span className="tabular-nums text-sm">{formatKg(row.kg)}</span>
-            </li>
+              {formatKg(row.narelaKg)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReportTable({
+  title,
+  rows,
+  totals,
+}: {
+  title: string;
+  rows: MonthReportRow[];
+  totals: Omit<MonthReportRow, "category" | "countLabel">;
+}) {
+  return (
+    <section className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="font-medium">{title}</h3>
+      </div>
+      <table className="w-full min-w-[560px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-border text-xs text-muted">
+            <th className="px-4 py-2 font-medium">Count</th>
+            <th className="px-4 py-2 font-medium text-right">Opening</th>
+            <th className="px-4 py-2 font-medium text-right">Stock in</th>
+            <th className="px-4 py-2 font-medium text-right">Sent to Rama</th>
+            <th className="px-4 py-2 font-medium text-right">Closing</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((row) => (
+            <tr key={row.countLabel}>
+              <td className="px-4 py-2.5 font-medium">{row.countLabel}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {formatKg(row.openingKg)}
+              </td>
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {formatKg(row.stockInKg)}
+              </td>
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {formatKg(row.stockOutKg)}
+              </td>
+              <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+                {formatKg(row.closingKg)}
+              </td>
+            </tr>
           ))}
-        </ul>
-      )}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-border bg-sidebar/40">
+            <td className="px-4 py-2.5 font-medium">Total</td>
+            <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+              {formatKg(totals.openingKg)}
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+              {formatKg(totals.stockInKg)}
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+              {formatKg(totals.stockOutKg)}
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+              {formatKg(totals.closingKg)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </section>
   );
 }

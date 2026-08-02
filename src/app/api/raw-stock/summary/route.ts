@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { deriveBalances } from "@/lib/raw-stock/balance";
 import { requireRawStockAccess } from "@/lib/raw-stock/api-helpers";
-import {
-  listCountOptions,
-  listCustomerOptions,
-  listMovements,
-  listShadeOptions,
-  listSuppliers,
-} from "@/lib/raw-stock/queries";
+import { listMovements, listSuppliers } from "@/lib/raw-stock/queries";
 
 export async function GET() {
   const auth = await requireRawStockAccess();
@@ -15,12 +9,9 @@ export async function GET() {
   const { supabase } = auth;
 
   try {
-    const [movements, suppliers, counts, customers, shades] = await Promise.all([
+    const [movements, suppliers] = await Promise.all([
       listMovements(supabase),
       listSuppliers(supabase),
-      listCountOptions(supabase),
-      listCustomerOptions(supabase),
-      listShadeOptions(supabase),
     ]);
 
     const balances = deriveBalances(movements);
@@ -28,9 +19,6 @@ export async function GET() {
     return NextResponse.json({
       movements,
       suppliers,
-      counts,
-      customers,
-      shades,
       balances,
     });
   } catch (e) {

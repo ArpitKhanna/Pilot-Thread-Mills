@@ -39,25 +39,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: balanceCheck.error }, { status: 400 });
   }
 
-  // For receive, copy shade/customer from the dyed lot when not provided
-  let payload = validated.data;
-  if (payload.movementType === "receive_from_narela" && payload.relatedMovementId) {
-    const movements = await listMovements(supabase);
-    const lot = movements.find((m) => m.id === payload.relatedMovementId);
-    if (lot) {
-      payload = {
-        ...payload,
-        shadeId: payload.shadeId ?? lot.shadeId,
-        shadeCodeText: payload.shadeCodeText ?? lot.shadeCodeText,
-        colorLabel: payload.colorLabel ?? lot.colorLabel,
-        customerId: payload.customerId ?? lot.customerId,
-      };
-    }
-  }
-
   try {
     const movement = await createMovement(supabase, {
-      ...payload,
+      ...validated.data,
       createdBy: profile.id,
     });
     return NextResponse.json({ movement });

@@ -2,13 +2,7 @@ import { redirect } from "next/navigation";
 import { getAppContext } from "@/app/(app)/layout";
 import { RawStockStatusClient } from "@/components/raw-stock/RawStockStatusClient";
 import { deriveBalances } from "@/lib/raw-stock/balance";
-import {
-  listCountOptions,
-  listCustomerOptions,
-  listMovements,
-  listShadeOptions,
-  listSuppliers,
-} from "@/lib/raw-stock/queries";
+import { listMovements, listSuppliers } from "@/lib/raw-stock/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function RawStockStatusPage() {
@@ -19,12 +13,9 @@ export default async function RawStockStatusPage() {
   if (!hasAccess) redirect("/dashboard");
 
   const supabase = await createClient();
-  const [movements, suppliers, counts, customers, shades] = await Promise.all([
+  const [movements, suppliers] = await Promise.all([
     listMovements(supabase),
     listSuppliers(supabase),
-    listCountOptions(supabase),
-    listCustomerOptions(supabase),
-    listShadeOptions(supabase),
   ]);
 
   return (
@@ -32,9 +23,6 @@ export default async function RawStockStatusPage() {
       context={context}
       initialMovements={movements}
       initialSuppliers={suppliers}
-      initialCounts={counts}
-      initialCustomers={customers}
-      initialShades={shades}
       initialBalances={deriveBalances(movements)}
     />
   );
