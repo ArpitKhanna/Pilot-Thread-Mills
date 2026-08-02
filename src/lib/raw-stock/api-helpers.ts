@@ -119,6 +119,107 @@ export function validateMovementPayload(
   };
 }
 
+export type ValidatedBatchMovementData = {
+  movementType: RawStockMovementType;
+  movementDate: string;
+  supplierId: string | null;
+  notes: string | null;
+  entries: Array<{
+    category: RawStockCategory;
+    countLabel: string;
+    quantityKg: number;
+  }>;
+};
+
+export type ValidatedBatchMovementPayload =
+  | { error: string }
+  | { data: ValidatedBatchMovementData };
+
+export function validateBatchMovementPayload(
+  body: Record<string, unknown>,
+): ValidatedBatchMovementPayload {
+  const movementTypeRaw = String(body.movementType ?? body.movement_type ?? "");
+  if (!isValidMovementType(movementTypeRaw)) {
+    return { error: "Invalid movement type" };
+  }
+
+  const movementDate =
+    parseDateOnly(body.movementDate ?? body.movement_date) ??
+    new Date().toISOString().slice(0, 10);
+
+  const supplierRaw = body.supplierId ?? body.supplier_id;
+  const supplierId =
+    supplierRaw == null || supplierRaw === ""
+      ? null
+      : String(supplierRaw).trim();
+
+  if (
+    supplierId &&
+    (movementTypeRaw === "stock_out" || movementTypeRaw === "opening_balance")
+  ) {
+    return { error: "Supplier is only allowed when adding stock" };
+  }
+
+  const notes = String(body.notes ?? "").trim();
+  const rawEntries = body.entries;
+  if (!Array.isArray(rawEntries)) {
+    return { error: "Entries are required" };
+  }
+
+  const entries: ValidatedBatchMovementData["entries"] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rawEntries) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const categoryRaw = String(row.category ?? "")
+      .trim()
+      .toLowerCase();
+    if (!isRawStockCategory(categoryRaw)) {
+      return { error: "Each entry needs a valid category" };
+    }
+
+    const countLabel = String(row.countLabel ?? row.count_label ?? "").trim();
+    if (!countLabel || !isValidCountForCategory(categoryRaw, countLabel)) {
+      return {
+        error: `Count ${countLabel || "(blank)"} is not valid for ${CATEGORY_LABELS[categoryRaw]}`,
+      };
+    }
+
+    const qtyRaw = row.quantityKg ?? row.quantity_kg;
+    if (qtyRaw === undefined || qtyRaw === null || qtyRaw === "") continue;
+    const quantityKg = parseQuantityKg(qtyRaw);
+    if (quantityKg == null) {
+      return {
+        error: `Quantity for ${CATEGORY_LABELS[categoryRaw]} ${countLabel} must be a positive number`,
+      };
+    }
+
+    const key = `${categoryRaw}::${countLabel}`;
+    if (seen.has(key)) {
+      return {
+        error: `Duplicate entry for ${CATEGORY_LABELS[categoryRaw]} ${countLabel}`,
+      };
+    }
+    seen.add(key);
+    entries.push({ category: categoryRaw, countLabel, quantityKg });
+  }
+
+  if (entries.length === 0) {
+    return { error: "Enter at least one quantity" };
+  }
+
+  return {
+    data: {
+      movementType: movementTypeRaw,
+      movementDate,
+      supplierId,
+      notes: notes || null,
+      entries,
+    },
+  };
+}
+
 export async function assertSufficientBalance(
   supabase: Parameters<typeof listMovements>[0],
   payload: ValidatedMovementData,
@@ -144,6 +245,38 @@ export async function assertSufficientBalance(
     return {
       error: `Insufficient Narela stock for ${CATEGORY_LABELS[payload.category]} ${payload.countLabel} (available ${row.narelaKg} kg)`,
     };
+  }
+
+  return { ok: true as const };
+}
+
+export async function assertSufficientBalancesForBatch(
+  supabase: Parameters<typeof listMovements>[0],
+  payload: ValidatedBatchMovementData,
+) {
+  if (payload.movementType !== "stock_out") {
+    return { ok: true as const };
+  }
+
+  const movements = await listMovements(supabase);
+  const balances = deriveBalances(movements);
+
+  for (const entry of payload.entries) {
+    const row =
+      balances.byCount.find(
+        (c) =>
+          c.category === entry.category && c.countLabel === entry.countLabel,
+      ) ?? {
+        category: entry.category,
+        countLabel: entry.countLabel,
+        narelaKg: 0,
+      };
+
+    if (entry.quantityKg > row.narelaKg + 0.0005) {
+      return {
+        error: `Insufficient Narela stock for ${CATEGORY_LABELS[entry.category]} ${entry.countLabel} (available ${row.narelaKg} kg)`,
+      };
+    }
   }
 
   return { ok: true as const };

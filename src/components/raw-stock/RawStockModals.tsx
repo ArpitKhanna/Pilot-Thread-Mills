@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { formatKg, getCountBalance } from "@/lib/raw-stock/balance";
 import type {
@@ -10,7 +10,10 @@ import type {
 } from "@/lib/raw-stock/types";
 import {
   CATEGORY_LABELS,
+  CONE_COUNTS,
   COUNTS_BY_CATEGORY,
+  HANK_COUNTS,
+  balanceKey,
 } from "@/lib/raw-stock/types";
 
 export type MovementModalKind =
@@ -36,8 +39,21 @@ const MOVEMENT_TITLES: Record<MovementModalKind, string> = {
   stock_out: "Send to Rama Road",
 };
 
+const MOVEMENT_HINTS: Record<MovementModalKind, string> = {
+  opening_balance: "Enter opening kg for each count under one date. Leave blank to skip.",
+  stock_in: "Enter kg added for each count under one date. Leave blank to skip.",
+  stock_out: "Enter kg sent to Rama Road for each count under one date. Leave blank to skip.",
+};
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function emptyQuantities(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const count of HANK_COUNTS) map[balanceKey("hank", count)] = "";
+  for (const count of CONE_COUNTS) map[balanceKey("cone", count)] = "";
+  return map;
 }
 
 export function RawStockModals({
@@ -86,39 +102,60 @@ function MovementFormModal({
   balances: RawStockBalances;
   onSaved: () => Promise<void>;
 }) {
-  const [category, setCategory] = useState<RawStockCategory>("hank");
-  const [countLabel, setCountLabel] = useState(COUNTS_BY_CATEGORY.hank[0]!);
-  const [quantityKg, setQuantityKg] = useState("");
+  const [quantities, setQuantities] = useState(emptyQuantities);
   const [movementDate, setMovementDate] = useState(todayIso);
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const countOptions = useMemo(
-    () => [...COUNTS_BY_CATEGORY[category]],
-    [category],
-  );
+  const filledCount = useMemo(() => {
+    return Object.values(quantities).filter((v) => {
+      const n = Number(v);
+      return v.trim() !== "" && Number.isFinite(n) && n > 0;
+    }).length;
+  }, [quantities]);
 
-  useEffect(() => {
-    if (!COUNTS_BY_CATEGORY[category].includes(countLabel)) {
-      setCountLabel(COUNTS_BY_CATEGORY[category][0]!);
-    }
-  }, [category, countLabel]);
-
-  const countBalance = getCountBalance(balances, category, countLabel);
+  function setQuantity(category: RawStockCategory, countLabel: string, value: string) {
+    setQuantities((prev) => ({
+      ...prev,
+      [balanceKey(category, countLabel)]: value,
+    }));
+  }
 
   async function handleSubmit() {
     setSaving(true);
     setError("");
     try {
+      const entries: Array<{
+        category: RawStockCategory;
+        countLabel: string;
+        quantityKg: number;
+      }> = [];
+
+      for (const category of ["hank", "cone"] as const) {
+        for (const countLabel of COUNTS_BY_CATEGORY[category]) {
+          const raw = quantities[balanceKey(category, countLabel)] ?? "";
+          if (raw.trim() === "") continue;
+          const quantityKg = Number(raw);
+          if (!Number.isFinite(quantityKg) || quantityKg <= 0) {
+            throw new Error(
+              `Quantity for ${CATEGORY_LABELS[category]} ${countLabel} must be a positive number`,
+            );
+          }
+          entries.push({ category, countLabel, quantityKg });
+        }
+      }
+
+      if (entries.length === 0) {
+        throw new Error("Enter at least one quantity");
+      }
+
       const payload: Record<string, unknown> = {
         movementType: kind,
-        category,
-        countLabel,
-        quantityKg: Number(quantityKg),
         movementDate,
         notes: notes || null,
+        entries,
       };
 
       if (kind === "stock_in") {
@@ -145,78 +182,44 @@ function MovementFormModal({
       open
       onClose={onClose}
       title={MOVEMENT_TITLES[kind]}
-      size="lg"
+      size="2xl"
       footer={
-        <div className="flex w-full justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-3 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void handleSubmit()}
-            className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted">
+            {filledCount > 0
+              ? `${filledCount} count${filledCount === 1 ? "" : "s"} ready to save`
+              : "Fill any counts you need"}
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleSubmit()}
+              className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {error}
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Category">
-            <select
-              value={category}
-              onChange={(e) =>
-                setCategory(e.target.value as RawStockCategory)
-              }
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="hank">{CATEGORY_LABELS.hank}</option>
-              <option value="cone">{CATEGORY_LABELS.cone}</option>
-            </select>
-          </Field>
-          <Field label="Count">
-            <select
-              value={countLabel}
-              onChange={(e) => setCountLabel(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              {countOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            {kind === "stock_out" && (
-              <p className="mt-1 text-xs text-muted">
-                Available at Narela: {formatKg(countBalance.narelaKg)}
-              </p>
-            )}
-          </Field>
-        </div>
+        <p className="text-sm text-muted">{MOVEMENT_HINTS[kind]}</p>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Quantity (kg)">
-            <input
-              type="number"
-              min="0"
-              step="0.001"
-              value={quantityKg}
-              onChange={(e) => setQuantityKg(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            />
-          </Field>
           <Field label="Date">
             <input
               type="date"
@@ -225,29 +228,40 @@ function MovementFormModal({
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
             />
           </Field>
+          {kind === "stock_in" && (
+            <Field label="Supplier (optional)">
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">No supplier</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
         </div>
 
-        {kind === "stock_in" && (
-          <Field label="Supplier (optional)">
-            <select
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">No supplier</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            {suppliers.length === 0 && (
-              <p className="mt-1 text-xs text-muted">
-                Add a supplier in the Suppliers tab if needed
-              </p>
-            )}
-          </Field>
-        )}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <CountGrid
+            category="hank"
+            kind={kind}
+            balances={balances}
+            quantities={quantities}
+            onChange={setQuantity}
+          />
+          <CountGrid
+            category="cone"
+            kind={kind}
+            balances={balances}
+            quantities={quantities}
+            onChange={setQuantity}
+          />
+        </div>
 
         <Field label="Notes (optional)">
           <textarea
@@ -255,10 +269,74 @@ function MovementFormModal({
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Applies to all entries saved in this batch"
           />
         </Field>
       </div>
     </Modal>
+  );
+}
+
+function CountGrid({
+  category,
+  kind,
+  balances,
+  quantities,
+  onChange,
+}: {
+  category: RawStockCategory;
+  kind: MovementModalKind;
+  balances: RawStockBalances;
+  quantities: Record<string, string>;
+  onChange: (
+    category: RawStockCategory,
+    countLabel: string,
+    value: string,
+  ) => void;
+}) {
+  const counts = COUNTS_BY_CATEGORY[category];
+
+  return (
+    <section className="rounded-xl border border-border">
+      <div className="border-b border-border px-3 py-2.5">
+        <h3 className="text-sm font-medium">{CATEGORY_LABELS[category]}</h3>
+      </div>
+      <ul className="divide-y divide-border">
+        {counts.map((countLabel) => {
+          const key = balanceKey(category, countLabel);
+          const available = getCountBalance(
+            balances,
+            category,
+            countLabel,
+          ).narelaKg;
+          return (
+            <li
+              key={key}
+              className="flex items-center gap-3 px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium tabular-nums">{countLabel}</p>
+                {kind === "stock_out" && (
+                  <p className="text-[11px] text-muted">
+                    Available {formatKg(available)}
+                  </p>
+                )}
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                inputMode="decimal"
+                placeholder="kg"
+                value={quantities[key] ?? ""}
+                onChange={(e) => onChange(category, countLabel, e.target.value)}
+                className="w-28 shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right text-sm tabular-nums"
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
