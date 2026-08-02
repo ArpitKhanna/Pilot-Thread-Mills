@@ -31,9 +31,6 @@ export function ReturnsList({
       ),
     [returns],
   );
-  const [expandedId, setExpandedId] = useState<string | null>(
-    () => sorted[0]?.id ?? null,
-  );
   const [deleteTarget, setDeleteTarget] = useState<SalesmanReturn | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -109,118 +106,14 @@ export function ReturnsList({
       )}
 
       <ul className="space-y-1 rounded-xl border border-border bg-surface p-1">
-        {sorted.map((ret) => {
-          const date = formatInvoiceDate(ret.receivedAt);
-          const expanded = expandedId === ret.id;
-          const statusLabel = verificationStatusLabel(ret.verificationStatus);
-          const applied =
-            Math.round((ret.totalAmount - ret.remainingAmount) * 100) / 100;
-          const deletable =
-            canMutateWithinWindow(ret.createdAt) &&
-            Math.round(ret.remainingAmount * 100) ===
-              Math.round(ret.totalAmount * 100);
-
-          return (
-            <li key={ret.id}>
-              <button
-                type="button"
-                onClick={() => setExpandedId(expanded ? null : ret.id)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
-                  expanded ? "bg-sidebar" : "hover:bg-sidebar/60"
-                }`}
-                aria-expanded={expanded}
-              >
-                <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
-                  <span className="text-[11px] text-muted">{date.weekday}</span>
-                  <span className="text-xl font-semibold tracking-tight tabular-nums">
-                    {date.day}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-medium">
-                      Return · {ret.lineItems.length} item
-                      {ret.lineItems.length === 1 ? "" : "s"}
-                    </p>
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-amber-800 uppercase">
-                      Credit
-                    </span>
-                    {statusLabel && (
-                      <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
-                        {statusLabel}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-muted">
-                    {date.time}
-                    {ret.remainingAmount > 0 &&
-                      ret.remainingAmount < ret.totalAmount && (
-                        <>
-                          <span className="mx-1.5 text-border">·</span>
-                          {formatINR(ret.remainingAmount)} left
-                        </>
-                      )}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium tabular-nums text-[#c45c26]">
-                    −{formatINR(ret.totalAmount)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {applied > 0
-                      ? `${formatINR(applied)} applied`
-                      : "Unapplied"}
-                  </p>
-                </div>
-              </button>
-
-              {expanded && (
-                <div className="mx-1 mb-1 rounded-lg border border-border bg-[#fafaf8] px-3 py-3 sm:mx-1.5 sm:px-4">
-                  <ul className="space-y-1 text-sm">
-                    {ret.lineItems.map((line) => (
-                      <li
-                        key={line.id}
-                        className="flex justify-between gap-3 text-xs"
-                      >
-                        <span className="min-w-0 truncate text-muted">
-                          {line.name} × {line.qty}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-foreground">
-                          {formatINR(line.amount)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {ret.notes && (
-                    <p className="mt-2 text-xs text-muted">
-                      Notes{" "}
-                      <span className="text-foreground">{ret.notes}</span>
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {deletable ? (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(ret)}
-                        className="text-xs font-medium text-red-700 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setLockedOpen(true)}
-                        className="text-xs text-muted hover:underline"
-                      >
-                        Delete locked
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {sorted.map((ret) => (
+          <ReturnRow
+            key={ret.id}
+            ret={ret}
+            onDelete={() => setDeleteTarget(ret)}
+            onDeleteLocked={() => setLockedOpen(true)}
+          />
+        ))}
       </ul>
 
       <Modal
@@ -286,5 +179,110 @@ export function ReturnsList({
         </p>
       </Modal>
     </div>
+  );
+}
+
+function ReturnRow({
+  ret,
+  onDelete,
+  onDeleteLocked,
+}: {
+  ret: SalesmanReturn;
+  onDelete: () => void;
+  onDeleteLocked: () => void;
+}) {
+  const date = formatInvoiceDate(ret.receivedAt);
+  const statusLabel = verificationStatusLabel(ret.verificationStatus);
+  const applied =
+    Math.round((ret.totalAmount - ret.remainingAmount) * 100) / 100;
+  const deletable =
+    canMutateWithinWindow(ret.createdAt) &&
+    Math.round(ret.remainingAmount * 100) ===
+      Math.round(ret.totalAmount * 100);
+
+  return (
+    <li className="flex items-start gap-3 rounded-lg px-3 py-2.5 sm:gap-4 sm:px-3.5">
+      <div className="flex w-11 shrink-0 flex-col items-center sm:w-12">
+        <span className="text-[11px] text-muted">{date.weekday}</span>
+        <span className="text-xl font-semibold tracking-tight tabular-nums">
+          {date.day}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">
+            Return · {ret.lineItems.length} item
+            {ret.lineItems.length === 1 ? "" : "s"}
+          </p>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-amber-800 uppercase">
+            Credit
+          </span>
+          {statusLabel && (
+            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
+              {statusLabel}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-muted">
+          {date.time}
+          {ret.remainingAmount > 0 &&
+            ret.remainingAmount < ret.totalAmount && (
+              <>
+                <span className="mx-1.5 text-border">·</span>
+                {formatINR(ret.remainingAmount)} left
+              </>
+            )}
+        </p>
+        <ul className="mt-2 space-y-0.5">
+          {ret.lineItems.map((line) => (
+            <li
+              key={line.id}
+              className="flex justify-between gap-3 text-xs"
+            >
+              <span className="min-w-0 truncate text-muted">
+                {line.name} × {line.qty}
+              </span>
+              <span className="shrink-0 tabular-nums text-foreground">
+                {formatINR(line.amount)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {ret.notes && (
+          <p className="mt-2 text-xs text-muted">
+            Notes <span className="text-foreground">{ret.notes}</span>
+          </p>
+        )}
+        <div className="mt-2">
+          {deletable ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-xs font-medium text-red-700 hover:underline"
+            >
+              Delete
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onDeleteLocked}
+              className="text-xs text-muted hover:underline"
+            >
+              Delete locked
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-medium tabular-nums text-[#c45c26]">
+          −{formatINR(ret.totalAmount)}
+        </p>
+        <p className="mt-0.5 text-xs text-muted">
+          {applied > 0 ? `${formatINR(applied)} applied` : "Unapplied"}
+        </p>
+      </div>
+    </li>
   );
 }
