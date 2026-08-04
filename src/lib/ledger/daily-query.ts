@@ -18,6 +18,7 @@ type DbPaymentWithInvoice = {
   sender_name: string | null;
   verification_status: string | null;
   status: string | null;
+  advance_id: string | null;
   invoice_id: string;
   salesmen_invoices:
     | { id: string; number: string; salesman_id: string }
@@ -53,9 +54,10 @@ export async function fetchDailyLedger(
       supabase
         .from("salesmen_invoice_payments")
         .select(
-          "id, method, amount, received_at, sender_name, verification_status, status, invoice_id, salesmen_invoices ( id, number, salesman_id )",
+          "id, method, amount, received_at, sender_name, verification_status, status, advance_id, invoice_id, salesmen_invoices ( id, number, salesman_id )",
         )
         .eq("status", "active")
+        .is("advance_id", null)
         .gte("received_at", start)
         .lte("received_at", end)
         .order("received_at", { ascending: false }),

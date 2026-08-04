@@ -74,14 +74,18 @@ function buildLedger(
   paidInvoices: Invoice[],
   advances: SalesmanAdvance[],
 ): LedgerItem[] {
+  // Skip advance applications — that cash was already listed when the
+  // advance was recorded. Showing it again under the invoice feels duplicated.
   const items: LedgerItem[] = [
     ...paidInvoices.flatMap((invoice) =>
-      resolveEntries(invoice).map((payment) => ({
-        kind: "invoice-payment" as const,
-        invoice,
-        payment,
-        at: paymentReceivedAt(payment, invoice),
-      })),
+      resolveEntries(invoice)
+        .filter((payment) => !payment.advanceId)
+        .map((payment) => ({
+          kind: "invoice-payment" as const,
+          invoice,
+          payment,
+          at: paymentReceivedAt(payment, invoice),
+        })),
     ),
     ...advances.map((advance) => ({
       kind: "advance" as const,
