@@ -191,6 +191,11 @@ export function SalesmenInvoiceCreateClient({
     initialInvoice ? draftReturnLinesFromInvoice(initialInvoice) : [],
   );
   const [additionalDiscount, setAdditionalDiscount] = useState("");
+  const [additionalAmount, setAdditionalAmount] = useState(() =>
+    initialInvoice?.additionalAmount
+      ? String(initialInvoice.additionalAmount)
+      : "",
+  );
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>(
     () => initialInvoice?.paymentEntries ?? [],
   );
@@ -408,8 +413,17 @@ export function SalesmenInvoiceCreateClient({
   const additionalDiscountAmount =
     Number.isFinite(additionalNum) && additionalNum > 0 ? additionalNum : 0;
 
+  const additionalAmountNum = Number(additionalAmount);
+  const additionalAmountValue =
+    Number.isFinite(additionalAmountNum) && additionalAmountNum > 0
+      ? additionalAmountNum
+      : 0;
+
   const discountAmount = ruleDiscount + additionalDiscountAmount;
-  const invoiceTotal = Math.max(0, subtotal - returnAmount - discountAmount);
+  const invoiceTotal = Math.max(
+    0,
+    subtotal - returnAmount - discountAmount + additionalAmountValue,
+  );
 
   const amountPaid = useMemo(
     () =>
@@ -598,6 +612,8 @@ export function SalesmenInvoiceCreateClient({
       amountPaid,
       lineItems,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      additionalAmount:
+        additionalAmountValue > 0 ? additionalAmountValue : undefined,
       returnItems,
       paymentEntries: payments.length > 0 ? payments : undefined,
       verificationStatus:
@@ -619,6 +635,7 @@ export function SalesmenInvoiceCreateClient({
     invoiceTotal,
     amountPaid,
     discountAmount,
+    additionalAmountValue,
     payments,
     initialInvoice,
   ]);
@@ -778,6 +795,7 @@ export function SalesmenInvoiceCreateClient({
         lineItems: liveInvoice.lineItems,
         returnItems: liveInvoice.returnItems ?? [],
         discountAmount: liveInvoice.discountAmount ?? 0,
+        additionalAmount: liveInvoice.additionalAmount ?? 0,
         paymentEntries: liveInvoice.paymentEntries ?? [],
         totalAmount: liveInvoice.totalAmount,
         amountPaid: liveInvoice.amountPaid,
@@ -1101,6 +1119,28 @@ export function SalesmenInvoiceCreateClient({
                         />
                       </div>
                     </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-muted">
+                        Additional amount
+                      </span>
+                      <div className="flex overflow-hidden rounded-lg border border-border bg-surface focus-within:border-foreground/40 focus-within:ring-1 focus-within:ring-foreground/20">
+                        <span className="flex items-center border-r border-border bg-sidebar px-3 text-sm text-muted">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          inputMode="decimal"
+                          value={additionalAmount}
+                          placeholder="0"
+                          disabled={!salesman}
+                          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm tabular-nums outline-none disabled:opacity-50"
+                          onChange={(e) => setAdditionalAmount(e.target.value)}
+                        />
+                      </div>
+                    </label>
                   </section>
 
                   {error && (
@@ -1258,6 +1298,14 @@ export function SalesmenInvoiceCreateClient({
               <dt>Discount</dt>
               <dd className="tabular-nums text-foreground">
                 −{formatINR(discountAmount)}
+              </dd>
+            </div>
+          )}
+          {additionalAmountValue > 0 && (
+            <div className="flex justify-between gap-4 text-muted">
+              <dt>Additional amount</dt>
+              <dd className="tabular-nums text-foreground">
+                +{formatINR(additionalAmountValue)}
               </dd>
             </div>
           )}

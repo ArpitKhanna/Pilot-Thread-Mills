@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
+import { useApprovalsCount } from "@/lib/approvals/use-approvals-count";
 import { PendingLink } from "@/components/ui/PendingLink";
 import { groupModulesBySection, MODULE_ICONS } from "@/lib/modules/navigation";
 import { useMobileNav } from "./MobileNavContext";
@@ -17,6 +18,10 @@ export function Sidebar({ context }: SidebarProps) {
   const { open, setOpen } = useMobileNav();
   const [collapsed, setCollapsed] = useState(false);
   const sections = groupModulesBySection(context.modules);
+  const showApprovalsCount =
+    context.profile.role === "admin" &&
+    context.modules.some((m) => m.id === "approvals");
+  const pendingApprovalsCount = useApprovalsCount(showApprovalsCount);
 
   useEffect(() => {
     setOpen(false);
@@ -71,6 +76,8 @@ export function Sidebar({ context }: SidebarProps) {
                   const active =
                     pathname === item.href ||
                     pathname.startsWith(`${item.href}/`);
+                  const badgeCount =
+                    item.id === "approvals" ? pendingApprovalsCount : 0;
                   return (
                     <li key={item.id}>
                       <PendingLink
@@ -83,12 +90,32 @@ export function Sidebar({ context }: SidebarProps) {
                             : "text-foreground/80 hover:bg-surface/60"
                         } ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
                       >
-                        <NavIcon
-                          name={MODULE_ICONS[item.id] ?? "circle"}
-                          className="h-[18px] w-[18px] shrink-0"
-                        />
-                        <span className={collapsed ? "lg:hidden" : ""}>
-                          {item.name}
+                        <span className="relative shrink-0">
+                          <NavIcon
+                            name={MODULE_ICONS[item.id] ?? "circle"}
+                            className="h-[18px] w-[18px]"
+                          />
+                          {badgeCount > 0 && (
+                            <span
+                              className={`absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#c45c26] px-0.5 text-[9px] font-semibold text-white tabular-nums ${
+                                collapsed ? "hidden lg:flex" : "lg:hidden"
+                              }`}
+                            >
+                              {badgeCount > 9 ? "9+" : badgeCount}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`flex min-w-0 flex-1 items-center gap-2 ${
+                            collapsed ? "lg:hidden" : ""
+                          }`}
+                        >
+                          <span className="truncate">{item.name}</span>
+                          {badgeCount > 0 && (
+                            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#c45c26] px-1.5 text-[10px] font-semibold text-white tabular-nums">
+                              {badgeCount > 99 ? "99+" : badgeCount}
+                            </span>
+                          )}
                         </span>
                       </PendingLink>
                     </li>

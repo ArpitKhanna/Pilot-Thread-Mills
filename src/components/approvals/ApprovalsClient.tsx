@@ -3,6 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { AppContext } from "@/app/(app)/layout";
+import type { PendingPriceListApproval } from "@/lib/approvals/price-list";
+import { notifyApprovalsCountChanged } from "@/lib/approvals/use-approvals-count";
+import {
+  ITEM_TYPE_LABELS,
+  type ItemType,
+} from "@/lib/auth/types";
 import { formatINR, formatInvoiceDate } from "@/lib/salesmen/mock-data";
 import type { PendingAdvanceApproval } from "@/lib/salesmen/advances";
 import type { PendingReturnApproval } from "@/lib/salesmen/returns";
@@ -15,19 +21,23 @@ type ApprovalsClientProps = {
   initialPending: PendingInvoiceApproval[];
   initialPendingAdvances?: PendingAdvanceApproval[];
   initialPendingReturns?: PendingReturnApproval[];
+  initialPendingPriceList?: PendingPriceListApproval[];
 };
 
 export function ApprovalsClient({
   initialPending,
   initialPendingAdvances = [],
   initialPendingReturns = [],
+  initialPendingPriceList = [],
 }: ApprovalsClientProps) {
   const router = useRouter();
   const [items, setItems] = useState(initialPending);
   const [advances, setAdvances] = useState(initialPendingAdvances);
   const [returns, setReturns] = useState(initialPendingReturns);
+  const [priceListItems, setPriceListItems] = useState(initialPendingPriceList);
   const [expandedId, setExpandedId] = useState<string | null>(
     () =>
+      initialPendingPriceList[0]?.item.id ??
       initialPending[0]?.invoice.id ??
       initialPendingAdvances[0]?.advance.id ??
       initialPendingReturns[0]?.returnRecord.id ??
@@ -60,6 +70,7 @@ export function ApprovalsClient({
       }
       setItems((prev) => prev.filter((row) => row.invoice.id !== invoiceId));
       setExpandedId((curr) => (curr === invoiceId ? null : curr));
+      notifyApprovalsCountChanged();
       startTransition(() => {
         router.refresh();
       });
@@ -94,12 +105,42 @@ export function ApprovalsClient({
       }
       setAdvances((prev) => prev.filter((row) => row.advance.id !== advanceId));
       setExpandedId((curr) => (curr === advanceId ? null : curr));
+      notifyApprovalsCountChanged();
       startTransition(() => {
         router.refresh();
       });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not update verification.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function reviewPriceList(itemId: string) {
+    if (busyId) return;
+    setBusyId(itemId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/price-list/${itemId}/approve`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Could not approve price change.");
+      }
+      setPriceListItems((prev) =>
+        prev.filter((row) => row.item.id !== itemId),
+      );
+      setExpandedId((curr) => (curr === itemId ? null : curr));
+      notifyApprovalsCountChanged();
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not approve price change.",
       );
     } finally {
       setBusyId(null);
@@ -130,6 +171,7 @@ export function ApprovalsClient({
         prev.filter((row) => row.returnRecord.id !== returnId),
       );
       setExpandedId((curr) => (curr === returnId ? null : curr));
+      notifyApprovalsCountChanged();
       startTransition(() => {
         router.refresh();
       });
@@ -143,7 +185,10 @@ export function ApprovalsClient({
   }
 
   const empty =
-    items.length === 0 && advances.length === 0 && returns.length === 0;
+    items.length === 0 &&
+    advances.length === 0 &&
+    returns.length === 0 &&
+    priceListItems.length === 0;
 
   return (
     <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
@@ -152,8 +197,8 @@ export function ApprovalsClient({
           Approvals
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Review salesman invoices, advance payments, and returns submitted by
-          accountants before they affect balances.
+          Review salesman invoices, advance payments, returns, and price list
+          changes submitted by accountants before they go live.
         </p>
       </div>
 
@@ -169,6 +214,129 @@ export function ApprovalsClient({
         </div>
       ) : (
         <div className="space-y-8">
+          {priceListItems.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-xs font-medium tracking-wide text-muted uppercase">
+                Price list
+              </h2>
+              <ul className="space-y-3">
+                {priceListItems.map(({ item, submittedByName }) => {
+                  const date = formatInvoiceDate(item.updated_at);
+                  const expanded = expandedId === item.id;
+                  const busy = busyId === item.id;
+                  const typeLabel =
+                    ITEM_TYPE_LABELS[item.item_type as ItemType] ??
+                    item.item_type;
+
+                  return (
+                    <li
+                      key={item.id}
+                      className="rounded-xl border border-border bg-surface"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedId(expanded ? null : item.id)
+                        }
+                        className="flex w-full items-start gap-3 px-4 py-3.5 text-left sm:gap-4 sm:px-5"
+                        aria-expanded={expanded}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium">
+                              {item.item_name}
+                            </p>
+                            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-violet-800 uppercase">
+                              Price change
+                            </span>
+                            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-sky-800 uppercase">
+                              Pending
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-muted">
+                            {typeLabel}
+                            {item.count_label ? (
+                              <>
+                                <span className="mx-1.5 text-border">·</span>
+                                {item.count_label}
+                              </>
+                            ) : null}
+                            <span className="mx-1.5 text-border">·</span>
+                            {date.monthYear} {date.day}, {date.time}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted">
+                            Submitted by {submittedByName}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right text-sm">
+                          <p className="tabular-nums">
+                            Salesmen {formatINR(Number(item.salesmen_price))}
+                          </p>
+                          <p className="mt-0.5 tabular-nums text-muted">
+                            Customer {formatINR(Number(item.customer_price))}
+                          </p>
+                        </div>
+                      </button>
+
+                      {expanded && (
+                        <div className="border-t border-border px-4 py-4 sm:px-5">
+                          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                            <div>
+                              <dt className="text-xs text-muted">Item</dt>
+                              <dd className="font-medium">{item.item_name}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs text-muted">Type</dt>
+                              <dd>{typeLabel}</dd>
+                            </div>
+                            {item.count_label ? (
+                              <div>
+                                <dt className="text-xs text-muted">Count</dt>
+                                <dd>{item.count_label}</dd>
+                              </div>
+                            ) : null}
+                            <div>
+                              <dt className="text-xs text-muted">
+                                Salesmen price
+                              </dt>
+                              <dd className="tabular-nums">
+                                {formatINR(Number(item.salesmen_price))}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs text-muted">
+                                Customer price
+                              </dt>
+                              <dd className="tabular-nums">
+                                {formatINR(Number(item.customer_price))}
+                              </dd>
+                            </div>
+                          </dl>
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void reviewPriceList(item.id)}
+                              className="rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background disabled:opacity-50"
+                            >
+                              {busy ? "Saving…" : "Approve"}
+                            </button>
+                            <a
+                              href="/entities/price-list"
+                              className="ml-auto text-sm text-muted underline underline-offset-2"
+                            >
+                              Open price list
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
           {advances.length > 0 && (
             <section>
               <h2 className="mb-3 text-xs font-medium tracking-wide text-muted uppercase">
@@ -699,6 +867,7 @@ function ApprovalInvoiceTotals({
   const returnsTotal =
     invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const discountAmount = invoice.discountAmount ?? 0;
+  const additionalAmount = invoice.additionalAmount ?? 0;
 
   return (
     <div>
@@ -717,6 +886,12 @@ function ApprovalInvoiceTotals({
           <ApprovalTotalRow
             label="Discount"
             value={`−${formatINR(discountAmount)}`}
+          />
+        )}
+        {additionalAmount > 0 && (
+          <ApprovalTotalRow
+            label="Additional amount"
+            value={`+${formatINR(additionalAmount)}`}
           />
         )}
         <ApprovalTotalRow

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { TopBar } from "@/components/layout/AppShell";
 import { ApprovalsClient } from "@/components/approvals/ApprovalsClient";
 import { getAppContext } from "@/app/(app)/layout";
+import { listPendingPriceListApprovals } from "@/lib/approvals/price-list";
 import { listPendingAdvanceApprovals } from "@/lib/salesmen/advances";
 import { listPendingReturnApprovals } from "@/lib/salesmen/returns";
 import { listPendingInvoiceApprovals } from "@/lib/salesmen/queries";
@@ -17,10 +18,12 @@ export default async function ApprovalsPage() {
   }
 
   const supabase = await createClient();
-  const [pending, pendingAdvances, pendingReturns] = await Promise.all([
+  const [pending, pendingAdvances, pendingReturns, pendingPriceList] =
+    await Promise.all([
     listPendingInvoiceApprovals(supabase),
     listPendingAdvanceApprovals(supabase),
     listPendingReturnApprovals(supabase),
+    listPendingPriceListApprovals(supabase),
   ]);
 
   return (
@@ -37,6 +40,7 @@ export default async function ApprovalsPage() {
         initialPending={pending}
         initialPendingAdvances={pendingAdvances}
         initialPendingReturns={pendingReturns}
+        initialPendingPriceList={pendingPriceList}
       />
     </>
   );

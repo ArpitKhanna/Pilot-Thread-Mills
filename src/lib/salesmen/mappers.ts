@@ -59,6 +59,7 @@ export type DbInvoiceRow = {
   total_amount: number | string;
   amount_paid: number | string;
   discount_amount: number | string;
+  additional_amount: number | string;
   notes: string | null;
   created_by?: string | null;
   created_by_name?: string | null;
@@ -406,6 +407,7 @@ export function mapInvoiceRows(
       : undefined;
 
   const discount = num(invoice.discount_amount);
+  const additional = num(invoice.additional_amount);
 
   return {
     id: invoice.id,
@@ -418,6 +420,7 @@ export function mapInvoiceRows(
     lineItems,
     notes: invoice.notes ?? undefined,
     discountAmount: discount > 0 ? discount : undefined,
+    additionalAmount: additional > 0 ? additional : undefined,
     returnItems,
     paymentEntries,
     verificationStatus: parseVerificationStatus(invoice.verification_status),

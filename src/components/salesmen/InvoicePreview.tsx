@@ -551,6 +551,7 @@ function PageTotals({
   const returnsTotal =
     invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const discountAmount = invoice.discountAmount ?? 0;
+  const additionalAmount = invoice.additionalAmount ?? 0;
   const hasNotes = Boolean(invoice.notes);
   const hasReturns = (invoice.returnItems?.length ?? 0) > 0;
 
@@ -622,7 +623,10 @@ function PageTotals({
         {discountAmount > 0 && (
           <Row label="Discount" value={`−${formatINR(discountAmount)}`} />
         )}
-        {(returnsTotal > 0 || discountAmount > 0) && (
+        {additionalAmount > 0 && (
+          <Row label="Additional amount" value={`+${formatINR(additionalAmount)}`} />
+        )}
+        {(returnsTotal > 0 || discountAmount > 0 || additionalAmount > 0) && (
           <Row label="Invoice total" value={formatINR(invoice.totalAmount)} />
         )}
         {previousBalance !== undefined && (

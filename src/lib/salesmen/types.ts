@@ -271,6 +271,8 @@ export type Invoice = {
   notes?: string;
   /** Clubbed rule discount + additional discount */
   discountAmount?: number;
+  /** Manual per-invoice charge added on top of line items */
+  additionalAmount?: number;
   returnItems?: InvoiceLineItem[];
   /** Optional detail retained for ledger; preview uses amountPaid only */
   paymentEntries?: InvoicePaymentEntry[];

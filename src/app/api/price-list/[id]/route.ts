@@ -36,6 +36,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       : {
           approved_by: null,
           approved_at: null,
+          created_by: profile.id,
         }),
   };
 
