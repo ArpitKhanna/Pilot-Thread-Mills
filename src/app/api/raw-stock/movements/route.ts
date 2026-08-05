@@ -56,6 +56,7 @@ export async function POST(request: Request) {
           quantityKg: entry.quantityKg,
           movementDate: validated.data.movementDate,
           supplierId: validated.data.supplierId,
+          doNumber: validated.data.doNumber,
           notes: validated.data.notes,
           createdBy: profile.id,
         });

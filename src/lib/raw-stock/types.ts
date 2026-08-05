@@ -50,6 +50,7 @@ export type RawStockMovement = {
   movementDate: string;
   supplierId: string | null;
   supplierName: string | null;
+  doNumber: string | null;
   notes: string | null;
   createdBy: string | null;
   createdAt: string;

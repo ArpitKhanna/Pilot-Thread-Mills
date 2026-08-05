@@ -105,6 +105,7 @@ function MovementFormModal({
   const [quantities, setQuantities] = useState(emptyQuantities);
   const [movementDate, setMovementDate] = useState(todayIso);
   const [supplierId, setSupplierId] = useState("");
+  const [doNumber, setDoNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -160,6 +161,7 @@ function MovementFormModal({
 
       if (kind === "stock_in") {
         payload.supplierId = supplierId || null;
+        payload.doNumber = doNumber.trim() || null;
       }
 
       const res = await fetch("/api/raw-stock/movements", {
@@ -219,7 +221,9 @@ function MovementFormModal({
 
         <p className="text-sm text-muted">{MOVEMENT_HINTS[kind]}</p>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div
+          className={`grid gap-4 ${kind === "stock_in" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+        >
           <Field label="Date">
             <input
               type="date"
@@ -229,20 +233,31 @@ function MovementFormModal({
             />
           </Field>
           {kind === "stock_in" && (
-            <Field label="Supplier (optional)">
-              <select
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">No supplier</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <>
+              <Field label="Supplier (optional)">
+                <select
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">No supplier</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="DO number (optional)">
+                <input
+                  type="text"
+                  value={doNumber}
+                  onChange={(e) => setDoNumber(e.target.value)}
+                  placeholder="Delivery order no."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </Field>
+            </>
           )}
         </div>
 

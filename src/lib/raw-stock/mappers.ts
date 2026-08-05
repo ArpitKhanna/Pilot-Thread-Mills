@@ -22,6 +22,7 @@ export type DbMovementRow = {
   quantity_kg: number | string;
   movement_date: string;
   supplier_id: string | null;
+  do_number: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -52,6 +53,7 @@ export function mapMovementRow(row: DbMovementRow): RawStockMovement {
     movementDate: row.movement_date,
     supplierId: row.supplier_id,
     supplierName: row.raw_stock_suppliers?.name ?? null,
+    doNumber: row.do_number?.trim() ? row.do_number.trim() : null,
     notes: row.notes,
     createdBy: row.created_by,
     createdAt: row.created_at,

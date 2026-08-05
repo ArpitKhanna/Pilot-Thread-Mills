@@ -87,6 +87,7 @@ export type CreateMovementInput = {
   quantityKg: number;
   movementDate: string;
   supplierId?: string | null;
+  doNumber?: string | null;
   notes?: string | null;
   createdBy: string;
 };
@@ -104,6 +105,7 @@ export async function createMovement(
       quantity_kg: input.quantityKg,
       movement_date: input.movementDate,
       supplier_id: input.supplierId ?? null,
+      do_number: input.doNumber?.trim() || null,
       notes: input.notes?.trim() || null,
       created_by: input.createdBy,
     })

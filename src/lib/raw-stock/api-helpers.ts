@@ -41,6 +41,32 @@ export function parseDateOnly(value: unknown): string | null {
   return s;
 }
 
+function parseDoNumber(
+  value: unknown,
+  movementType: RawStockMovementType,
+): string | null | { error: string } {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return null;
+  if (movementType !== "stock_in") {
+    return { error: "DO number is only allowed when adding stock" };
+  }
+  if (trimmed.length > 64) {
+    return { error: "DO number must be 64 characters or fewer" };
+  }
+  return trimmed;
+}
+
+function readDoNumberField(
+  body: Record<string, unknown>,
+  movementType: RawStockMovementType,
+): { error: string } | { doNumber: string | null } {
+  const parsed = parseDoNumber(body.doNumber ?? body.do_number, movementType);
+  if (parsed !== null && typeof parsed === "object") {
+    return parsed;
+  }
+  return { doNumber: parsed };
+}
+
 export type ValidatedMovementData = {
   movementType: RawStockMovementType;
   category: RawStockCategory;
@@ -48,6 +74,7 @@ export type ValidatedMovementData = {
   quantityKg: number;
   movementDate: string;
   supplierId: string | null;
+  doNumber: string | null;
   notes: string | null;
 };
 
@@ -104,6 +131,11 @@ export function validateMovementPayload(
     };
   }
 
+  const doNumberField = readDoNumberField(body, movementTypeRaw);
+  if ("error" in doNumberField) {
+    return { error: doNumberField.error };
+  }
+
   const notes = String(body.notes ?? "").trim();
 
   return {
@@ -114,6 +146,7 @@ export function validateMovementPayload(
       quantityKg,
       movementDate,
       supplierId,
+      doNumber: doNumberField.doNumber,
       notes: notes || null,
     },
   };
@@ -123,6 +156,7 @@ export type ValidatedBatchMovementData = {
   movementType: RawStockMovementType;
   movementDate: string;
   supplierId: string | null;
+  doNumber: string | null;
   notes: string | null;
   entries: Array<{
     category: RawStockCategory;
@@ -158,6 +192,11 @@ export function validateBatchMovementPayload(
     (movementTypeRaw === "stock_out" || movementTypeRaw === "opening_balance")
   ) {
     return { error: "Supplier is only allowed when adding stock" };
+  }
+
+  const doNumberField = readDoNumberField(body, movementTypeRaw);
+  if ("error" in doNumberField) {
+    return { error: doNumberField.error };
   }
 
   const notes = String(body.notes ?? "").trim();
@@ -214,6 +253,7 @@ export function validateBatchMovementPayload(
       movementType: movementTypeRaw,
       movementDate,
       supplierId,
+      doNumber: doNumberField.doNumber,
       notes: notes || null,
       entries,
     },

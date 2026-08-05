@@ -331,6 +331,7 @@ export function RawStockStatusClient({
                             <p className="text-xs text-muted">
                               {formatShortDate(m.movementDate)}
                               {m.supplierName ? ` · ${m.supplierName}` : ""}
+                              {m.doNumber ? ` · DO ${m.doNumber}` : ""}
                               {m.notes ? ` · ${m.notes}` : ""}
                             </p>
                           </div>
