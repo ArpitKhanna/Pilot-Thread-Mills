@@ -1155,23 +1155,25 @@ export function SalesmenInvoiceCreateClient({
                       </div>
                     </label>
 
-                    {additionalAmountValue > 0 && (
-                      <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-muted">
-                          Reason for additional amount
-                        </span>
-                        <input
-                          type="text"
-                          value={additionalAmountReason}
-                          placeholder="e.g. Transport, loading charges"
-                          disabled={!salesman}
-                          className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
-                          onChange={(e) =>
-                            setAdditionalAmountReason(e.target.value)
-                          }
-                        />
-                      </label>
-                    )}
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-muted">
+                        Reason for additional amount
+                      </span>
+                      <input
+                        type="text"
+                        value={additionalAmountReason}
+                        placeholder={
+                          additionalAmountValue > 0
+                            ? "e.g. Transport, loading charges"
+                            : "Enter an additional amount first"
+                        }
+                        disabled={!salesman || !(additionalAmountValue > 0)}
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+                        onChange={(e) =>
+                          setAdditionalAmountReason(e.target.value)
+                        }
+                      />
+                    </label>
                   </section>
 
                   {error && (
