@@ -196,6 +196,9 @@ export function SalesmenInvoiceCreateClient({
       ? String(initialInvoice.additionalAmount)
       : "",
   );
+  const [additionalAmountReason, setAdditionalAmountReason] = useState(
+    () => initialInvoice?.additionalAmountReason ?? "",
+  );
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>(
     () => initialInvoice?.paymentEntries ?? [],
   );
@@ -614,6 +617,10 @@ export function SalesmenInvoiceCreateClient({
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
       additionalAmount:
         additionalAmountValue > 0 ? additionalAmountValue : undefined,
+      additionalAmountReason:
+        additionalAmountValue > 0 && additionalAmountReason.trim()
+          ? additionalAmountReason.trim()
+          : undefined,
       returnItems,
       paymentEntries: payments.length > 0 ? payments : undefined,
       verificationStatus:
@@ -636,6 +643,7 @@ export function SalesmenInvoiceCreateClient({
     amountPaid,
     discountAmount,
     additionalAmountValue,
+    additionalAmountReason,
     payments,
     initialInvoice,
   ]);
@@ -733,8 +741,12 @@ export function SalesmenInvoiceCreateClient({
       setError("Select a salesman first.");
       return false;
     }
-    if (filledLines.length === 0) {
-      setError("Add at least one line item with quantity.");
+    if (filledLines.length === 0 && !(additionalAmountValue > 0)) {
+      setError("Add at least one line item, or enter an additional amount.");
+      return false;
+    }
+    if (additionalAmountValue > 0 && !additionalAmountReason.trim()) {
+      setError("Enter a reason for the additional amount.");
       return false;
     }
     setError(null);
@@ -796,6 +808,7 @@ export function SalesmenInvoiceCreateClient({
         returnItems: liveInvoice.returnItems ?? [],
         discountAmount: liveInvoice.discountAmount ?? 0,
         additionalAmount: liveInvoice.additionalAmount ?? 0,
+        additionalAmountReason: liveInvoice.additionalAmountReason ?? "",
         paymentEntries: liveInvoice.paymentEntries ?? [],
         totalAmount: liveInvoice.totalAmount,
         amountPaid: liveInvoice.amountPaid,
@@ -1141,6 +1154,24 @@ export function SalesmenInvoiceCreateClient({
                         />
                       </div>
                     </label>
+
+                    {additionalAmountValue > 0 && (
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-medium text-muted">
+                          Reason for additional amount
+                        </span>
+                        <input
+                          type="text"
+                          value={additionalAmountReason}
+                          placeholder="e.g. Transport, loading charges"
+                          disabled={!salesman}
+                          className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40 focus:ring-1 focus:ring-foreground/20 disabled:opacity-50"
+                          onChange={(e) =>
+                            setAdditionalAmountReason(e.target.value)
+                          }
+                        />
+                      </label>
+                    )}
                   </section>
 
                   {error && (
@@ -1303,7 +1334,14 @@ export function SalesmenInvoiceCreateClient({
           )}
           {additionalAmountValue > 0 && (
             <div className="flex justify-between gap-4 text-muted">
-              <dt>Additional amount</dt>
+              <dt>
+                Additional amount
+                {additionalAmountReason.trim() ? (
+                  <span className="block text-xs text-muted/80">
+                    {additionalAmountReason.trim()}
+                  </span>
+                ) : null}
+              </dt>
               <dd className="tabular-nums text-foreground">
                 +{formatINR(additionalAmountValue)}
               </dd>

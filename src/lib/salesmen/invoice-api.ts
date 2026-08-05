@@ -19,6 +19,7 @@ export type InvoiceWritePayload = {
   amountPaid: number;
   discountAmount?: number;
   additionalAmount?: number;
+  additionalAmountReason?: string;
   notes?: string;
   lineItems: InvoiceLineItem[];
   returnItems?: InvoiceLineItem[];
@@ -81,6 +82,9 @@ export function validateInvoicePayload(
   const amountPaid = Number(body.amountPaid);
   const discountAmount = Number(body.discountAmount ?? 0);
   const additionalAmount = Number(body.additionalAmount ?? 0);
+  const additionalAmountReason = String(
+    body.additionalAmountReason ?? "",
+  ).trim();
 
   if (!Number.isFinite(totalAmount) || totalAmount < 0) {
     return { error: "Invalid total amount" };
@@ -94,10 +98,15 @@ export function validateInvoicePayload(
   if (!Number.isFinite(additionalAmount) || additionalAmount < 0) {
     return { error: "Invalid additional amount" };
   }
+  if (additionalAmount > 0 && !additionalAmountReason) {
+    return { error: "Reason is required for additional amount" };
+  }
 
   const rawLines = Array.isArray(body.lineItems) ? body.lineItems : [];
-  if (rawLines.length === 0) {
-    return { error: "At least one line item is required" };
+  if (rawLines.length === 0 && !(additionalAmount > 0)) {
+    return {
+      error: "Add at least one line item, or enter an additional amount",
+    };
   }
 
   const lineItems: InvoiceLineItem[] = [];
@@ -222,6 +231,8 @@ export function validateInvoicePayload(
       amountPaid,
       discountAmount,
       additionalAmount,
+      additionalAmountReason:
+        additionalAmount > 0 ? additionalAmountReason : undefined,
       notes: body.notes ? String(body.notes) : undefined,
       lineItems,
       returnItems: returnItems.length > 0 ? returnItems : undefined,

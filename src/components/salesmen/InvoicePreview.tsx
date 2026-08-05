@@ -122,6 +122,11 @@ function renderPageContent(
       <LineItemsTable
         items={page.items}
         empty={invoice.lineItems.length === 0}
+        emptyMessage={
+          invoice.lineItems.length === 0 && invoice.additionalAmountReason
+            ? invoice.additionalAmountReason
+            : undefined
+        }
         hidePrices={hidePrices}
       />
 
@@ -470,10 +475,12 @@ function ContinuationHeader({
 function LineItemsTable({
   items,
   empty,
+  emptyMessage,
   hidePrices = false,
 }: {
   items: InvoiceLineItem[];
   empty: boolean;
+  emptyMessage?: string;
   hidePrices?: boolean;
 }) {
   const colSpan = hidePrices ? 2 : 4;
@@ -501,7 +508,7 @@ function LineItemsTable({
                 colSpan={colSpan}
                 className="px-3 py-6 text-center text-sm text-muted"
               >
-                No items yet
+                {emptyMessage ?? "No items yet"}
               </td>
             </tr>
           ) : (
@@ -552,6 +559,9 @@ function PageTotals({
     invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const discountAmount = invoice.discountAmount ?? 0;
   const additionalAmount = invoice.additionalAmount ?? 0;
+  const additionalAmountLabel = invoice.additionalAmountReason
+    ? `Additional amount (${invoice.additionalAmountReason})`
+    : "Additional amount";
   const hasNotes = Boolean(invoice.notes);
   const hasReturns = (invoice.returnItems?.length ?? 0) > 0;
 
@@ -624,9 +634,12 @@ function PageTotals({
           <Row label="Discount" value={`−${formatINR(discountAmount)}`} />
         )}
         {additionalAmount > 0 && (
-          <Row label="Additional amount" value={`+${formatINR(additionalAmount)}`} />
+          <Row label={additionalAmountLabel} value={`+${formatINR(additionalAmount)}`} />
         )}
-        {(returnsTotal > 0 || discountAmount > 0 || additionalAmount > 0) && (
+        {(returnsTotal > 0 ||
+          discountAmount > 0 ||
+          additionalAmount > 0 ||
+          grossSubtotal > 0) && (
           <Row label="Invoice total" value={formatINR(invoice.totalAmount)} />
         )}
         {previousBalance !== undefined && (

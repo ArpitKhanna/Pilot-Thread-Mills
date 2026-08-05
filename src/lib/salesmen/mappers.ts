@@ -60,6 +60,7 @@ export type DbInvoiceRow = {
   amount_paid: number | string;
   discount_amount: number | string;
   additional_amount: number | string;
+  additional_amount_reason?: string | null;
   notes: string | null;
   created_by?: string | null;
   created_by_name?: string | null;
@@ -421,6 +422,9 @@ export function mapInvoiceRows(
     notes: invoice.notes ?? undefined,
     discountAmount: discount > 0 ? discount : undefined,
     additionalAmount: additional > 0 ? additional : undefined,
+    additionalAmountReason: invoice.additional_amount_reason?.trim()
+      ? invoice.additional_amount_reason.trim()
+      : undefined,
     returnItems,
     paymentEntries,
     verificationStatus: parseVerificationStatus(invoice.verification_status),

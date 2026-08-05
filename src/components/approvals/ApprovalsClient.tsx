@@ -868,6 +868,9 @@ function ApprovalInvoiceTotals({
     invoice.returnItems?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const discountAmount = invoice.discountAmount ?? 0;
   const additionalAmount = invoice.additionalAmount ?? 0;
+  const additionalAmountLabel = invoice.additionalAmountReason
+    ? `Additional amount (${invoice.additionalAmountReason})`
+    : "Additional amount";
 
   return (
     <div>
@@ -890,7 +893,7 @@ function ApprovalInvoiceTotals({
         )}
         {additionalAmount > 0 && (
           <ApprovalTotalRow
-            label="Additional amount"
+            label={additionalAmountLabel}
             value={`+${formatINR(additionalAmount)}`}
           />
         )}

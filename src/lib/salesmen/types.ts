@@ -273,6 +273,8 @@ export type Invoice = {
   discountAmount?: number;
   /** Manual per-invoice charge added on top of line items */
   additionalAmount?: number;
+  /** Why the additional amount was charged (required when additional amount > 0) */
+  additionalAmountReason?: string;
   returnItems?: InvoiceLineItem[];
   /** Optional detail retained for ledger; preview uses amountPaid only */
   paymentEntries?: InvoicePaymentEntry[];

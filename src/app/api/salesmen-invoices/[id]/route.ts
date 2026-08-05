@@ -149,6 +149,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       amount_paid: payload.amountPaid,
       discount_amount: payload.discountAmount ?? 0,
       additional_amount: payload.additionalAmount ?? 0,
+      additional_amount_reason: payload.additionalAmountReason ?? null,
       notes: payload.notes ?? null,
       created_by: verification.created_by,
       created_by_name: verification.created_by_name,
