@@ -323,6 +323,8 @@ export async function assertSufficientBalancesForBatch(
 }
 
 export type ValidatedMovementUpdateData = {
+  category: RawStockCategory;
+  countLabel: string;
   quantityKg: number;
   movementDate: string;
   supplierId: string | null;
@@ -338,6 +340,23 @@ export function validateMovementUpdatePayload(
   body: Record<string, unknown>,
   movementType: RawStockMovementType,
 ): ValidatedMovementUpdatePayload {
+  const categoryRaw = String(body.category ?? "")
+    .trim()
+    .toLowerCase();
+  if (!isRawStockCategory(categoryRaw)) {
+    return { error: "Category must be Hank or Cone" };
+  }
+
+  const countLabel = String(body.countLabel ?? body.count_label ?? "").trim();
+  if (!countLabel) {
+    return { error: "Count is required" };
+  }
+  if (!isValidCountForCategory(categoryRaw, countLabel)) {
+    return {
+      error: `Count ${countLabel} is not valid for ${CATEGORY_LABELS[categoryRaw]}`,
+    };
+  }
+
   const quantityKg = parseQuantityKg(body.quantityKg ?? body.quantity_kg);
   if (quantityKg == null) {
     return { error: "Quantity (kg) must be a positive number" };
@@ -370,6 +389,8 @@ export function validateMovementUpdatePayload(
 
   return {
     data: {
+      category: categoryRaw,
+      countLabel,
       quantityKg,
       movementDate,
       supplierId,
@@ -382,10 +403,6 @@ export function validateMovementUpdatePayload(
 export function assertMovementUpdateBalances(
   movements: RawStockMovement[],
   existingId: string,
-  existing: Pick<
-    RawStockMovement,
-    "category" | "countLabel" | "movementType"
-  >,
   update: ValidatedMovementUpdateData,
 ): { error: string } | { ok: true } {
   const current = movements.find((m) => m.id === existingId);
@@ -396,26 +413,18 @@ export function assertMovementUpdateBalances(
   const updated: RawStockMovement = {
     ...current,
     ...update,
-    movementType: existing.movementType,
-    category: existing.category,
-    countLabel: existing.countLabel,
+    movementType: current.movementType,
   };
 
   const simulated = movements.map((m) => (m.id === existingId ? updated : m));
   const balances = deriveBalances(simulated);
-  const row = balances.byCount.find(
-    (c) =>
-      c.category === existing.category && c.countLabel === existing.countLabel,
-  ) ?? {
-    category: existing.category,
-    countLabel: existing.countLabel,
-    narelaKg: 0,
-  };
 
-  if (row.narelaKg < -0.0005) {
-    return {
-      error: `This change would leave ${CATEGORY_LABELS[existing.category]} ${existing.countLabel} with insufficient stock`,
-    };
+  for (const row of balances.byCount) {
+    if (row.narelaKg < -0.0005) {
+      return {
+        error: `This change would leave ${CATEGORY_LABELS[row.category]} ${row.countLabel} with insufficient stock`,
+      };
+    }
   }
 
   return { ok: true };

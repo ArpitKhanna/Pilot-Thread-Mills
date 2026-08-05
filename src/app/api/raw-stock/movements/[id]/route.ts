@@ -41,7 +41,6 @@ export async function PATCH(request: Request, { params }: Params) {
   const balanceCheck = assertMovementUpdateBalances(
     allMovements,
     id,
-    existing,
     validated.data,
   );
   if ("error" in balanceCheck) {
@@ -50,6 +49,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
   try {
     const movement = await updateMovement(supabase, id, {
+      category: validated.data.category,
+      countLabel: validated.data.countLabel,
       quantityKg: validated.data.quantityKg,
       movementDate: validated.data.movementDate,
       supplierId:

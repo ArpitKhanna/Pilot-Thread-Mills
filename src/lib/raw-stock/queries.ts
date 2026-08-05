@@ -5,7 +5,11 @@ import {
   type DbMovementRow,
   type DbSupplierRow,
 } from "./mappers";
-import type { RawStockMovement, RawStockSupplier } from "./types";
+import type {
+  RawStockCategory,
+  RawStockMovement,
+  RawStockSupplier,
+} from "./types";
 
 const MOVEMENT_SELECT = `
   *,
@@ -130,6 +134,8 @@ export async function createMovement(
 }
 
 export type UpdateMovementInput = {
+  category: RawStockCategory;
+  countLabel: string;
   quantityKg: number;
   movementDate: string;
   supplierId?: string | null;
@@ -145,6 +151,8 @@ export async function updateMovement(
   const { data, error } = await supabase
     .from("raw_stock_movements")
     .update({
+      category: input.category,
+      count_label: input.countLabel,
       quantity_kg: input.quantityKg,
       movement_date: input.movementDate,
       supplier_id: input.supplierId ?? null,

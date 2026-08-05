@@ -9,6 +9,7 @@ import {
 } from "@/components/raw-stock/RawStockModals";
 import {
   buildMonthReport,
+  deriveBalances,
   formatKg,
   listAvailableMonthKeys,
 } from "@/lib/raw-stock/balance";
@@ -94,6 +95,11 @@ export function RawStockStatusClient({
     () => buildMonthReport(movements, reportMonth),
     [movements, reportMonth],
   );
+
+  const editBalances = useMemo(() => {
+    if (!editingMovement) return null;
+    return deriveBalances(movements.filter((m) => m.id !== editingMovement.id));
+  }, [editingMovement, movements]);
 
   const timelineCountOptions = useMemo(() => {
     if (timelineCategory === "all") {
@@ -532,6 +538,7 @@ export function RawStockStatusClient({
         onCloseMovement={() => setModalKind(null)}
         editingMovement={editingMovement}
         onCloseEditMovement={() => setEditingMovement(null)}
+        editBalances={editBalances}
         supplierOpen={supplierModalOpen}
         editingSupplier={editingSupplier}
         onCloseSupplier={() => {

@@ -14,7 +14,6 @@ import {
   CONE_COUNTS,
   COUNTS_BY_CATEGORY,
   HANK_COUNTS,
-  MOVEMENT_TYPE_LABELS,
   balanceKey,
 } from "@/lib/raw-stock/types";
 
@@ -28,6 +27,7 @@ type RawStockModalsProps = {
   onCloseMovement: () => void;
   editingMovement: RawStockMovement | null;
   onCloseEditMovement: () => void;
+  editBalances: RawStockBalances | null;
   supplierOpen: boolean;
   editingSupplier: RawStockSupplier | null;
   onCloseSupplier: () => void;
@@ -53,6 +53,27 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const MOVEMENT_EDIT_TITLES: Record<MovementModalKind, string> = {
+  opening_balance: "Edit opening balance",
+  stock_in: "Edit stock in",
+  stock_out: "Edit stock out",
+};
+
+const MOVEMENT_EDIT_HINTS: Record<MovementModalKind, string> = {
+  opening_balance:
+    "Update the date, count, and quantity for this opening balance entry.",
+  stock_in: "Update the date, count, quantity, supplier, or DO number.",
+  stock_out: "Update the date, count, and quantity for this transfer.",
+};
+
+function quantitiesFromMovement(movement: RawStockMovement): Record<string, string> {
+  const map = emptyQuantities();
+  map[balanceKey(movement.category, movement.countLabel)] = String(
+    movement.quantityKg,
+  );
+  return map;
+}
+
 function emptyQuantities(): Record<string, string> {
   const map: Record<string, string> = {};
   for (const count of HANK_COUNTS) map[balanceKey("hank", count)] = "";
@@ -65,6 +86,7 @@ export function RawStockModals({
   onCloseMovement,
   editingMovement,
   onCloseEditMovement,
+  editBalances,
   supplierOpen,
   editingSupplier,
   onCloseSupplier,
@@ -73,22 +95,17 @@ export function RawStockModals({
   onMovementSaved,
   onSupplierSaved,
 }: RawStockModalsProps) {
+  const activeKind = editingMovement?.movementType ?? movementKind;
+
   return (
     <>
-      {movementKind && (
+      {activeKind && (
         <MovementFormModal
-          kind={movementKind}
-          onClose={onCloseMovement}
+          kind={activeKind}
+          editing={editingMovement}
+          onClose={editingMovement ? onCloseEditMovement : onCloseMovement}
           suppliers={suppliers.filter((s) => s.isActive)}
-          balances={balances}
-          onSaved={onMovementSaved}
-        />
-      )}
-      {editingMovement && (
-        <MovementEditModal
-          movement={editingMovement}
-          onClose={onCloseEditMovement}
-          suppliers={suppliers.filter((s) => s.isActive)}
+          balances={editBalances ?? balances}
           onSaved={onMovementSaved}
         />
       )}
@@ -105,23 +122,33 @@ export function RawStockModals({
 
 function MovementFormModal({
   kind,
+  editing,
   onClose,
   suppliers,
   balances,
   onSaved,
 }: {
   kind: MovementModalKind;
+  editing?: RawStockMovement | null;
   onClose: () => void;
   suppliers: RawStockSupplier[];
   balances: RawStockBalances;
   onSaved: () => Promise<void>;
 }) {
-  const [quantities, setQuantities] = useState(emptyQuantities);
-  const [movementDate, setMovementDate] = useState(todayIso);
-  const [supplierId, setSupplierId] = useState("");
-  const [doNumber, setDoNumber] = useState("");
-  const [notes, setNotes] = useState("");
+  const isEditing = editing != null;
+
+  const [quantities, setQuantities] = useState(() =>
+    editing ? quantitiesFromMovement(editing) : emptyQuantities(),
+  );
+  const [movementDate, setMovementDate] = useState(
+    editing?.movementDate ?? todayIso(),
+  );
+  const [supplierId, setSupplierId] = useState(editing?.supplierId ?? "");
+  const [doNumber, setDoNumber] = useState(editing?.doNumber ?? "");
+  const [notes, setNotes] = useState(editing?.notes ?? "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
 
   const filledCount = useMemo(() => {
@@ -166,6 +193,36 @@ function MovementFormModal({
         throw new Error("Enter at least one quantity");
       }
 
+      if (isEditing) {
+        if (entries.length !== 1) {
+          throw new Error("Edit one count at a time — fill only the row you want");
+        }
+
+        const entry = entries[0]!;
+        const payload: Record<string, unknown> = {
+          category: entry.category,
+          countLabel: entry.countLabel,
+          quantityKg: entry.quantityKg,
+          movementDate,
+          notes: notes || null,
+        };
+
+        if (kind === "stock_in") {
+          payload.supplierId = supplierId || null;
+          payload.doNumber = doNumber.trim() || null;
+        }
+
+        const res = await fetch(`/api/raw-stock/movements/${editing.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to save");
+        await onSaved();
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         movementType: kind,
         movementDate,
@@ -193,19 +250,69 @@ function MovementFormModal({
     }
   }
 
+  async function handleDelete() {
+    if (!editing) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/raw-stock/movements/${editing.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Modal
       open
       onClose={onClose}
-      title={MOVEMENT_TITLES[kind]}
+      title={isEditing ? MOVEMENT_EDIT_TITLES[kind] : MOVEMENT_TITLES[kind]}
       size="2xl"
       footer={
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted">
-            {filledCount > 0
-              ? `${filledCount} count${filledCount === 1 ? "" : "s"} ready to save`
-              : "Fill any counts you need"}
-          </p>
+          {isEditing ? (
+            !confirmDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="text-sm text-[#c45c26] hover:underline"
+              >
+                Remove entry
+              </button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted">Remove this entry?</span>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => void handleDelete()}
+                  className="rounded-lg bg-[#c45c26] px-3 py-1.5 text-background disabled:opacity-60"
+                >
+                  {deleting ? "Removing…" : "Yes, remove"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="text-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            )
+          ) : (
+            <p className="text-xs text-muted">
+              {filledCount > 0
+                ? `${filledCount} count${filledCount === 1 ? "" : "s"} ready to save`
+                : "Fill any counts you need"}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -216,11 +323,11 @@ function MovementFormModal({
             </button>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || deleting}
               onClick={() => void handleSubmit()}
               className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : isEditing ? "Save changes" : "Save"}
             </button>
           </div>
         </div>
@@ -233,7 +340,9 @@ function MovementFormModal({
           </p>
         )}
 
-        <p className="text-sm text-muted">{MOVEMENT_HINTS[kind]}</p>
+        <p className="text-sm text-muted">
+          {isEditing ? MOVEMENT_EDIT_HINTS[kind] : MOVEMENT_HINTS[kind]}
+        </p>
 
         <div
           className={`grid gap-4 ${kind === "stock_in" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
@@ -260,6 +369,12 @@ function MovementFormModal({
                       {s.name}
                     </option>
                   ))}
+                  {editing?.supplierId &&
+                    !suppliers.some((s) => s.id === editing.supplierId) && (
+                      <option value={editing.supplierId}>
+                        {editing.supplierName ?? "Previous supplier"}
+                      </option>
+                    )}
                 </select>
               </Field>
               <Field label="DO number (optional)">
@@ -298,7 +413,11 @@ function MovementFormModal({
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            placeholder="Applies to all entries saved in this batch"
+            placeholder={
+              isEditing
+                ? "Notes for this entry"
+                : "Applies to all entries saved in this batch"
+            }
           />
         </Field>
       </div>
@@ -366,212 +485,6 @@ function CountGrid({
         })}
       </ul>
     </section>
-  );
-}
-
-function MovementEditModal({
-  movement,
-  onClose,
-  suppliers,
-  onSaved,
-}: {
-  movement: RawStockMovement;
-  onClose: () => void;
-  suppliers: RawStockSupplier[];
-  onSaved: () => Promise<void>;
-}) {
-  const [movementDate, setMovementDate] = useState(movement.movementDate);
-  const [quantityKg, setQuantityKg] = useState(String(movement.quantityKg));
-  const [supplierId, setSupplierId] = useState(movement.supplierId ?? "");
-  const [doNumber, setDoNumber] = useState(movement.doNumber ?? "");
-  const [notes, setNotes] = useState(movement.notes ?? "");
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const isStockIn = movement.movementType === "stock_in";
-
-  async function handleSave() {
-    setSaving(true);
-    setError("");
-    try {
-      const payload: Record<string, unknown> = {
-        movementDate,
-        quantityKg: Number(quantityKg),
-        notes: notes.trim() || null,
-      };
-      if (isStockIn) {
-        payload.supplierId = supplierId || null;
-        payload.doNumber = doNumber.trim() || null;
-      }
-
-      const res = await fetch(`/api/raw-stock/movements/${movement.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to save");
-      await onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    setDeleting(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/raw-stock/movements/${movement.id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
-      await onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete");
-      setConfirmDelete(false);
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Edit movement"
-      size="md"
-      footer={
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {!confirmDelete ? (
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="text-sm text-[#c45c26] hover:underline"
-            >
-              Remove entry
-            </button>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted">Remove this entry?</span>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => void handleDelete()}
-                className="rounded-lg bg-[#c45c26] px-3 py-1.5 text-background disabled:opacity-60"
-              >
-                {deleting ? "Removing…" : "Yes, remove"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="text-muted hover:text-foreground"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border px-3 py-2 text-sm"
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              disabled={saving || deleting}
-              onClick={() => void handleSave()}
-              className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {error}
-          </p>
-        )}
-
-        <p className="text-sm text-muted">
-          {MOVEMENT_TYPE_LABELS[movement.movementType]} ·{" "}
-          {CATEGORY_LABELS[movement.category]} · {movement.countLabel}
-        </p>
-
-        <Field label="Date">
-          <input
-            type="date"
-            value={movementDate}
-            onChange={(e) => setMovementDate(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          />
-        </Field>
-
-        <Field label="Quantity (kg)">
-          <input
-            type="number"
-            min="0"
-            step="0.001"
-            inputMode="decimal"
-            value={quantityKg}
-            onChange={(e) => setQuantityKg(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums"
-          />
-        </Field>
-
-        {isStockIn && (
-          <>
-            <Field label="Supplier (optional)">
-              <select
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">No supplier</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                {movement.supplierId &&
-                  !suppliers.some((s) => s.id === movement.supplierId) && (
-                    <option value={movement.supplierId}>
-                      {movement.supplierName ?? "Previous supplier"}
-                    </option>
-                  )}
-              </select>
-            </Field>
-            <Field label="DO number (optional)">
-              <input
-                type="text"
-                value={doNumber}
-                onChange={(e) => setDoNumber(e.target.value)}
-                placeholder="Delivery order no."
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              />
-            </Field>
-          </>
-        )}
-
-        <Field label="Notes (optional)">
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          />
-        </Field>
-      </div>
-    </Modal>
   );
 }
 
