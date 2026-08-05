@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
 import { deriveBalances, isValidMovementType } from "./balance";
 import { listMovements } from "./queries";
-import type { RawStockCategory, RawStockMovementType } from "./types";
+import type { RawStockCategory, RawStockMovement, RawStockMovementType } from "./types";
 import {
   CATEGORY_LABELS,
   isRawStockCategory,
@@ -320,4 +320,121 @@ export async function assertSufficientBalancesForBatch(
   }
 
   return { ok: true as const };
+}
+
+export type ValidatedMovementUpdateData = {
+  quantityKg: number;
+  movementDate: string;
+  supplierId: string | null;
+  doNumber: string | null;
+  notes: string | null;
+};
+
+export type ValidatedMovementUpdatePayload =
+  | { error: string }
+  | { data: ValidatedMovementUpdateData };
+
+export function validateMovementUpdatePayload(
+  body: Record<string, unknown>,
+  movementType: RawStockMovementType,
+): ValidatedMovementUpdatePayload {
+  const quantityKg = parseQuantityKg(body.quantityKg ?? body.quantity_kg);
+  if (quantityKg == null) {
+    return { error: "Quantity (kg) must be a positive number" };
+  }
+
+  const movementDate = parseDateOnly(body.movementDate ?? body.movement_date);
+  if (!movementDate) {
+    return { error: "Valid date is required" };
+  }
+
+  const supplierRaw = body.supplierId ?? body.supplier_id;
+  const supplierId =
+    supplierRaw == null || supplierRaw === ""
+      ? null
+      : String(supplierRaw).trim();
+
+  if (
+    supplierId &&
+    (movementType === "stock_out" || movementType === "opening_balance")
+  ) {
+    return { error: "Supplier is only allowed when adding stock" };
+  }
+
+  const doNumberField = readDoNumberField(body, movementType);
+  if ("error" in doNumberField) {
+    return { error: doNumberField.error };
+  }
+
+  const notes = String(body.notes ?? "").trim();
+
+  return {
+    data: {
+      quantityKg,
+      movementDate,
+      supplierId,
+      doNumber: doNumberField.doNumber,
+      notes: notes || null,
+    },
+  };
+}
+
+export function assertMovementUpdateBalances(
+  movements: RawStockMovement[],
+  existingId: string,
+  existing: Pick<
+    RawStockMovement,
+    "category" | "countLabel" | "movementType"
+  >,
+  update: ValidatedMovementUpdateData,
+): { error: string } | { ok: true } {
+  const current = movements.find((m) => m.id === existingId);
+  if (!current) {
+    return { error: "Movement not found" };
+  }
+
+  const updated: RawStockMovement = {
+    ...current,
+    ...update,
+    movementType: existing.movementType,
+    category: existing.category,
+    countLabel: existing.countLabel,
+  };
+
+  const simulated = movements.map((m) => (m.id === existingId ? updated : m));
+  const balances = deriveBalances(simulated);
+  const row = balances.byCount.find(
+    (c) =>
+      c.category === existing.category && c.countLabel === existing.countLabel,
+  ) ?? {
+    category: existing.category,
+    countLabel: existing.countLabel,
+    narelaKg: 0,
+  };
+
+  if (row.narelaKg < -0.0005) {
+    return {
+      error: `This change would leave ${CATEGORY_LABELS[existing.category]} ${existing.countLabel} with insufficient stock`,
+    };
+  }
+
+  return { ok: true };
+}
+
+export function assertMovementDeleteBalances(
+  movements: RawStockMovement[],
+  existingId: string,
+): { error: string } | { ok: true } {
+  const remaining = movements.filter((m) => m.id !== existingId);
+  const balances = deriveBalances(remaining);
+
+  for (const row of balances.byCount) {
+    if (row.narelaKg < -0.0005) {
+      return {
+        error: `Cannot remove this entry: ${CATEGORY_LABELS[row.category]} ${row.countLabel} would go negative`,
+      };
+    }
+  }
+
+  return { ok: true };
 }

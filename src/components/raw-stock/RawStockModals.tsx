@@ -6,6 +6,7 @@ import { formatKg, getCountBalance } from "@/lib/raw-stock/balance";
 import type {
   RawStockBalances,
   RawStockCategory,
+  RawStockMovement,
   RawStockSupplier,
 } from "@/lib/raw-stock/types";
 import {
@@ -13,6 +14,7 @@ import {
   CONE_COUNTS,
   COUNTS_BY_CATEGORY,
   HANK_COUNTS,
+  MOVEMENT_TYPE_LABELS,
   balanceKey,
 } from "@/lib/raw-stock/types";
 
@@ -24,6 +26,8 @@ export type MovementModalKind =
 type RawStockModalsProps = {
   movementKind: MovementModalKind | null;
   onCloseMovement: () => void;
+  editingMovement: RawStockMovement | null;
+  onCloseEditMovement: () => void;
   supplierOpen: boolean;
   editingSupplier: RawStockSupplier | null;
   onCloseSupplier: () => void;
@@ -59,6 +63,8 @@ function emptyQuantities(): Record<string, string> {
 export function RawStockModals({
   movementKind,
   onCloseMovement,
+  editingMovement,
+  onCloseEditMovement,
   supplierOpen,
   editingSupplier,
   onCloseSupplier,
@@ -75,6 +81,14 @@ export function RawStockModals({
           onClose={onCloseMovement}
           suppliers={suppliers.filter((s) => s.isActive)}
           balances={balances}
+          onSaved={onMovementSaved}
+        />
+      )}
+      {editingMovement && (
+        <MovementEditModal
+          movement={editingMovement}
+          onClose={onCloseEditMovement}
+          suppliers={suppliers.filter((s) => s.isActive)}
           onSaved={onMovementSaved}
         />
       )}
@@ -352,6 +366,212 @@ function CountGrid({
         })}
       </ul>
     </section>
+  );
+}
+
+function MovementEditModal({
+  movement,
+  onClose,
+  suppliers,
+  onSaved,
+}: {
+  movement: RawStockMovement;
+  onClose: () => void;
+  suppliers: RawStockSupplier[];
+  onSaved: () => Promise<void>;
+}) {
+  const [movementDate, setMovementDate] = useState(movement.movementDate);
+  const [quantityKg, setQuantityKg] = useState(String(movement.quantityKg));
+  const [supplierId, setSupplierId] = useState(movement.supplierId ?? "");
+  const [doNumber, setDoNumber] = useState(movement.doNumber ?? "");
+  const [notes, setNotes] = useState(movement.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const isStockIn = movement.movementType === "stock_in";
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      const payload: Record<string, unknown> = {
+        movementDate,
+        quantityKg: Number(quantityKg),
+        notes: notes.trim() || null,
+      };
+      if (isStockIn) {
+        payload.supplierId = supplierId || null;
+        payload.doNumber = doNumber.trim() || null;
+      }
+
+      const res = await fetch(`/api/raw-stock/movements/${movement.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/raw-stock/movements/${movement.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Edit movement"
+      size="md"
+      footer={
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {!confirmDelete ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="text-sm text-[#c45c26] hover:underline"
+            >
+              Remove entry
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted">Remove this entry?</span>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+                className="rounded-lg bg-[#c45c26] px-3 py-1.5 text-background disabled:opacity-60"
+              >
+                {deleting ? "Removing…" : "Yes, remove"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="text-muted hover:text-foreground"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={saving || deleting}
+              onClick={() => void handleSave()}
+              className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {error}
+          </p>
+        )}
+
+        <p className="text-sm text-muted">
+          {MOVEMENT_TYPE_LABELS[movement.movementType]} ·{" "}
+          {CATEGORY_LABELS[movement.category]} · {movement.countLabel}
+        </p>
+
+        <Field label="Date">
+          <input
+            type="date"
+            value={movementDate}
+            onChange={(e) => setMovementDate(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+
+        <Field label="Quantity (kg)">
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            inputMode="decimal"
+            value={quantityKg}
+            onChange={(e) => setQuantityKg(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums"
+          />
+        </Field>
+
+        {isStockIn && (
+          <>
+            <Field label="Supplier (optional)">
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">No supplier</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+                {movement.supplierId &&
+                  !suppliers.some((s) => s.id === movement.supplierId) && (
+                    <option value={movement.supplierId}>
+                      {movement.supplierName ?? "Previous supplier"}
+                    </option>
+                  )}
+              </select>
+            </Field>
+            <Field label="DO number (optional)">
+              <input
+                type="text"
+                value={doNumber}
+                onChange={(e) => setDoNumber(e.target.value)}
+                placeholder="Delivery order no."
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              />
+            </Field>
+          </>
+        )}
+
+        <Field label="Notes (optional)">
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+      </div>
+    </Modal>
   );
 }
 

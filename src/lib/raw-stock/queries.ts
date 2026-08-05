@@ -35,6 +35,20 @@ export async function listMovements(
   return ((data ?? []) as DbMovementRow[]).map(mapMovementRow);
 }
 
+export async function getMovementById(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<RawStockMovement | null> {
+  const { data, error } = await supabase
+    .from("raw_stock_movements")
+    .select(MOVEMENT_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapMovementRow(data as DbMovementRow);
+}
+
 export type CreateSupplierInput = {
   name: string;
   isActive?: boolean;
@@ -113,4 +127,44 @@ export async function createMovement(
     .single();
   if (error) throw error;
   return mapMovementRow(data as DbMovementRow);
+}
+
+export type UpdateMovementInput = {
+  quantityKg: number;
+  movementDate: string;
+  supplierId?: string | null;
+  doNumber?: string | null;
+  notes?: string | null;
+};
+
+export async function updateMovement(
+  supabase: SupabaseClient,
+  id: string,
+  input: UpdateMovementInput,
+): Promise<RawStockMovement> {
+  const { data, error } = await supabase
+    .from("raw_stock_movements")
+    .update({
+      quantity_kg: input.quantityKg,
+      movement_date: input.movementDate,
+      supplier_id: input.supplierId ?? null,
+      do_number: input.doNumber?.trim() || null,
+      notes: input.notes?.trim() || null,
+    })
+    .eq("id", id)
+    .select(MOVEMENT_SELECT)
+    .single();
+  if (error) throw error;
+  return mapMovementRow(data as DbMovementRow);
+}
+
+export async function deleteMovement(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("raw_stock_movements")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
 }

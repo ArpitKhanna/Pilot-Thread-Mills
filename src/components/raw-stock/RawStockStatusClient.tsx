@@ -64,8 +64,11 @@ export function RawStockStatusClient({
 }: RawStockStatusClientProps) {
   const [tab, setTab] = useState<TabId>("stock");
   const [modalKind, setModalKind] = useState<MovementModalKind | null>(null);
+  const [editingMovement, setEditingMovement] =
+    useState<RawStockMovement | null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-  const pauseSync = modalKind != null || supplierModalOpen;
+  const pauseSync =
+    modalKind != null || supplierModalOpen || editingMovement != null;
   const [movements, setMovements] = useSyncedState(initialMovements, !pauseSync);
   const [suppliers, setSuppliers] = useSyncedState(initialSuppliers, !pauseSync);
   const [balances, setBalances] = useSyncedState(initialBalances, !pauseSync);
@@ -320,7 +323,7 @@ export function RawStockStatusClient({
                           key={m.id}
                           className="flex flex-col gap-1 rounded-lg px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
                         >
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium">
                               {MOVEMENT_TYPE_LABELS[m.movementType]}
                               {" · "}
@@ -335,9 +338,18 @@ export function RawStockStatusClient({
                               {m.notes ? ` · ${m.notes}` : ""}
                             </p>
                           </div>
-                          <div className="shrink-0 text-sm font-medium tabular-nums">
-                            {m.movementType === "stock_out" ? "−" : "+"}
-                            {formatKg(m.quantityKg)}
+                          <div className="flex shrink-0 items-center gap-3">
+                            <div className="text-sm font-medium tabular-nums">
+                              {m.movementType === "stock_out" ? "−" : "+"}
+                              {formatKg(m.quantityKg)}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditingMovement(m)}
+                              className="text-sm text-muted hover:text-foreground"
+                            >
+                              Edit
+                            </button>
                           </div>
                         </li>
                       ))}
@@ -518,6 +530,8 @@ export function RawStockStatusClient({
       <RawStockModals
         movementKind={modalKind}
         onCloseMovement={() => setModalKind(null)}
+        editingMovement={editingMovement}
+        onCloseEditMovement={() => setEditingMovement(null)}
         supplierOpen={supplierModalOpen}
         editingSupplier={editingSupplier}
         onCloseSupplier={() => {
@@ -529,6 +543,7 @@ export function RawStockStatusClient({
         onMovementSaved={async () => {
           await refreshFromServer();
           setModalKind(null);
+          setEditingMovement(null);
         }}
         onSupplierSaved={(supplier) => {
           setSuppliers((prev) => {
