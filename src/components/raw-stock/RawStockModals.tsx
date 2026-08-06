@@ -478,6 +478,11 @@ function CountGrid({
                 placeholder="kg"
                 value={quantities[key] ?? ""}
                 onChange={(e) => onChange(category, countLabel, e.target.value)}
+                onWheel={(e) => {
+                  if (document.activeElement === e.currentTarget) {
+                    e.currentTarget.blur();
+                  }
+                }}
                 className="w-28 shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right text-sm tabular-nums"
               />
             </li>
