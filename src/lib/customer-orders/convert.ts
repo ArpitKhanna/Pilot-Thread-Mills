@@ -10,6 +10,7 @@ import {
   getSalesman,
   refreshSalesmanTotals,
 } from "@/lib/salesmen/queries";
+import { notifyInvoiceApprovalPending } from "@/lib/push/notify-approval";
 import {
   paymentVerificationFields,
   verificationForCreator,
@@ -295,5 +296,17 @@ export async function convertOrderToInvoice(
 
   const invoice = await getInvoiceById(supabase, invoiceId);
   const refreshedOrder = await getCustomerOrder(supabase, order.id);
+
+  if (verification.verification_status === "pending_verification") {
+    const party = await getSalesman(supabase, order.customerId);
+    notifyInvoiceApprovalPending({
+      invoiceId,
+      invoiceNumber: number,
+      salesmanName: party?.name ?? order.customerName ?? "Unknown",
+      totalAmount,
+      createdByUserId: input.createdBy,
+    });
+  }
+
   return { invoice, order: refreshedOrder };
 }

@@ -10,7 +10,8 @@ import {
   paymentInserts,
   validateInvoicePayload,
 } from "@/lib/salesmen/invoice-api";
-import { getInvoiceById, refreshSalesmanTotals } from "@/lib/salesmen/queries";
+import { getInvoiceById, getSalesman, refreshSalesmanTotals } from "@/lib/salesmen/queries";
+import { notifyInvoiceApprovalPending } from "@/lib/push/notify-approval";
 import {
   paymentVerificationFields,
   verificationForCreator,
@@ -159,5 +160,17 @@ export async function POST(request: Request) {
   }
 
   const invoice = await getInvoiceById(supabase, invoiceRow.id);
+
+  if (verification.verification_status === "pending_verification") {
+    const party = await getSalesman(supabase, payload.salesmanId);
+    notifyInvoiceApprovalPending({
+      invoiceId: invoiceRow.id as string,
+      invoiceNumber: number,
+      salesmanName: party?.name ?? "Unknown",
+      totalAmount: payload.totalAmount,
+      createdByUserId: profile.id,
+    });
+  }
+
   return NextResponse.json({ invoice }, { status: 201 });
 }

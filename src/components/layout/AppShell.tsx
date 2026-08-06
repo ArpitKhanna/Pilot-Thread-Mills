@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppContext } from "@/app/(app)/layout";
+import { PushNotificationSetup } from "@/components/push/PushNotificationSetup";
 import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 import { MobileNavProvider } from "./MobileNavContext";
 import { Sidebar } from "./Sidebar";
@@ -18,6 +19,7 @@ export function AppShell({ context, children }: AppShellProps) {
       <div className="flex h-[100dvh] overflow-hidden bg-background">
         <Sidebar context={context} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <PushNotificationSetup context={context} />
           {children}
         </div>
       </div>

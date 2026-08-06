@@ -76,6 +76,24 @@ On Android Chrome or iOS Safari:
 2. Use **Add to Home Screen** / **Install app**
 3. The app opens standalone from the home screen
 
+## Approval push notifications (admin)
+
+Admins with the **Approvals** module can receive one phone notification per pending item (invoice, advance, return, or price list change), even when the PWA is closed.
+
+### Setup
+
+1. Run the migration `supabase/migrations/20260806170000_push_subscriptions.sql`
+2. Generate VAPID keys: `npm run push:generate-vapid-keys`
+3. Add `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` to `.env.local` and Vercel
+4. Deploy (push requires HTTPS; it does not work on local dev because the service worker is disabled there)
+
+### On Android
+
+1. Install the PWA from Chrome (**Add to Home screen**)
+2. Sign in as an admin with Approvals access
+3. Tap **Enable notifications** when prompted
+4. Each new approval triggers its own notification; tap it to open `/approvals`
+
 ## API routes (v1)
 
 | Route | Method | Description |

@@ -5,6 +5,7 @@ import {
   validateAdvancePayload,
 } from "@/lib/salesmen/advances";
 import { getSalesman } from "@/lib/salesmen/queries";
+import { notifyAdvanceApprovalPending } from "@/lib/push/notify-approval";
 import { verificationForCreator } from "@/lib/salesmen/verification";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
 
@@ -88,6 +89,16 @@ export async function POST(request: Request, context: RouteContext) {
       validated.data,
       verification,
     );
+
+    if (verification.verification_status === "pending_verification") {
+      notifyAdvanceApprovalPending({
+        advanceId: advance.id,
+        salesmanName: salesman.name,
+        amount: advance.amount,
+        createdByUserId: profile.id,
+      });
+    }
+
     return NextResponse.json({ advance }, { status: 201 });
   } catch (e) {
     console.error(e);

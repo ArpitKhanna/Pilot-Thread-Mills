@@ -4,6 +4,7 @@ import {
   itemStatusForRole,
   validateItemPayload,
 } from "@/lib/price-list/api-helpers";
+import { notifyPriceListApprovalPending } from "@/lib/push/notify-approval";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -49,6 +50,15 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (status === "pending_approval") {
+    notifyPriceListApprovalPending({
+      itemId: item.id as string,
+      itemName: item.item_name as string,
+      submittedByName: profile.full_name?.trim() || "Unknown",
+      createdByUserId: profile.id,
+    });
   }
 
   return NextResponse.json({ item });
