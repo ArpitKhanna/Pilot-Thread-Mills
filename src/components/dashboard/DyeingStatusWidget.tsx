@@ -7,15 +7,22 @@ import { WidgetKpi, WidgetSection } from "./WidgetKpi";
 
 type DyeingStatusWidgetProps = {
   initialStats: DyeingStats;
+  compact?: boolean;
 };
 
-export function DyeingStatusWidget({ initialStats }: DyeingStatusWidgetProps) {
+export function DyeingStatusWidget({
+  initialStats,
+  compact = false,
+}: DyeingStatusWidgetProps) {
   const [stats] = useSyncedState(initialStats);
 
   return (
     <WidgetSection
       title="Dyeing queue"
-      description={`Turnaround target: ${stats.slaDays} days`}
+      description={
+        compact ? undefined : `Turnaround target: ${stats.slaDays} days`
+      }
+      className={compact ? "flex min-h-0 flex-1 flex-col" : undefined}
       action={
         <Link
           href="/dyeing-jobs"
@@ -25,7 +32,9 @@ export function DyeingStatusWidget({ initialStats }: DyeingStatusWidgetProps) {
         </Link>
       }
     >
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        className={`mb-4 grid gap-3 ${compact ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4"}`}
+      >
         <WidgetKpi label="In queue" value={stats.inQueue} format="count" />
         <WidgetKpi
           label="Lagging"

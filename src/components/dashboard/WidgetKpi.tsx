@@ -55,14 +55,18 @@ export function WidgetSection({
   description,
   action,
   children,
+  className,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+    <section
+      className={`rounded-xl border border-border bg-surface p-4 sm:p-5 ${className ?? ""}`}
+    >
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-base font-medium sm:text-lg">{title}</h2>

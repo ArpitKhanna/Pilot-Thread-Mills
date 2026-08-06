@@ -6,17 +6,24 @@ import { WidgetKpi, WidgetSection } from "./WidgetKpi";
 
 type OrderStatusWidgetProps = {
   initialStats: OrderStats;
+  compact?: boolean;
 };
 
-export function OrderStatusWidget({ initialStats }: OrderStatusWidgetProps) {
+export function OrderStatusWidget({
+  initialStats,
+  compact = false,
+}: OrderStatusWidgetProps) {
   const [stats] = useSyncedState(initialStats);
 
   return (
     <WidgetSection
       title="Orders today"
-      description={`Status for ${stats.date}`}
+      description={compact ? undefined : `Status for ${stats.date}`}
+      className={compact ? "flex min-h-0 flex-1 flex-col" : undefined}
     >
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        className={`mb-4 grid gap-3 ${compact ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4"}`}
+      >
         <WidgetKpi
           label="Received today"
           value={stats.receivedToday}
