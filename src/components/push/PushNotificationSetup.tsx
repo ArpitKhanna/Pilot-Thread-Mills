@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
 import {
+  canUseApprovalPush,
   hasActivePushSubscription,
-  isPushSupported,
   subscribeToApprovalPush,
 } from "@/lib/push/client";
 
@@ -17,7 +17,7 @@ type PushNotificationSetupProps = {
 export function PushNotificationSetup({ context }: PushNotificationSetupProps) {
   const canReceiveApprovalPush =
     context.modules.some((module) => module.id === "approvals") &&
-    isPushSupported();
+    canUseApprovalPush();
 
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);

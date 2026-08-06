@@ -22,6 +22,22 @@ export function isPushSupported(): boolean {
   );
 }
 
+/** Phone/tablet targets — skip desktop browsers and installed desktop PWAs. */
+export function isMobilePushTarget(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const coarseTouch = window.matchMedia(
+    "(hover: none) and (pointer: coarse)",
+  ).matches;
+  const mobileUserAgent = /Android|iPhone|iPod/i.test(navigator.userAgent);
+
+  return coarseTouch || mobileUserAgent;
+}
+
+export function canUseApprovalPush(): boolean {
+  return isPushSupported() && isMobilePushTarget();
+}
+
 async function ensurePushServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!isPushSupported()) return null;
 
