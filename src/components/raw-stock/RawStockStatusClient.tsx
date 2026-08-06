@@ -370,51 +370,53 @@ export function RawStockStatusClient({
                 </div>
               </div>
 
-              <div className="hidden print:block">
-                <h2 className="text-lg font-medium">
-                  Raw Stock — {monthReport.label}
-                </h2>
-                <p className="text-sm text-muted">Narela inventory report</p>
-              </div>
-
-              <ReportTable
-                title="Hank"
-                rows={monthReport.byCategory.hank}
-                totals={monthReport.totals.hank}
-              />
-              <ReportTable
-                title="Cone"
-                rows={monthReport.byCategory.cone}
-                totals={monthReport.totals.cone}
-              />
-
-              <section className="rounded-xl border border-border bg-surface px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-medium">Overall</p>
-                  <div className="flex flex-wrap gap-4 text-sm tabular-nums">
-                    <span>
-                      Opening{" "}
-                      <strong>{formatKg(monthReport.totals.overall.openingKg)}</strong>
-                    </span>
-                    <span>
-                      In{" "}
-                      <strong>{formatKg(monthReport.totals.overall.stockInKg)}</strong>
-                    </span>
-                    <span>
-                      Out{" "}
-                      <strong>
-                        {formatKg(monthReport.totals.overall.stockOutKg)}
-                      </strong>
-                    </span>
-                    <span>
-                      Closing{" "}
-                      <strong>
-                        {formatKg(monthReport.totals.overall.closingKg)}
-                      </strong>
-                    </span>
-                  </div>
+              <div id="raw-stock-print-root" className="space-y-5 print:space-y-4">
+                <div className="hidden print:block">
+                  <h2 className="text-lg font-medium">
+                    Raw Stock — {monthReport.label}
+                  </h2>
+                  <p className="text-sm text-muted">Narela inventory report</p>
                 </div>
-              </section>
+
+                <ReportTable
+                  title="Hank"
+                  rows={monthReport.byCategory.hank}
+                  totals={monthReport.totals.hank}
+                />
+                <ReportTable
+                  title="Cone"
+                  rows={monthReport.byCategory.cone}
+                  totals={monthReport.totals.cone}
+                />
+
+                <section className="rounded-xl border border-border bg-surface px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-medium">Overall</p>
+                    <div className="flex flex-wrap gap-4 text-sm tabular-nums">
+                      <span>
+                        Opening{" "}
+                        <strong>{formatKg(monthReport.totals.overall.openingKg)}</strong>
+                      </span>
+                      <span>
+                        In{" "}
+                        <strong>{formatKg(monthReport.totals.overall.stockInKg)}</strong>
+                      </span>
+                      <span>
+                        Out{" "}
+                        <strong>
+                          {formatKg(monthReport.totals.overall.stockOutKg)}
+                        </strong>
+                      </span>
+                      <span>
+                        Closing{" "}
+                        <strong>
+                          {formatKg(monthReport.totals.overall.closingKg)}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
             </div>
           )}
 

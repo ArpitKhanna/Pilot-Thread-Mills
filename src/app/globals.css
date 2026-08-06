@@ -40,17 +40,24 @@ body {
   }
 
   #invoice-print-root,
-  #invoice-print-root * {
+  #invoice-print-root *,
+  #raw-stock-print-root,
+  #raw-stock-print-root * {
     visibility: visible;
   }
 
-  #invoice-print-root {
+  #invoice-print-root,
+  #raw-stock-print-root {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  #raw-stock-print-root {
+    padding: 12mm;
   }
 
   .invoice-a4-page {
