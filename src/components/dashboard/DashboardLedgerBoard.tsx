@@ -15,7 +15,7 @@ type DashboardLedgerBoardProps = {
   canAddReceipt: boolean;
   canAddExpense: boolean;
   operationsColumn: React.ReactNode;
-  footer?: React.ReactNode;
+  header?: React.ReactNode;
 };
 
 const METHOD_LABELS = {
@@ -44,7 +44,7 @@ export function DashboardLedgerBoard({
   canAddReceipt,
   canAddExpense,
   operationsColumn,
-  footer,
+  header,
 }: DashboardLedgerBoardProps) {
   const {
     ledger,
@@ -105,6 +105,8 @@ export function DashboardLedgerBoard({
           </Link>
         </div>
       </div>
+
+      {header}
 
       <div className="grid gap-4 lg:grid-cols-3 lg:gap-5">
         <LedgerColumn
@@ -187,8 +189,6 @@ export function DashboardLedgerBoard({
           {operationsColumn}
         </div>
       </div>
-
-      {footer}
 
       {canAddReceipt && (
         <AddLedgerReceiptModal
