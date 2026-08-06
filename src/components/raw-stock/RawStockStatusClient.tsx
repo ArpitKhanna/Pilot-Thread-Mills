@@ -319,48 +319,12 @@ export function RawStockStatusClient({
                 </div>
               ) : (
                 timelineGroups.map((group) => (
-                  <section key={group.label}>
-                    <h3 className="mb-2 px-1 text-xs font-medium tracking-wide text-muted uppercase">
-                      {group.label}
-                    </h3>
-                    <ul className="space-y-1 rounded-xl border border-border bg-surface p-1">
-                      {group.items.map((m) => (
-                        <li
-                          key={m.id}
-                          className="flex flex-col gap-1 rounded-lg px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium">
-                              {MOVEMENT_TYPE_LABELS[m.movementType]}
-                              {" · "}
-                              {CATEGORY_LABELS[m.category]}
-                              {" · "}
-                              {m.countLabel}
-                            </p>
-                            <p className="text-xs text-muted">
-                              {formatShortDate(m.movementDate)}
-                              {m.supplierName ? ` · ${m.supplierName}` : ""}
-                              {m.doNumber ? ` · DO ${m.doNumber}` : ""}
-                              {m.notes ? ` · ${m.notes}` : ""}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <div className="text-sm font-medium tabular-nums">
-                              {m.movementType === "stock_out" ? "−" : "+"}
-                              {formatKg(m.quantityKg)}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setEditingMovement(m)}
-                              className="text-sm text-muted hover:text-foreground"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
+                  <TimelineMonthGroup
+                    key={group.label}
+                    label={group.label}
+                    items={group.items}
+                    onEdit={setEditingMovement}
+                  />
                 ))
               )}
             </div>
@@ -565,6 +529,95 @@ export function RawStockStatusClient({
         }}
       />
     </>
+  );
+}
+
+function movementSourceLabel(m: RawStockMovement): string {
+  if (m.supplierName) return m.supplierName;
+  if (m.movementType === "stock_out") return "Rama Road";
+  return "—";
+}
+
+function MovementWeight({ movement }: { movement: RawStockMovement }) {
+  const kg = formatKg(movement.quantityKg);
+  if (movement.movementType === "stock_in") {
+    return (
+      <span className="font-medium tabular-nums text-emerald-700">+{kg}</span>
+    );
+  }
+  if (movement.movementType === "stock_out") {
+    return (
+      <span className="font-medium tabular-nums text-red-700">−{kg}</span>
+    );
+  }
+  return <span className="font-medium tabular-nums text-muted">{kg}</span>;
+}
+
+function TimelineMonthGroup({
+  label,
+  items,
+  onEdit,
+}: {
+  label: string;
+  items: RawStockMovement[];
+  onEdit: (movement: RawStockMovement) => void;
+}) {
+  return (
+    <section>
+      <h3 className="mb-2 px-1 text-xs font-medium tracking-wide text-muted uppercase">
+        {label}
+      </h3>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-border text-xs text-muted">
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Date</th>
+              <th className="px-3 py-2 font-medium">Source</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">DO</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Type</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Count</th>
+              <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                Weight
+              </th>
+              <th className="w-12 px-3 py-2" aria-hidden />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {items.map((m) => (
+              <tr key={m.id} className="hover:bg-sidebar/40">
+                <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">
+                  {formatShortDate(m.movementDate)}
+                </td>
+                <td className="max-w-[180px] truncate px-3 py-2.5">
+                  {movementSourceLabel(m)}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-muted">
+                  {m.doNumber ?? "—"}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {CATEGORY_LABELS[m.category]}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap font-medium tabular-nums">
+                  {m.countLabel}
+                </td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  <MovementWeight movement={m} />
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(m)}
+                    className="text-sm text-muted hover:text-foreground"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
