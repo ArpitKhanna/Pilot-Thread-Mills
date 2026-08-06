@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedProfile } from "@/lib/price-list/api-helpers";
-import { deriveBalances, isValidMovementType } from "./balance";
-import { listMovements } from "./queries";
-import type { RawStockCategory, RawStockMovement, RawStockMovementType } from "./types";
+import { isValidMovementType } from "./balance";
+import type { RawStockCategory, RawStockMovementType } from "./types";
 import {
   CATEGORY_LABELS,
   isRawStockCategory,
@@ -260,68 +259,6 @@ export function validateBatchMovementPayload(
   };
 }
 
-export async function assertSufficientBalance(
-  supabase: Parameters<typeof listMovements>[0],
-  payload: ValidatedMovementData,
-) {
-  if (payload.movementType !== "stock_out") {
-    return { ok: true as const };
-  }
-
-  const movements = await listMovements(supabase);
-  const balances = deriveBalances(movements);
-  const row =
-    balances.byCount.find(
-      (c) =>
-        c.category === payload.category &&
-        c.countLabel === payload.countLabel,
-    ) ?? {
-      category: payload.category,
-      countLabel: payload.countLabel,
-      narelaKg: 0,
-    };
-
-  if (payload.quantityKg > row.narelaKg + 0.0005) {
-    return {
-      error: `Insufficient Narela stock for ${CATEGORY_LABELS[payload.category]} ${payload.countLabel} (available ${row.narelaKg} kg)`,
-    };
-  }
-
-  return { ok: true as const };
-}
-
-export async function assertSufficientBalancesForBatch(
-  supabase: Parameters<typeof listMovements>[0],
-  payload: ValidatedBatchMovementData,
-) {
-  if (payload.movementType !== "stock_out") {
-    return { ok: true as const };
-  }
-
-  const movements = await listMovements(supabase);
-  const balances = deriveBalances(movements);
-
-  for (const entry of payload.entries) {
-    const row =
-      balances.byCount.find(
-        (c) =>
-          c.category === entry.category && c.countLabel === entry.countLabel,
-      ) ?? {
-        category: entry.category,
-        countLabel: entry.countLabel,
-        narelaKg: 0,
-      };
-
-    if (entry.quantityKg > row.narelaKg + 0.0005) {
-      return {
-        error: `Insufficient Narela stock for ${CATEGORY_LABELS[entry.category]} ${entry.countLabel} (available ${row.narelaKg} kg)`,
-      };
-    }
-  }
-
-  return { ok: true as const };
-}
-
 export type ValidatedMovementUpdateData = {
   category: RawStockCategory;
   countLabel: string;
@@ -398,52 +335,4 @@ export function validateMovementUpdatePayload(
       notes: notes || null,
     },
   };
-}
-
-export function assertMovementUpdateBalances(
-  movements: RawStockMovement[],
-  existingId: string,
-  update: ValidatedMovementUpdateData,
-): { error: string } | { ok: true } {
-  const current = movements.find((m) => m.id === existingId);
-  if (!current) {
-    return { error: "Movement not found" };
-  }
-
-  const updated: RawStockMovement = {
-    ...current,
-    ...update,
-    movementType: current.movementType,
-  };
-
-  const simulated = movements.map((m) => (m.id === existingId ? updated : m));
-  const balances = deriveBalances(simulated);
-
-  for (const row of balances.byCount) {
-    if (row.narelaKg < -0.0005) {
-      return {
-        error: `This change would leave ${CATEGORY_LABELS[row.category]} ${row.countLabel} with insufficient stock`,
-      };
-    }
-  }
-
-  return { ok: true };
-}
-
-export function assertMovementDeleteBalances(
-  movements: RawStockMovement[],
-  existingId: string,
-): { error: string } | { ok: true } {
-  const remaining = movements.filter((m) => m.id !== existingId);
-  const balances = deriveBalances(remaining);
-
-  for (const row of balances.byCount) {
-    if (row.narelaKg < -0.0005) {
-      return {
-        error: `Cannot remove this entry: ${CATEGORY_LABELS[row.category]} ${row.countLabel} would go negative`,
-      };
-    }
-  }
-
-  return { ok: true };
 }

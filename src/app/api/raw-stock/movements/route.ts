@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  assertSufficientBalance,
-  assertSufficientBalancesForBatch,
   requireRawStockAccess,
   validateBatchMovementPayload,
   validateMovementPayload,
@@ -38,14 +36,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validated.error }, { status: 400 });
     }
 
-    const balanceCheck = await assertSufficientBalancesForBatch(
-      supabase,
-      validated.data,
-    );
-    if ("error" in balanceCheck) {
-      return NextResponse.json({ error: balanceCheck.error }, { status: 400 });
-    }
-
     try {
       const movements = [];
       for (const entry of validated.data.entries) {
@@ -75,11 +65,6 @@ export async function POST(request: Request) {
   const validated = validateMovementPayload(body);
   if ("error" in validated) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
-  }
-
-  const balanceCheck = await assertSufficientBalance(supabase, validated.data);
-  if ("error" in balanceCheck) {
-    return NextResponse.json({ error: balanceCheck.error }, { status: 400 });
   }
 
   try {

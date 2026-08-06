@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  assertMovementDeleteBalances,
-  assertMovementUpdateBalances,
   requireRawStockAccess,
   validateMovementUpdatePayload,
 } from "@/lib/raw-stock/api-helpers";
 import {
   deleteMovement,
   getMovementById,
-  listMovements,
   updateMovement,
 } from "@/lib/raw-stock/queries";
 
@@ -35,16 +32,6 @@ export async function PATCH(request: Request, { params }: Params) {
   const validated = validateMovementUpdatePayload(body, existing.movementType);
   if ("error" in validated) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
-  }
-
-  const allMovements = await listMovements(supabase);
-  const balanceCheck = assertMovementUpdateBalances(
-    allMovements,
-    id,
-    validated.data,
-  );
-  if ("error" in balanceCheck) {
-    return NextResponse.json({ error: balanceCheck.error }, { status: 400 });
   }
 
   try {
@@ -82,12 +69,6 @@ export async function DELETE(_request: Request, { params }: Params) {
   const existing = await getMovementById(supabase, id);
   if (!existing) {
     return NextResponse.json({ error: "Movement not found" }, { status: 404 });
-  }
-
-  const allMovements = await listMovements(supabase);
-  const balanceCheck = assertMovementDeleteBalances(allMovements, id);
-  if ("error" in balanceCheck) {
-    return NextResponse.json({ error: balanceCheck.error }, { status: 400 });
   }
 
   try {

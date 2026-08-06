@@ -663,7 +663,11 @@ function CategoryStockPanel({
             <span className="font-medium">{row.countLabel}</span>
             <span
               className={`tabular-nums text-sm ${
-                row.narelaKg < 0.0005 ? "text-muted" : ""
+                row.narelaKg < -0.0005
+                  ? "text-red-600"
+                  : row.narelaKg < 0.0005
+                    ? "text-muted"
+                    : ""
               }`}
             >
               {formatKg(row.narelaKg)}
