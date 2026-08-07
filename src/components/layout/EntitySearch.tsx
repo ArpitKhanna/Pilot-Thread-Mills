@@ -31,9 +31,15 @@ const ENTITY_LABEL: Record<SalesmanEntityType, string> = {
 
 type EntitySearchProps = {
   context: AppContext;
+  autoFocus?: boolean;
+  onNavigate?: () => void;
 };
 
-export function EntitySearch({ context }: EntitySearchProps) {
+export function EntitySearch({
+  context,
+  autoFocus = false,
+  onNavigate,
+}: EntitySearchProps) {
   const router = useRouter();
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -185,8 +191,17 @@ export function EntitySearch({ context }: EntitySearchProps) {
     setQuery("");
     setOpen(false);
     inputRef.current?.blur();
+    onNavigate?.();
     router.push(href);
   }
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    inputRef.current?.focus();
+    setOpen(true);
+    void ensureLoaded();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFocus]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {

@@ -31,7 +31,7 @@ export function NetBalanceCard({
           Net balance
         </p>
         <p
-          className={`text-3xl font-medium tabular-nums tracking-tight sm:text-4xl ${netClass}`}
+          className={`text-3xl font-medium tabular-nums tracking-[-0.02em] ${netClass}`}
         >
           {formatINR(netTotal)}
         </p>
