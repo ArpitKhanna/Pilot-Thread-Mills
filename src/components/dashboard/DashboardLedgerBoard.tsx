@@ -57,8 +57,6 @@ export function DashboardLedgerBoard({
         <ReceiptPaymentRow
           receiptsTotal={ledger.receiptsTotal}
           expensesTotal={ledger.expensesTotal}
-          onAddReceipt={canAddReceipt ? () => setReceiptOpen(true) : undefined}
-          onAddExpense={canAddExpense ? () => setExpenseOpen(true) : undefined}
         />
 
         <DivisionRail breakdown={divisionBreakdown} />

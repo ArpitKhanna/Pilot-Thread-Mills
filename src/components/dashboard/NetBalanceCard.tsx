@@ -26,13 +26,11 @@ export function NetBalanceCard({
       transition={{ type: "spring", stiffness: 360, damping: 30 }}
       className="flex flex-col gap-3"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
           Net balance
         </p>
-        <p
-          className={`text-3xl font-medium tabular-nums tracking-[-0.02em] ${netClass}`}
-        >
+        <p className={`text-3xl font-medium tabular-nums ${netClass}`}>
           {formatINR(netTotal)}
         </p>
       </div>

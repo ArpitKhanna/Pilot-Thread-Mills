@@ -13,12 +13,6 @@ type DivisionRailProps = {
 
 const DIVISIONS: DivisionMethod[] = ["cash", "upi", "cheque"];
 
-const DIVISION_ICONS: Record<DivisionMethod, string> = {
-  cash: "₹",
-  upi: "U",
-  cheque: "Ch",
-};
-
 export function DivisionRail({ breakdown }: DivisionRailProps) {
   return (
     <section className="flex flex-col gap-3">
@@ -49,9 +43,6 @@ export function DivisionRail({ breakdown }: DivisionRailProps) {
               whileTap={{ scale: 0.97 }}
               className="flex min-w-[140px] shrink-0 flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:min-w-[160px]"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar font-mono text-xs font-medium text-muted">
-                {DIVISION_ICONS[division]}
-              </div>
               <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
                 {DIVISION_LABELS[division]}
               </p>
