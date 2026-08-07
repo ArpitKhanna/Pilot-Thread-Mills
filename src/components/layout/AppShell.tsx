@@ -4,6 +4,7 @@ import type { AppContext } from "@/app/(app)/layout";
 import { PushNotificationSetup } from "@/components/push/PushNotificationSetup";
 import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 import { MobileNavProvider } from "./MobileNavContext";
+import { CreateFabHost } from "./CreateFabHost";
 import { Sidebar } from "./Sidebar";
 
 type AppShellProps = {
@@ -21,6 +22,7 @@ export function AppShell({ context, children }: AppShellProps) {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <PushNotificationSetup context={context} />
           {children}
+          <CreateFabHost context={context} />
         </div>
       </div>
     </MobileNavProvider>

@@ -51,6 +51,7 @@ type NewCustomerOrderModalProps = {
   customers: Salesman[];
   priceList: PriceListItem[];
   initialCustomerId?: string;
+  initialExpandDyeing?: boolean;
 };
 
 function emptyLine(): DraftLine {
@@ -97,8 +98,10 @@ export function NewCustomerOrderModal({
   customers,
   priceList,
   initialCustomerId,
+  initialExpandDyeing = false,
 }: NewCustomerOrderModalProps) {
   const router = useRouter();
+  const dyeingSectionRef = useRef<HTMLElement | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useState("");
@@ -132,6 +135,17 @@ export function NewCustomerOrderModal({
     setCustomerId(customer.id);
     setCustomerQuery(customer.name);
   }, [open, initialCustomerId, customers]);
+
+  useEffect(() => {
+    if (!open || !initialExpandDyeing) return;
+    const timer = window.setTimeout(() => {
+      dyeingSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [open, initialExpandDyeing]);
 
   useEffect(() => {
     return () => {
@@ -867,7 +881,7 @@ export function NewCustomerOrderModal({
         </div>
 
         {/* 2. Dyeing Request */}
-        <section className="space-y-4">
+        <section ref={dyeingSectionRef} className="space-y-4">
           <div>
             <h3 className="text-sm font-semibold text-foreground">
               2. Dyeing Request

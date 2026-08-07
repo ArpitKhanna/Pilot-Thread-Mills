@@ -34,6 +34,22 @@ body {
   font-family: Georgia, "Times New Roman", serif;
 }
 
+.create-fab-root {
+  display: flex;
+}
+
+@media (min-width: 1024px) {
+  .create-fab-root {
+    display: none;
+  }
+}
+
+@media (display-mode: standalone) {
+  .create-fab-root {
+    display: flex;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;

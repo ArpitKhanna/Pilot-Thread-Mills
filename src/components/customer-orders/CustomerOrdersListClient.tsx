@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import {
   CustomerOrderInvoiceModal,
@@ -9,6 +9,7 @@ import {
   type CustomerOrderInvoiceSubmitPayload,
 } from "@/components/customer-orders/CustomerOrderInvoiceModal";
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
+import { CustomerDirectInvoiceModal } from "@/components/customers/CustomerDirectInvoiceModal";
 import { CustomerOrderSidebar } from "@/components/customer-orders/CustomerOrderSidebar";
 import { TopBar } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
@@ -28,6 +29,7 @@ import { useSyncedState } from "@/lib/realtime/use-synced-state";
 import {
   MARKET_DAY_LABELS,
   type Invoice,
+  type InvoiceLineItem,
   type MarketDay,
   type Salesman,
 } from "@/lib/salesmen/types";
@@ -132,11 +134,19 @@ export function CustomerOrdersListClient({
   deliveryStaff,
 }: CustomerOrdersListClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("order_time_desc");
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  const [initialExpandDyeing, setInitialExpandDyeing] = useState(false);
+  const [customerInvoicePickerOpen, setCustomerInvoicePickerOpen] =
+    useState(false);
+  const [invoiceCustomerId, setInvoiceCustomerId] = useState("");
+  const [directInvoiceOpen, setDirectInvoiceOpen] = useState(false);
+  const [directInvoiceBusy, setDirectInvoiceBusy] = useState(false);
+  const [directInvoiceError, setDirectInvoiceError] = useState("");
   const [initialCustomerId, setInitialCustomerId] = useState<
     string | undefined
   >();
@@ -265,9 +275,79 @@ export function CustomerOrdersListClient({
     setBulkError("");
   }
 
-  function openNewOrder(customerId?: string) {
+  function openNewOrder(customerId?: string, expandDyeing = false) {
     setInitialCustomerId(customerId);
+    setInitialExpandDyeing(expandDyeing);
     setNewOpen(true);
+  }
+
+  useEffect(() => {
+    const create = searchParams.get("create");
+    if (!create) return;
+
+    if (create === "order") {
+      setInitialCustomerId(undefined);
+      setInitialExpandDyeing(false);
+      setNewOpen(true);
+    } else if (create === "dyeing") {
+      setInitialCustomerId(undefined);
+      setInitialExpandDyeing(true);
+      setNewOpen(true);
+    } else if (create === "customer-invoice") {
+      setCustomerInvoicePickerOpen(true);
+    }
+
+    router.replace("/orders/customers");
+  }, [searchParams, router]);
+
+  const invoiceCustomer = useMemo(
+    () => customers.find((c) => c.id === invoiceCustomerId) ?? null,
+    [customers, invoiceCustomerId],
+  );
+
+  async function submitDirectInvoice(payload: {
+    lineItems: InvoiceLineItem[];
+    discountAmount: number;
+    totalAmount: number;
+    number: string;
+    issuedAt: string;
+  }): Promise<Invoice> {
+    if (!invoiceCustomer) {
+      throw new Error("Select a customer");
+    }
+    setDirectInvoiceBusy(true);
+    setDirectInvoiceError("");
+    try {
+      const res = await fetch(`/api/customers/${invoiceCustomer.id}/invoices`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: payload.number,
+          issuedAt: payload.issuedAt,
+          lineItems: payload.lineItems,
+          discountAmount: payload.discountAmount,
+          paymentEntries: [],
+          totalAmount: payload.totalAmount,
+          amountPaid: 0,
+        }),
+      });
+      const json = (await res.json()) as { invoice?: Invoice; error?: string };
+      if (!res.ok || !json.invoice) {
+        throw new Error(json.error ?? "Failed to generate invoice");
+      }
+      setDirectInvoiceOpen(false);
+      setCustomerInvoicePickerOpen(false);
+      setInvoiceCustomerId("");
+      router.refresh();
+      return json.invoice;
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to generate invoice";
+      setDirectInvoiceError(message);
+      throw e instanceof Error ? e : new Error(message);
+    } finally {
+      setDirectInvoiceBusy(false);
+    }
   }
 
   function applyLocalStatus(
@@ -1054,11 +1134,72 @@ export function CustomerOrdersListClient({
         onClose={() => {
           setNewOpen(false);
           setInitialCustomerId(undefined);
+          setInitialExpandDyeing(false);
         }}
         customers={customers}
         priceList={priceList}
         initialCustomerId={initialCustomerId}
+        initialExpandDyeing={initialExpandDyeing}
       />
+
+      <Modal
+        open={customerInvoicePickerOpen}
+        onClose={() => {
+          setCustomerInvoicePickerOpen(false);
+          setInvoiceCustomerId("");
+        }}
+        title="Customer invoice"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Choose a customer to create a direct invoice.
+          </p>
+          <label className="block text-sm">
+            <span className="mb-1.5 block font-medium">Customer</span>
+            <select
+              value={invoiceCustomerId}
+              onChange={(e) => setInvoiceCustomerId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm"
+            >
+              <option value="">Select customer…</option>
+              {customers
+                .filter((c) => c.isActive)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!invoiceCustomerId}
+            onClick={() => {
+              setCustomerInvoicePickerOpen(false);
+              setDirectInvoiceOpen(true);
+            }}
+            className="w-full rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
+          >
+            Continue
+          </button>
+        </div>
+      </Modal>
+
+      {invoiceCustomer && (
+        <CustomerDirectInvoiceModal
+          open={directInvoiceOpen}
+          onClose={() => {
+            setDirectInvoiceOpen(false);
+            setDirectInvoiceError("");
+          }}
+          customer={invoiceCustomer}
+          priceList={priceList}
+          busy={directInvoiceBusy}
+          error={directInvoiceError}
+          onSubmit={submitDirectInvoice}
+        />
+      )}
 
       <CustomerOrderInvoiceModal
         open={runOpen}
