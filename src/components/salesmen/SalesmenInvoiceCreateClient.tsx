@@ -436,23 +436,13 @@ export function SalesmenInvoiceCreateClient({
     [payments],
   );
 
-  const advanceCreditPool = useMemo(
-    () => openAdvances.reduce((s, a) => s + a.remainingAmount, 0),
-    [openAdvances],
-  );
-
-  const returnCreditPool = useMemo(
-    () => openReturns.reduce((s, r) => s + r.remainingAmount, 0),
-    [openReturns],
-  );
-
-  // Gross prior balance: negative values are credit carried forward from overpayment.
+  // Net carried balance (negative = credit). pendingBalance already nets open advances/returns.
   const previousBalance =
-    (salesman?.pendingBalance ?? 0) +
-    advanceCreditPool +
-    returnCreditPool -
+    (salesman?.pendingBalance ?? 0) -
     (isEdit && initialInvoice
-      ? Math.max(0, initialInvoice.totalAmount - initialInvoice.amountPaid)
+      ? Math.round(
+          (initialInvoice.totalAmount - initialInvoice.amountPaid) * 100,
+        ) / 100
       : 0);
 
   const advancesForApply = useMemo(() => {

@@ -258,14 +258,12 @@ export function SalesmanDetailClient({
     const closingById = new Map<string, number>();
     let running = salesman.openingBalance;
     for (const inv of sorted) {
-      const previous = Math.max(0, Math.round(running * 100) / 100);
+      const previous = Math.round(running * 100) / 100;
       previousById.set(inv.id, previous);
       const charged = Math.round((previous + inv.totalAmount) * 100) / 100;
       chargedById.set(inv.id, charged);
-      running = Math.max(
-        0,
-        Math.round((previous + inv.totalAmount - inv.amountPaid) * 100) / 100,
-      );
+      running =
+        Math.round((previous + inv.totalAmount - inv.amountPaid) * 100) / 100;
       closingById.set(inv.id, running);
     }
     return { previousById, chargedById, closingById };
@@ -274,11 +272,11 @@ export function SalesmanDetailClient({
   function previousBalanceForInvoice(invoice: Invoice): number {
     return (
       invoiceBalances.previousById.get(invoice.id) ??
-      Math.max(
-        0,
-        salesman.pendingBalance -
-          Math.max(0, invoice.totalAmount - invoice.amountPaid),
-      )
+      Math.round(
+        (salesman.pendingBalance -
+          (invoice.totalAmount - invoice.amountPaid)) *
+          100,
+      ) / 100
     );
   }
 
@@ -326,10 +324,17 @@ export function SalesmanDetailClient({
               className={`mt-0.5 text-xl font-medium tracking-tight sm:text-2xl ${
                 salesman.pendingBalance > 0
                   ? "text-[#c45c26]"
-                  : "text-foreground"
+                  : salesman.pendingBalance < 0
+                    ? "text-credit"
+                    : "text-foreground"
               }`}
             >
               {formatINR(salesman.pendingBalance)}
+              {salesman.pendingBalance < 0 ? (
+                <span className="ml-2 text-sm font-normal text-muted">
+                  credit
+                </span>
+              ) : null}
             </p>
           </div>
         </div>

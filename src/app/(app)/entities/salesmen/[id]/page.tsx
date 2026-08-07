@@ -7,6 +7,7 @@ import { listItemRequestsForSalesman } from "@/lib/salesmen/item-requests";
 import {
   getSalesman,
   listInvoicesForSalesman,
+  refreshSalesmanTotals,
 } from "@/lib/salesmen/queries";
 import { listAdvancesForSalesman } from "@/lib/salesmen/advances";
 import { listReturnsForSalesman } from "@/lib/salesmen/returns";
@@ -56,6 +57,7 @@ export default async function SalesmanDetailPage({
     redirect(`/entities/salesmen/${id}?tab=invoices`);
   }
   const supabase = await createClient();
+  await refreshSalesmanTotals(supabase, id);
   const salesman = await getSalesman(supabase, id);
   if (!salesman) notFound();
 
