@@ -602,15 +602,13 @@ export function ApprovalsClient({
                   const date = formatInvoiceDate(invoice.issuedAt);
                   const expanded = expandedId === invoice.id;
                   const busy = busyId === invoice.id;
-                  const closingBalance = Math.max(
-                    0,
+                  const closingBalance =
                     Math.round(
                       (previousBalance +
                         invoice.totalAmount -
                         invoice.amountPaid) *
                         100,
-                    ) / 100,
-                  );
+                    ) / 100;
 
                   return (
                     <li
@@ -830,20 +828,26 @@ function ApprovalTotalRow({
   label,
   value,
   emphasize = false,
+  credit = false,
 }: {
   label: string;
   value: string;
   emphasize?: boolean;
+  credit?: boolean;
 }) {
   return (
     <div
       className={`flex justify-between gap-4 ${
-        emphasize ? "font-medium" : ""
+        emphasize || credit ? "font-medium" : ""
       }`}
     >
-      <span className={emphasize ? undefined : "text-muted"}>{label}</span>
+      <span className={emphasize || credit ? undefined : "text-muted"}>
+        {label}
+      </span>
       <span
-        className={`tabular-nums ${emphasize ? "text-[#c45c26]" : ""}`}
+        className={`tabular-nums ${
+          emphasize ? "text-[#c45c26]" : credit ? "text-credit" : ""
+        }`}
       >
         {value}
       </span>
@@ -921,6 +925,7 @@ function ApprovalInvoiceTotals({
             label="Closing"
             value={formatINR(closingBalance)}
             emphasize={closingBalance > 0}
+            credit={closingBalance < 0}
           />
         </div>
       </div>

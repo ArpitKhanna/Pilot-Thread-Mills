@@ -650,7 +650,15 @@ function PageTotals({
           <span>
             {previousBalance !== undefined ? "Closing" : "Balance"}
           </span>
-          <span className={closingBalance > 0 ? "text-[#c45c26]" : undefined}>
+          <span
+            className={
+              closingBalance > 0
+                ? "text-[#c45c26]"
+                : closingBalance < 0
+                  ? "text-credit"
+                  : undefined
+            }
+          >
             {formatINR(closingBalance)}
           </span>
         </div>

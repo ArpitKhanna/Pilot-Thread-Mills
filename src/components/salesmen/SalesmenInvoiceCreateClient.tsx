@@ -446,16 +446,14 @@ export function SalesmenInvoiceCreateClient({
     [openReturns],
   );
 
-  // Gross prior dues: header pending already nets unapplied advances/returns
-  const previousBalance = Math.max(
-    0,
+  // Gross prior balance: negative values are credit carried forward from overpayment.
+  const previousBalance =
     (salesman?.pendingBalance ?? 0) +
-      advanceCreditPool +
-      returnCreditPool -
-      (isEdit && initialInvoice
-        ? Math.max(0, initialInvoice.totalAmount - initialInvoice.amountPaid)
-        : 0),
-  );
+    advanceCreditPool +
+    returnCreditPool -
+    (isEdit && initialInvoice
+      ? Math.max(0, initialInvoice.totalAmount - initialInvoice.amountPaid)
+      : 0);
 
   const advancesForApply = useMemo(() => {
     return openAdvances
@@ -1312,7 +1310,7 @@ export function SalesmenInvoiceCreateClient({
           ?
         </p>
         <dl className="mt-4 space-y-1.5 text-sm">
-          {previousBalance > 0 && (
+          {previousBalance !== 0 && (
             <div className="flex justify-between gap-4 text-muted">
               <dt>Prev. balance</dt>
               <dd className="tabular-nums text-foreground">
@@ -1369,12 +1367,12 @@ export function SalesmenInvoiceCreateClient({
               className={`tabular-nums ${
                 previousBalance + invoiceTotal - amountPaid > 0
                   ? "text-[#c45c26]"
-                  : ""
+                  : previousBalance + invoiceTotal - amountPaid < 0
+                    ? "text-credit"
+                    : ""
               }`}
             >
-              {formatINR(
-                Math.max(0, previousBalance + invoiceTotal - amountPaid),
-              )}
+              {formatINR(previousBalance + invoiceTotal - amountPaid)}
             </dd>
           </div>
         </dl>

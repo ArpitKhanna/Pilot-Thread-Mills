@@ -10,6 +10,10 @@ import {
 import type { Invoice, InvoiceSummary, Salesman } from "./types";
 import { isInvoiceBornReturn } from "./types";
 
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export async function listSalesmen(
   supabase: SupabaseClient,
 ): Promise<Salesman[]> {
@@ -297,13 +301,10 @@ function computeInvoiceChargedTotals(
   >();
   let running = openingBalance;
   for (const inv of sorted) {
-    const previous = Math.max(0, Math.round(running * 100) / 100);
-    const charged = Math.round((previous + inv.totalAmount) * 100) / 100;
+    const previous = roundMoney(running);
+    const charged = roundMoney(previous + inv.totalAmount);
     result.set(inv.id, { previousBalance: previous, chargedTotal: charged });
-    running = Math.max(
-      0,
-      Math.round((previous + inv.totalAmount - inv.amountPaid) * 100) / 100,
-    );
+    running = roundMoney(previous + inv.totalAmount - inv.amountPaid);
   }
   return result;
 }
@@ -465,15 +466,8 @@ export async function refreshSalesmanTotals(
     }
   }
 
-  const pending = Math.max(
-    0,
-    Math.round(
-      (opening +
-        invoiceNet -
-        credit -
-        consumedReturnCreditsOnInvoices) *
-        100,
-    ) / 100,
+  const pending = roundMoney(
+    opening + invoiceNet - credit - consumedReturnCreditsOnInvoices,
   );
 
   const { error: updateError } = await supabase

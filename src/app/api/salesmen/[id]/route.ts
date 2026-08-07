@@ -49,6 +49,7 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  await refreshSalesmanTotals(supabase, id);
   const salesman = await getSalesman(supabase, id);
   if (!salesman) {
     return NextResponse.json({ error: "Salesman not found" }, { status: 404 });

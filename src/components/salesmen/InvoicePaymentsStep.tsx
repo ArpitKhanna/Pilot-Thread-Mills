@@ -62,10 +62,8 @@ export function InvoicePaymentsStep({
   const accounts = bankAccounts.filter((a) => a.isActive);
   const defaultAccountId = accounts[0]?.id;
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const closingBalance = Math.max(
-    0,
-    Math.round((previousBalance + invoiceTotal - totalPaid) * 100) / 100,
-  );
+  const closingBalance =
+    Math.round((previousBalance + invoiceTotal - totalPaid) * 100) / 100;
 
   function addPayment(method: InvoicePaymentMethod) {
     onChange([...payments, emptyPayment(method, defaultAccountId)]);
@@ -94,6 +92,7 @@ export function InvoicePaymentsStep({
           label="Closing"
           value={formatINR(closingBalance)}
           emphasize={closingBalance > 0}
+          credit={closingBalance < 0}
         />
       </div>
 
@@ -328,17 +327,19 @@ function SummaryTile({
   label,
   value,
   emphasize = false,
+  credit = false,
 }: {
   label: string;
   value: string;
   emphasize?: boolean;
+  credit?: boolean;
 }) {
   return (
     <div className="rounded-lg border border-border bg-sidebar px-3 py-2.5">
       <p className="text-xs text-muted">{label}</p>
       <p
         className={`mt-1 text-sm font-medium tabular-nums ${
-          emphasize ? "text-[#c45c26]" : ""
+          emphasize ? "text-[#c45c26]" : credit ? "text-credit" : ""
         }`}
       >
         {value}
