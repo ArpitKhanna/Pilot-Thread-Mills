@@ -14,6 +14,45 @@ export function methodToBucket(method: InvoicePaymentMethod): PaymentBucket {
   return "bank";
 }
 
+export type DivisionMethod = "cash" | "upi" | "cheque";
+
+export const DIVISION_LABELS: Record<DivisionMethod, string> = {
+  cash: "Cash",
+  upi: "UPI",
+  cheque: "Cheque",
+};
+
+export function methodToDivision(method: InvoicePaymentMethod): DivisionMethod {
+  if (method === "cash") return "cash";
+  if (method === "cheque") return "cheque";
+  return "upi";
+}
+
+export function computeDivisionBreakdown(
+  receipts: Array<{ amount: number; method: InvoicePaymentMethod }>,
+  expenses: Array<{ amount: number; method: InvoicePaymentMethod }>,
+): Record<DivisionMethod, number> {
+  const breakdown: Record<DivisionMethod, number> = {
+    cash: 0,
+    upi: 0,
+    cheque: 0,
+  };
+
+  for (const item of receipts) {
+    const division = methodToDivision(item.method);
+    breakdown[division] =
+      Math.round((breakdown[division] + item.amount) * 100) / 100;
+  }
+
+  for (const item of expenses) {
+    const division = methodToDivision(item.method);
+    breakdown[division] =
+      Math.round((breakdown[division] - item.amount) * 100) / 100;
+  }
+
+  return breakdown;
+}
+
 export function computeBucketBreakdown(
   items: Array<{ amount: number; method: InvoicePaymentMethod }>,
   options?: { positiveOnly?: boolean },
