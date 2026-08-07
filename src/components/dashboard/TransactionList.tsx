@@ -82,20 +82,18 @@ export function TransactionList({ receipts, expenses }: TransactionListProps) {
   const transactions = buildTransactions(receipts, expenses);
 
   return (
-    <section>
-      <h2 className="mb-3 text-base font-medium sm:text-lg">
-        Recent transactions
-      </h2>
+    <section className="flex flex-col gap-2">
+      <h2 className="text-base font-medium">Recent transactions</h2>
 
       {transactions.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
           No transactions for this day.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {transactions.map((tx, index) => {
             const isCredit = tx.amount >= 0;
-            const amountClass = isCredit ? "text-emerald-700" : "text-red-600";
+            const amountClass = isCredit ? "text-credit" : "text-debit";
             const prefix = isCredit && tx.amount > 0 ? "+" : "";
 
             return (
@@ -112,8 +110,8 @@ export function TransactionList({ receipts, expenses }: TransactionListProps) {
                 whileTap={{ scale: 0.99 }}
                 className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
               >
-                <div className="min-w-0">
-                  <p className="truncate font-medium capitalize">{tx.title}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{tx.title}</p>
                   <p className="truncate text-xs text-muted">{tx.subtitle}</p>
                 </div>
                 <p

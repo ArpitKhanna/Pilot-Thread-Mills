@@ -4,10 +4,8 @@ import { MotionCard } from "@/components/ui/motion";
 
 export function PaymentRemindersSection() {
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-base font-medium sm:text-lg">Payment reminders</h2>
-      </div>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-base font-medium">Payment reminders</h2>
 
       <MotionCard
         interactive={false}

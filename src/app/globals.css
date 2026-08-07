@@ -7,6 +7,8 @@
   --surface: #ffffff;
   --border: #e5e4df;
   --muted: #6b6b6b;
+  --credit: #047857;
+  --debit: #dc2626;
   --table-header: #f5f4f0;
 }
 
@@ -17,6 +19,8 @@
   --color-surface: var(--surface);
   --color-border: var(--border);
   --color-muted: var(--muted);
+  --color-credit: var(--credit);
+  --color-debit: var(--debit);
   --color-table-header: var(--table-header);
   --font-sans: var(--font-inter-display);
   --font-mono: var(--font-jetbrains-mono);

@@ -17,10 +17,10 @@ export function ReceiptPaymentRow({
   onAddExpense,
 }: ReceiptPaymentRowProps) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-      <MotionCard className="rounded-xl border border-border bg-surface px-4 py-3.5">
+    <div className="grid grid-cols-2 gap-3">
+      <MotionCard className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-4 py-3.5">
         <div className="flex items-start justify-between gap-2">
-          <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+          <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
             Receipts
           </p>
           {onAddReceipt && (
@@ -33,14 +33,14 @@ export function ReceiptPaymentRow({
             </button>
           )}
         </div>
-        <p className="mt-1 text-xl font-medium tabular-nums text-emerald-700 sm:text-2xl">
+        <p className="text-xl font-medium tabular-nums text-credit">
           {formatINR(receiptsTotal)}
         </p>
       </MotionCard>
 
-      <MotionCard className="rounded-xl border border-border bg-surface px-4 py-3.5">
+      <MotionCard className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-4 py-3.5">
         <div className="flex items-start justify-between gap-2">
-          <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+          <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
             Payments
           </p>
           {onAddExpense && (
@@ -53,7 +53,7 @@ export function ReceiptPaymentRow({
             </button>
           )}
         </div>
-        <p className="mt-1 text-xl font-medium tabular-nums text-red-600 sm:text-2xl">
+        <p className="text-xl font-medium tabular-nums text-debit">
           {formatINR(expensesTotal)}
         </p>
       </MotionCard>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { DailyLedgerSummary } from "@/lib/ledger/types";
 import { MotionSection } from "@/components/ui/motion";
@@ -52,16 +53,26 @@ export function DashboardLedgerBoard({
       {header}
 
       <MotionSection className="flex flex-col gap-5 sm:gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <input
+            type="date"
+            value={date}
+            max={new Date().toISOString().slice(0, 10)}
+            disabled={loading}
+            onChange={(e) => void handleDateChange(e.target.value)}
+            className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+          />
+          <Link
+            href="/payments"
+            className="text-sm font-medium underline underline-offset-2"
+          >
+            History
+          </Link>
+        </div>
+
         <NetBalanceCard
-          date={date}
           netTotal={ledger.netTotal}
-          receiptsTotal={ledger.receiptsTotal}
-          expensesTotal={ledger.expensesTotal}
-          loading={loading}
           pendingVerificationCount={ledger.pendingVerificationCount}
-          onDateChange={(next) => void handleDateChange(next)}
-          onAddReceipt={canAddReceipt ? () => setReceiptOpen(true) : undefined}
-          onAddExpense={canAddExpense ? () => setExpenseOpen(true) : undefined}
         />
 
         <ReceiptPaymentRow

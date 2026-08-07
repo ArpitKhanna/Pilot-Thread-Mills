@@ -21,8 +21,8 @@ const DIVISION_ICONS: Record<DivisionMethod, string> = {
 
 export function DivisionRail({ breakdown }: DivisionRailProps) {
   return (
-    <div>
-      <p className="mb-3 font-mono text-[10px] tracking-wider text-muted uppercase">
+    <section className="flex flex-col gap-3">
+      <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
         By division
       </p>
       <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
@@ -30,9 +30,9 @@ export function DivisionRail({ breakdown }: DivisionRailProps) {
           const amount = breakdown[division];
           const amountClass =
             amount > 0
-              ? "text-emerald-700"
+              ? "text-credit"
               : amount < 0
-                ? "text-red-600"
+                ? "text-debit"
                 : "text-foreground";
 
           return (
@@ -47,21 +47,21 @@ export function DivisionRail({ breakdown }: DivisionRailProps) {
                 damping: 28,
               }}
               whileTap={{ scale: 0.97 }}
-              className="min-w-[140px] shrink-0 rounded-xl border border-border bg-surface p-4 sm:min-w-[160px]"
+              className="flex min-w-[140px] shrink-0 flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:min-w-[160px]"
             >
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar font-mono text-xs font-medium text-muted">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar font-mono text-xs font-medium text-muted">
                 {DIVISION_ICONS[division]}
               </div>
-              <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
+              <p className="font-mono text-[10px] tracking-[0.1em] text-muted uppercase">
                 {DIVISION_LABELS[division]}
               </p>
-              <p className={`mt-1 text-lg font-medium tabular-nums ${amountClass}`}>
+              <p className={`text-lg font-medium tabular-nums ${amountClass}`}>
                 {formatINR(amount)}
               </p>
             </motion.div>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
