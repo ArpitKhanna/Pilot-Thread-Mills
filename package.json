@@ -15,6 +15,7 @@
     "push:generate-vapid-keys": "npx tsx scripts/generate-vapid-keys.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",
     "bcryptjs": "^3.0.3",

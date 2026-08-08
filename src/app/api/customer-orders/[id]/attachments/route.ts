@@ -30,6 +30,18 @@ export async function POST(request: Request, context: RouteContext) {
   const file = form.get("file");
   const kindRaw = String(form.get("kind") ?? "order_slip");
   const kind = kindRaw as CustomerOrderAttachmentKind;
+  const ocrRawField = form.get("ocrRawJson");
+  let ocrRawJson: unknown = null;
+  if (typeof ocrRawField === "string" && ocrRawField.trim()) {
+    try {
+      ocrRawJson = JSON.parse(ocrRawField) as unknown;
+    } catch {
+      return NextResponse.json(
+        { error: "ocrRawJson must be valid JSON" },
+        { status: 400 },
+      );
+    }
+  }
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
@@ -71,6 +83,7 @@ export async function POST(request: Request, context: RouteContext) {
       fileName: file.name,
       contentType: file.type,
       sortOrder: order.attachments.length,
+      ocrRawJson,
     });
     const refreshed = await getCustomerOrder(supabase, id);
     return NextResponse.json(

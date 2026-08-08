@@ -26,6 +26,7 @@ import {
 } from "@/lib/customer-orders/types";
 import { formatShortDate, formatShortTime } from "@/lib/salesmen/mock-data";
 import { useSyncedState } from "@/lib/realtime/use-synced-state";
+import { isMobileOrderEntry } from "@/lib/customer-orders/use-mobile-order-entry";
 import {
   MARKET_DAY_LABELS,
   type Invoice,
@@ -276,6 +277,11 @@ export function CustomerOrdersListClient({
   }
 
   function openNewOrder(customerId?: string, expandDyeing = false) {
+    if (isMobileOrderEntry() && !expandDyeing) {
+      const params = customerId ? `?customerId=${encodeURIComponent(customerId)}` : "";
+      router.push(`/orders/customers/new${params}`);
+      return;
+    }
     setInitialCustomerId(customerId);
     setInitialExpandDyeing(expandDyeing);
     setNewOpen(true);
@@ -285,7 +291,13 @@ export function CustomerOrdersListClient({
     const create = searchParams.get("create");
     if (!create) return;
 
+    const manual = searchParams.get("manual") === "1";
+
     if (create === "order") {
+      if (isMobileOrderEntry() && !manual) {
+        router.replace("/orders/customers/new");
+        return;
+      }
       setInitialCustomerId(undefined);
       setInitialExpandDyeing(false);
       setNewOpen(true);

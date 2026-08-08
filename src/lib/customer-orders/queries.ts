@@ -461,6 +461,7 @@ export async function addOrderAttachment(
     fileName?: string | null;
     contentType?: string | null;
     sortOrder?: number;
+    ocrRawJson?: unknown;
   },
 ) {
   const { data, error } = await supabase
@@ -472,6 +473,7 @@ export async function addOrderAttachment(
       file_name: input.fileName ?? null,
       content_type: input.contentType ?? null,
       sort_order: input.sortOrder ?? 0,
+      ocr_raw_json: input.ocrRawJson ?? null,
     })
     .select("*")
     .single();

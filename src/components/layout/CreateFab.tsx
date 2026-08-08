@@ -115,7 +115,7 @@ export function CreateFab({
         ),
         onSelect: () => {
           closeMenu();
-          router.push("/orders/customers?create=order");
+          router.push("/orders/customers/new");
         },
       });
     }
