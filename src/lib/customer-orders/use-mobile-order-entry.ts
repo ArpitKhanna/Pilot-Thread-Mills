@@ -4,18 +4,21 @@ import { useEffect, useState } from "react";
 
 const MOBILE_MAX_WIDTH = 1023;
 
-export function useMobileOrderEntry(): boolean {
-  const [isMobile, setIsMobile] = useState(false);
+export type MobileOrderEntryState = {
+  isMobile: boolean;
+  /** False until the client has read matchMedia (avoids redirect flash/loops). */
+  isReady: boolean;
+};
+
+export function useMobileOrderEntry(): MobileOrderEntryState {
+  const [state, setState] = useState<MobileOrderEntryState>({
+    isMobile: false,
+    isReady: false,
+  });
 
   useEffect(() => {
     function evaluate() {
-      const narrow = window.matchMedia(
-        `(max-width: ${MOBILE_MAX_WIDTH}px)`,
-      ).matches;
-      const standalone = window.matchMedia(
-        "(display-mode: standalone)",
-      ).matches;
-      setIsMobile(narrow || standalone);
+      setState({ isMobile: isMobileOrderEntry(), isReady: true });
     }
 
     evaluate();
@@ -33,7 +36,7 @@ export function useMobileOrderEntry(): boolean {
     };
   }, []);
 
-  return isMobile;
+  return state;
 }
 
 export function isMobileOrderEntry(): boolean {

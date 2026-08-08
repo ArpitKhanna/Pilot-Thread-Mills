@@ -117,7 +117,7 @@ export function OrderCaptureClient({
 }: OrderCaptureClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isMobile = useMobileOrderEntry();
+  const { isMobile, isReady } = useMobileOrderEntry();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -191,10 +191,11 @@ export function OrderCaptureClient({
   );
 
   useEffect(() => {
+    if (!isReady) return;
     if (!isMobile) {
-      router.replace("/orders/customers?create=order");
+      router.replace("/orders/customers?create=order&manual=1");
     }
-  }, [isMobile, router]);
+  }, [isMobile, isReady, router]);
 
   useEffect(() => {
     const initialCustomerId = searchParams.get("customerId");
@@ -493,10 +494,10 @@ export function OrderCaptureClient({
     }
   }
 
-  if (!isMobile) {
+  if (!isReady || !isMobile) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted">
-        Redirecting…
+        {!isReady ? "Loading…" : "Redirecting…"}
       </div>
     );
   }
