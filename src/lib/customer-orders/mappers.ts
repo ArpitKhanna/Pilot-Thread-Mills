@@ -84,6 +84,7 @@ export type DbOrderLineRow = {
   source: CustomerOrderLineSource;
   sort_order: number;
   is_urgent?: boolean | null;
+  fulfilled_qty?: number | string | null;
   price_list_items?:
     | { item_name: string; customer_price?: number | string }
     | { item_name: string; customer_price?: number | string }[]
@@ -284,6 +285,10 @@ export function mapOrderLineRow(row: DbOrderLineRow): CustomerOrderLine {
     source: row.source,
     sortOrder: row.sort_order,
     isUrgent: Boolean(row.is_urgent),
+    fulfilledQty:
+      row.fulfilled_qty != null && row.fulfilled_qty !== ""
+        ? num(row.fulfilled_qty)
+        : null,
     shade: shadeRow ? mapItemShadeRow(shadeRow) : null,
   };
 }

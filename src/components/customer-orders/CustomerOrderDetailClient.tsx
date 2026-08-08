@@ -7,6 +7,8 @@ import { TopBar } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
 import { Modal } from "@/components/ui/Modal";
+import { PackOrderModal } from "@/components/inventory/PackOrderModal";
+import { ELLFA_270_ITEM_NAME } from "@/lib/inventory/ellfa-shades";
 import type { PriceListItem } from "@/lib/auth/types";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import { estimateCustomerLinesTotal } from "@/lib/customers/price-rules";
@@ -98,9 +100,22 @@ export function CustomerOrderDetailClient({
   const [payments, setPayments] = useState<InvoicePaymentEntry[]>([]);
   const [discountAmount, setDiscountAmount] = useState("0");
   const [shadeEditorKey, setShadeEditorKey] = useState<string | null>(null);
+  const [packOpen, setPackOpen] = useState(false);
+  const [packSummary, setPackSummary] = useState("");
+  const [packThenConvert, setPackThenConvert] = useState(false);
+
+  const ellfa270ItemId = useMemo(
+    () =>
+      priceList.find(
+        (item) =>
+          item.item_name.trim().toLowerCase() ===
+          ELLFA_270_ITEM_NAME.toLowerCase(),
+      )?.id ?? null,
+    [priceList],
+  );
 
   const pauseSync =
-    Boolean(busy) || convertOpen || deliveryOpen || shadeEditorKey != null;
+    Boolean(busy) || convertOpen || deliveryOpen || shadeEditorKey != null || packOpen;
 
   useEffect(() => {
     if (pauseSync) return;
@@ -293,7 +308,7 @@ export function CustomerOrderDetailClient({
     }
   }
 
-  async function setStatus(
+  async function applyStatusUpdate(
     status: CustomerOrderStatus,
     extras?: { deliveryBy?: string | null },
   ) {
@@ -327,6 +342,57 @@ export function CustomerOrderDetailClient({
       setError(e instanceof Error ? e.message : "Status update failed");
     } finally {
       setBusy("");
+    }
+  }
+
+  async function setStatus(
+    status: CustomerOrderStatus,
+    extras?: { deliveryBy?: string | null },
+  ) {
+    await applyStatusUpdate(status, extras);
+  }
+
+  async function unpackAndReturnToPicking() {
+    setBusy("status");
+    setError("");
+    try {
+      const unpackRes = await fetch("/api/inventory/pack-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, action: "unpack" }),
+      });
+      const unpackData = await unpackRes.json();
+      if (!unpackRes.ok) {
+        throw new Error(unpackData.error ?? "Failed to reverse packing");
+      }
+      await applyStatusUpdate("picking");
+      setPackSummary("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to return to picking");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handlePacked(summary: {
+    stockOutCount: number;
+    missingCount: number;
+    autoDyeingJobs: number;
+  }) {
+    setPackOpen(false);
+    setPackSummary(
+      `Packed ${summary.stockOutCount} stock line(s)` +
+        (summary.missingCount
+          ? ` · ${summary.missingCount} missing queued for dyeing`
+          : "") +
+        (summary.autoDyeingJobs
+          ? ` · ${summary.autoDyeingJobs} auto replenishment job(s)`
+          : ""),
+    );
+    await applyStatusUpdate("packed");
+    if (packThenConvert) {
+      setPackThenConvert(false);
+      setConvertOpen(true);
     }
   }
 
@@ -460,19 +526,10 @@ export function CustomerOrderDetailClient({
       }
 
       if (status === "picking") {
-        const packRes = await fetch(`/api/customer-orders/${order.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "packed" }),
-        });
-        const packJson = (await packRes.json()) as {
-          order?: CustomerOrder;
-          error?: string;
-        };
-        if (!packRes.ok || !packJson.order) {
-          throw new Error(packJson.error ?? "Could not mark order packed");
-        }
-        setOrder(packJson.order);
+        setPackThenConvert(true);
+        setPackOpen(true);
+        setBusy("");
+        return;
       }
 
       const res = await fetch(
@@ -535,6 +592,11 @@ export function CustomerOrderDetailClient({
                 : ""}
               {order.invoiceId ? " · Invoiced" : ""}
             </p>
+            {packSummary ? (
+              <p className="mt-2 text-sm text-emerald-800 dark:text-emerald-200">
+                {packSummary}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2 print:hidden">
             <button
@@ -568,7 +630,10 @@ export function CustomerOrderDetailClient({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => setStatus("packed")}
+                    onClick={() => {
+                      setPackThenConvert(false);
+                      setPackOpen(true);
+                    }}
                     className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
                   >
                     Mark packed
@@ -578,7 +643,7 @@ export function CustomerOrderDetailClient({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => setStatus("picking")}
+                    onClick={() => void unpackAndReturnToPicking()}
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-50"
                   >
                     Back to picking
@@ -1062,6 +1127,17 @@ export function CustomerOrderDetailClient({
           </button>
         </div>
       </Modal>
+
+      <PackOrderModal
+        open={packOpen}
+        order={order}
+        ellfa270ItemId={ellfa270ItemId}
+        onClose={() => {
+          setPackOpen(false);
+          setPackThenConvert(false);
+        }}
+        onPacked={handlePacked}
+      />
     </>
   );
 }

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireDyeingJobsAccess();
   if (isAuthError(auth)) return auth.error;
-  const { supabase } = auth;
+  const { supabase, profile } = auth;
 
   let body: Record<string, unknown>;
   try {
@@ -67,7 +67,9 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const job = await updateDyeingJobStatus(supabase, id, status);
+    const job = await updateDyeingJobStatus(supabase, id, status, {
+      createdBy: auth.profile.id,
+    });
     return NextResponse.json({ job });
   } catch (e) {
     console.error(e);

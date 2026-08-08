@@ -50,6 +50,7 @@ export type CustomerOrderLine = {
   source: CustomerOrderLineSource;
   sortOrder: number;
   isUrgent: boolean;
+  fulfilledQty?: number | null;
   shade?: ItemShade | null;
 };
 

@@ -6,6 +6,8 @@ import {
   type DbPendingItemRow,
 } from "./mappers";
 import { findOrCreateShade } from "./queries";
+import { creditStockFromDyeingJob } from "@/lib/inventory/queries";
+import { checkReplenishmentForItem } from "@/lib/inventory/dyeing-suggestions";
 import type {
   CustomerOrderLineUnit,
   CustomerPendingItem,
@@ -300,6 +302,7 @@ export async function updateDyeingJobStatus(
   supabase: SupabaseClient,
   id: string,
   status: DyeingJobStatus,
+  opts?: { createdBy?: string | null },
 ): Promise<DyeingJob> {
   const { data: existing, error: findError } = await supabase
     .from("dyeing_jobs")
@@ -325,6 +328,28 @@ export async function updateDyeingJobStatus(
     await updatePendingItemStatus(supabase, job.pendingItemId, "in_dyeing");
   } else if (status === "cancelled" && job.pendingItemId) {
     await updatePendingItemStatus(supabase, job.pendingItemId, "cancelled");
+  }
+
+  if (status === "done" && job.priceListItemId) {
+    await creditStockFromDyeingJob(
+      supabase,
+      {
+        id: job.id,
+        priceListItemId: job.priceListItemId,
+        shadeId: job.shadeId,
+        shadeCode: job.shadeCode,
+        qty: job.qty,
+        unit: job.unit,
+      },
+      opts?.createdBy ?? job.createdBy,
+    );
+    if (opts?.createdBy ?? job.createdBy) {
+      await checkReplenishmentForItem(
+        supabase,
+        job.priceListItemId,
+        (opts?.createdBy ?? job.createdBy)!,
+      );
+    }
   }
 
   return job;
