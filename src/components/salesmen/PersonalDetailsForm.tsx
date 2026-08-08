@@ -456,7 +456,7 @@ export function PersonalDetailsForm({
       </section>
 
       {error && (
-        <p className="text-sm text-[#c45c26]" role="alert">
+        <p className="text-sm text-warning" role="alert">
           {error}
         </p>
       )}

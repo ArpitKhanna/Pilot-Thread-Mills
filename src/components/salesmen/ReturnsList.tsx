@@ -8,6 +8,8 @@ import {
 import { canMutateWithinWindow } from "@/lib/salesmen/record-window";
 import type { SalesmanReturn } from "@/lib/salesmen/types";
 import { verificationStatusLabel } from "@/lib/salesmen/verification";
+import { Button } from "@/components/ui/button";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 
 type ReturnsListProps = {
@@ -125,27 +127,18 @@ export function ReturnsList({
         }}
         title="Delete return"
         footer={
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={deleteBusy}
-              onClick={() => {
-                setDeleteTarget(null);
-                setDeleteError("");
-              }}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-            >
-              Keep
-            </button>
-            <button
-              type="button"
-              disabled={deleteBusy}
-              onClick={() => void confirmDelete()}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
-            >
-              {deleteBusy ? "Deleting…" : "Delete"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={() => {
+              setDeleteTarget(null);
+              setDeleteError("");
+            }}
+            onSubmit={() => void confirmDelete()}
+            cancelLabel="Keep"
+            submitLabel="Delete"
+            busy={deleteBusy}
+            busyLabel="Deleting…"
+            destructive
+          />
         }
       >
         <p className="text-sm text-muted">
@@ -164,13 +157,15 @@ export function ReturnsList({
         onClose={() => setLockedOpen(false)}
         title="Delete locked"
         footer={
-          <button
-            type="button"
-            onClick={() => setLockedOpen(false)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
-          >
-            Close
-          </button>
+          <div className="flex w-full justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLockedOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
         }
       >
         <p className="text-sm text-muted">
@@ -276,7 +271,7 @@ function ReturnRow({
       </div>
 
       <div className="shrink-0 text-right">
-        <p className="text-sm font-medium tabular-nums text-[#c45c26]">
+        <p className="text-sm font-medium tabular-nums text-warning">
           −{formatINR(ret.totalAmount)}
         </p>
         <p className="mt-0.5 text-xs text-muted">

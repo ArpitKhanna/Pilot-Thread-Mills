@@ -15,6 +15,8 @@ import type {
   SalesmanAdvance,
 } from "@/lib/salesmen/types";
 import { verificationStatusLabel } from "@/lib/salesmen/verification";
+import { Button } from "@/components/ui/button";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 
 type PaymentsListProps = {
@@ -353,28 +355,19 @@ export function PaymentsList({
         }}
         title="Cancel returned cheque"
         footer={
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={cancelBusy}
-              onClick={() => {
-                setCancelTarget(null);
-                setCancelReason("");
-                setCancelError("");
-              }}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-            >
-              Keep
-            </button>
-            <button
-              type="button"
-              disabled={cancelBusy}
-              onClick={() => void confirmCancel()}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
-            >
-              {cancelBusy ? "Cancelling…" : "Cancel cheque"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={() => {
+              setCancelTarget(null);
+              setCancelReason("");
+              setCancelError("");
+            }}
+            onSubmit={() => void confirmCancel()}
+            cancelLabel="Keep"
+            submitLabel="Cancel cheque"
+            busy={cancelBusy}
+            busyLabel="Cancelling…"
+            destructive
+          />
         }
       >
         <p className="text-sm text-muted">
@@ -408,27 +401,18 @@ export function PaymentsList({
         }}
         title="Delete advance payment"
         footer={
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={deleteBusy}
-              onClick={() => {
-                setDeleteTarget(null);
-                setDeleteError("");
-              }}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-            >
-              Keep
-            </button>
-            <button
-              type="button"
-              disabled={deleteBusy}
-              onClick={() => void confirmDeleteAdvance()}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
-            >
-              {deleteBusy ? "Deleting…" : "Delete"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={() => {
+              setDeleteTarget(null);
+              setDeleteError("");
+            }}
+            onSubmit={() => void confirmDeleteAdvance()}
+            cancelLabel="Keep"
+            submitLabel="Delete"
+            busy={deleteBusy}
+            busyLabel="Deleting…"
+            destructive
+          />
         }
       >
         <p className="text-sm text-muted">
@@ -447,13 +431,15 @@ export function PaymentsList({
         onClose={() => setDeleteLockedOpen(false)}
         title="Delete locked"
         footer={
-          <button
-            type="button"
-            onClick={() => setDeleteLockedOpen(false)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar"
-          >
-            Close
-          </button>
+          <div className="flex w-full justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteLockedOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
         }
       >
         <p className="text-sm text-muted">

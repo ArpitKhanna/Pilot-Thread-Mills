@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { AppPage } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 import type { AppContext } from "@/app/(app)/layout";
 import { buildBankAccountWhatsAppShareUrl } from "@/lib/bank-accounts/mappers";
@@ -215,14 +219,10 @@ export function BankAccountsClient({
               </svg>
               Edit
             </button>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-            >
+            <Button type="button" onClick={openAddModal}>
               <span className="text-lg leading-none">+</span>
               Add New
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -381,81 +381,83 @@ export function BankAccountsClient({
         onClose={() => setModalOpen(false)}
         title={editing ? "Edit Bank Account" : "Add Bank Account"}
         footer={
-          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             {editing && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 disabled={toggling || saving}
                 onClick={() => handleToggleActive(editing)}
-                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
+                className="sm:mr-auto"
               >
                 {toggling
                   ? "Updating…"
                   : form.isActive
                     ? "Mark inactive"
                     : "Mark active"}
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              disabled={saving || toggling}
-              onClick={handleSave}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
-            >
-              {saving ? "Saving…" : editing ? "Save changes" : "Add account"}
-            </button>
+            <ModalFooterActions
+              onCancel={() => setModalOpen(false)}
+              onSubmit={handleSave}
+              submitLabel={editing ? "Save changes" : "Add account"}
+              busy={saving}
+              submitDisabled={toggling}
+            />
           </div>
         }
       >
         <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="bank-name" className="mb-1.5 block text-xs text-muted">
               Account holder name
-            </span>
-            <input
+            </Label>
+            <Input
+              id="bank-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="e.g. Pilot Thread Mills"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="bank-bank-name" className="mb-1.5 block text-xs text-muted">
               Bank name
-            </span>
-            <input
+            </Label>
+            <Input
+              id="bank-bank-name"
               type="text"
               value={form.bankName}
               onChange={(e) =>
                 setForm((f) => ({ ...f, bankName: e.target.value }))
               }
               placeholder="e.g. HDFC"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="bank-account-number" className="mb-1.5 block text-xs text-muted">
               Account number
-            </span>
-            <input
+            </Label>
+            <Input
+              id="bank-account-number"
               type="text"
               value={form.accountNumber}
               onChange={(e) =>
                 setForm((f) => ({ ...f, accountNumber: e.target.value }))
               }
               placeholder="Optional if not available yet"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm outline-none focus:border-foreground/40"
+              className="font-mono"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="bank-ifsc" className="mb-1.5 block text-xs text-muted">
               IFSC code
-            </span>
-            <input
+            </Label>
+            <Input
+              id="bank-ifsc"
               type="text"
               value={form.ifscCode}
               onChange={(e) =>
@@ -466,22 +468,22 @@ export function BankAccountsClient({
               }
               placeholder="e.g. HDFC0001234"
               maxLength={11}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm uppercase outline-none focus:border-foreground/40"
+              className="font-mono uppercase"
             />
-          </label>
+          </div>
 
           {!editing && (
-            <label className="flex items-center gap-2 text-sm">
+            <Label className="flex items-center gap-2 text-sm font-normal">
               <input
                 type="checkbox"
                 checked={form.isActive}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, isActive: e.target.checked }))
                 }
-                className="rounded border-border"
+                className="size-4 rounded border-border"
               />
               Active (available for invoice deposits)
-            </label>
+            </Label>
           )}
 
           {error && (

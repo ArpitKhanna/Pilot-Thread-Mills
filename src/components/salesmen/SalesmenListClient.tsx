@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { AppPage } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ListStatusTabs } from "@/components/ui/list-status-tabs";
 import { Modal } from "@/components/ui/Modal";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { PendingLink } from "@/components/ui/PendingLink";
 import { SalesmenSummaryCounters } from "@/components/salesmen/SalesmenSummaryCounters";
 import type { AppContext } from "@/app/(app)/layout";
@@ -177,14 +182,10 @@ export function SalesmenListClient({
             </p>
           </div>
           <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
-            <button
+            <Button
               type="button"
+              variant={editMode ? "default" : "outline"}
               onClick={() => setEditMode((e) => !e)}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-                editMode
-                  ? "border-foreground bg-foreground text-surface"
-                  : "border-border bg-surface hover:bg-sidebar"
-              }`}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
@@ -194,15 +195,11 @@ export function SalesmenListClient({
                 />
               </svg>
               Edit
-            </button>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-            >
+            </Button>
+            <Button type="button" onClick={openAddModal}>
               <span className="text-lg leading-none">+</span>
               Add New
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -212,30 +209,14 @@ export function SalesmenListClient({
         />
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="inline-flex w-full rounded-lg border border-border bg-surface p-0.5 sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setTab("active")}
-              className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none sm:px-4 sm:py-1.5 ${
-                tab === "active"
-                  ? "bg-sidebar font-medium"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              Active ({activeCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("inactive")}
-              className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none sm:px-4 sm:py-1.5 ${
-                tab === "inactive"
-                  ? "bg-sidebar font-medium"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              Inactive ({inactiveCount})
-            </button>
-          </div>
+          <ListStatusTabs
+            value={tab}
+            onValueChange={setTab}
+            tabs={[
+              { value: "active", label: "Active", count: activeCount },
+              { value: "inactive", label: "Inactive", count: inactiveCount },
+            ]}
+          />
 
           <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 sm:ml-auto sm:max-w-xs sm:py-2 lg:min-w-[220px]">
             <svg
@@ -249,12 +230,12 @@ export function SalesmenListClient({
               <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
               <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.2" />
             </svg>
-            <input
+            <Input
               type="search"
               placeholder="Search by name"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+              className="border-0 shadow-none focus-visible:ring-0"
             />
           </div>
         </div>
@@ -296,7 +277,7 @@ export function SalesmenListClient({
                       <p
                         className={`mt-0.5 font-medium ${
                           salesman.pendingBalance > 0
-                            ? "text-[#c45c26]"
+                            ? "text-warning"
                             : "text-foreground"
                         }`}
                       >
@@ -316,22 +297,24 @@ export function SalesmenListClient({
 
                 {editMode && (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="outline"
                       disabled={busyId === salesman.id}
                       onClick={() => openEditModal(salesman)}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                     >
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="destructive"
                       disabled={busyId === salesman.id}
                       onClick={() => handleDelete(salesman.id)}
-                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-60"
                     >
                       {busyId === salesman.id ? "Deleting…" : "Delete"}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </article>
@@ -345,69 +328,61 @@ export function SalesmenListClient({
         onClose={() => setModalOpen(false)}
         title={editing ? "Edit Salesman" : "Add New Salesman"}
         footer={
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSave}
-            className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
-          >
-            {saving ? "Saving…" : editing ? "Save Salesman" : "Save Salesman"}
-          </button>
+          <ModalFooterActions
+            onCancel={() => setModalOpen(false)}
+            onSubmit={handleSave}
+            submitLabel="Save Salesman"
+            busy={saving}
+            busyLabel="Saving…"
+          />
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Salesman Name<span className="text-red-500">*</span>
-            </label>
-            <input
+            </Label>
+            <Input
               type="text"
               value={form.name}
               onChange={(e) =>
                 setForm((f) => ({ ...f, name: e.target.value }))
               }
               placeholder="Salesman Name"
-              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Phone Number<span className="text-red-500">*</span>
-            </label>
-            <input
+            </Label>
+            <Input
               type="tel"
               value={form.phone}
               onChange={(e) =>
                 setForm((f) => ({ ...f, phone: e.target.value }))
               }
               placeholder="Phone Number"
-              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Alternate Phone Number
-            </label>
-            <input
+            <Label className="mb-1.5 block">Alternate Phone Number</Label>
+            <Input
               type="tel"
               value={form.alternatePhone}
               onChange={(e) =>
                 setForm((f) => ({ ...f, alternatePhone: e.target.value }))
               }
               placeholder="Alternate Phone Number"
-              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Last Balance
-            </label>
+            <Label className="mb-1.5 block">Last Balance</Label>
             <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
               <span className="mr-2 text-muted">₹</span>
-              <input
+              <Input
                 type="number"
                 min="0"
                 value={form.lastBalance}
@@ -415,7 +390,7 @@ export function SalesmenListClient({
                   setForm((f) => ({ ...f, lastBalance: e.target.value }))
                 }
                 placeholder="Last Balance"
-                className="w-full bg-transparent text-sm outline-none"
+                className="border-0 shadow-none focus-visible:ring-0"
               />
             </div>
           </div>

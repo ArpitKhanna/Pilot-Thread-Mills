@@ -8,6 +8,7 @@ import { AppPage } from "@/components/layout/AppShell";
 import { AddExpenseModal } from "@/components/dashboard/AddExpenseModal";
 import { AddLedgerReceiptModal } from "@/components/dashboard/AddLedgerReceiptModal";
 import { WidgetKpi, WidgetSection } from "@/components/dashboard/WidgetKpi";
+import { Button } from "@/components/ui/button";
 import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { DailyLedgerSummary } from "@/lib/ledger/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
@@ -156,22 +157,22 @@ export function PaymentsLedgerClient({
               Next day →
             </button>
             {canAddReceipt && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setReceiptOpen(true)}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium"
               >
                 + Receipt
-              </button>
+              </Button>
             )}
             {canAddExpense && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setExpenseOpen(true)}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium"
               >
                 + Expense
-              </button>
+              </Button>
             )}
           </div>
 
@@ -181,7 +182,7 @@ export function PaymentsLedgerClient({
             <WidgetKpi
               label="Net"
               value={totals.net}
-              valueClass={totals.net >= 0 ? "text-emerald-700" : "text-[#c45c26]"}
+              valueClass={totals.net >= 0 ? "text-emerald-700" : "text-warning"}
             />
           </div>
         </WidgetSection>
@@ -196,7 +197,7 @@ export function PaymentsLedgerClient({
               <div className="mb-3 grid grid-cols-3 gap-2 text-sm">
                 <span>Receipts: {formatINR(day.receiptsTotal)}</span>
                 <span>Expenses: {formatINR(day.expensesTotal)}</span>
-                <span className={day.netTotal >= 0 ? "text-emerald-700" : "text-[#c45c26]"}>
+                <span className={day.netTotal >= 0 ? "text-emerald-700" : "text-warning"}>
                   Net: {formatINR(day.netTotal)}
                 </span>
               </div>
@@ -215,7 +216,7 @@ export function PaymentsLedgerClient({
                 {day.expenses.map((e) => (
                   <div
                     key={e.id}
-                    className="flex justify-between gap-2 border-b border-border/50 py-1 text-[#c45c26]"
+                    className="flex justify-between gap-2 border-b border-border/50 py-1 text-warning"
                   >
                     <span className="truncate capitalize">
                       {e.category} {e.payee ? `· ${e.payee}` : ""}

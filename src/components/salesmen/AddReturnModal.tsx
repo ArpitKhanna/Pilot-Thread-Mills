@@ -6,6 +6,7 @@ import { formatINR } from "@/lib/salesmen/mock-data";
 import { toDateInputValue } from "@/lib/salesmen/record-window";
 import type { InvoiceLineItem, SalesmanReturn } from "@/lib/salesmen/types";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 
 type DraftItem = {
@@ -141,24 +142,12 @@ export function AddReturnModal({
       onClose={handleClose}
       title="Record return"
       footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleClose}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
-          >
-            {busy ? "Saving…" : "Save return"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={handleClose}
+          onSubmit={() => void submit()}
+          submitLabel="Save return"
+          busy={busy}
+        />
       }
     >
       <p className="mb-4 text-sm text-muted">
@@ -246,7 +235,7 @@ export function AddReturnModal({
                       updateItem(item.key, { qty: e.target.value })
                     }
                   />
-                  <span className="text-right text-sm tabular-nums text-[#c45c26]">
+                  <span className="text-right text-sm tabular-nums text-warning">
                     {amount > 0 ? formatINR(amount) : "—"}
                   </span>
                 </div>

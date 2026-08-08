@@ -40,7 +40,7 @@ export function OrderStatusWidget({
           label="Carried over"
           value={stats.carriedOver}
           format="count"
-          valueClass={stats.carriedOver > 0 ? "text-[#c45c26]" : undefined}
+          valueClass={stats.carriedOver > 0 ? "text-warning" : undefined}
           href="/orders/customers"
         />
         <WidgetKpi

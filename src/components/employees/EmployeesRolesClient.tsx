@@ -4,7 +4,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
 import { AppPage } from "@/components/layout/AppShell";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
+import { NativeSelect } from "@/components/ui/native-select";
 import { ROLE_LABELS, type AppModule, type EmployeeRole } from "@/lib/auth/types";
 import {
   EDITABLE_ROLES,
@@ -660,61 +664,50 @@ export function EmployeesRolesClient({
         onClose={() => setModalOpen(false)}
         title={editing ? "Edit employee" : "Add employee"}
         footer={
-          <div className="flex w-full justify-end gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setModalOpen(false)}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSaveEmployee()}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
-            >
-              {saving ? "Saving…" : editing ? "Save changes" : "Add employee"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={() => setModalOpen(false)}
+            onSubmit={() => void handleSaveEmployee()}
+            submitLabel={editing ? "Save changes" : "Add employee"}
+            busy={saving}
+          />
         }
       >
         <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="employee-name" className="mb-1.5 block text-xs text-muted">
               Full name
-            </span>
-            <input
+            </Label>
+            <Input
+              id="employee-name"
               type="text"
               value={form.fullName}
               onChange={(e) =>
                 setForm((f) => ({ ...f, fullName: e.target.value }))
               }
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="employee-phone" className="mb-1.5 block text-xs text-muted">
               Phone number
-            </span>
-            <input
+            </Label>
+            <Input
+              id="employee-phone"
               type="tel"
               value={form.phone}
               onChange={(e) =>
                 setForm((f) => ({ ...f, phone: e.target.value }))
               }
               placeholder="10-digit mobile"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
             />
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="employee-role" className="mb-1.5 block text-xs text-muted">
               Role
-            </span>
-            <select
+            </Label>
+            <NativeSelect
+              id="employee-role"
               value={form.role}
               onChange={(e) =>
                 setForm((f) => ({
@@ -722,22 +715,23 @@ export function EmployeesRolesClient({
                   role: e.target.value as EmployeeRole,
                 }))
               }
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+              className="w-full sm:w-full"
             >
               {EMPLOYEE_ROLES.map((role) => (
                 <option key={role} value={role}>
                   {ROLE_LABELS[role]}
                 </option>
               ))}
-            </select>
-          </label>
+            </NativeSelect>
+          </div>
 
           {!editing && (
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-muted">
+            <div>
+              <Label htmlFor="employee-pin" className="mb-1.5 block text-xs text-muted">
                 PIN (6 digits)
-              </span>
-              <input
+              </Label>
+              <Input
+                id="employee-pin"
                 type="text"
                 inputMode="numeric"
                 pattern="\d{6}"
@@ -749,9 +743,9 @@ export function EmployeesRolesClient({
                     pin: e.target.value.replace(/\D/g, "").slice(0, 6),
                   }))
                 }
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm outline-none focus:border-foreground/40"
+                className="font-mono"
               />
-            </label>
+            </div>
           )}
 
           {error && (
@@ -774,32 +768,21 @@ export function EmployeesRolesClient({
             : "Reset PIN"
         }
         footer={
-          <div className="flex w-full justify-end gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setPinModalOpen(false)}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleResetPin()}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Update PIN"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={() => setPinModalOpen(false)}
+            onSubmit={() => void handleResetPin()}
+            submitLabel="Update PIN"
+            busy={saving}
+          />
         }
       >
         <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted">
+          <div>
+            <Label htmlFor="reset-pin" className="mb-1.5 block text-xs text-muted">
               New PIN (6 digits)
-            </span>
-            <input
+            </Label>
+            <Input
+              id="reset-pin"
               type="text"
               inputMode="numeric"
               pattern="\d{6}"
@@ -808,9 +791,9 @@ export function EmployeesRolesClient({
               onChange={(e) =>
                 setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))
               }
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm outline-none focus:border-foreground/40"
+              className="font-mono"
             />
-          </label>
+          </div>
           {pinError && (
             <p
               className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"

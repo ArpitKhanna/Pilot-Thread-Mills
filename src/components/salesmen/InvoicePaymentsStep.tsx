@@ -339,7 +339,7 @@ function SummaryTile({
       <p className="text-xs text-muted">{label}</p>
       <p
         className={`mt-1 text-sm font-medium tabular-nums ${
-          emphasize ? "text-[#c45c26]" : credit ? "text-credit" : ""
+          emphasize ? "text-warning" : credit ? "text-credit" : ""
         }`}
       >
         {value}

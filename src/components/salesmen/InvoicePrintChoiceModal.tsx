@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/Modal";
 import { formatINR } from "@/lib/salesmen/mock-data";
 import type { Invoice, Salesman } from "@/lib/salesmen/types";
@@ -125,21 +126,16 @@ export function InvoicePrintChoiceModal({
               </section>
 
               <div className="flex justify-end gap-2 pb-1">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-                >
+                <Button type="button" variant="outline" onClick={onClose}>
                   Close
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   disabled={!invoice || !party}
                   onClick={() => setPrintRequest(Date.now())}
-                  className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                 >
                   Print
-                </button>
+                </Button>
               </div>
             </div>
           </div>

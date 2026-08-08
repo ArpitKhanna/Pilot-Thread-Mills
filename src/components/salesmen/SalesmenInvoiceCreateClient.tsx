@@ -1055,7 +1055,7 @@ export function SalesmenInvoiceCreateClient({
                                   })
                                 }
                               />
-                              <span className="text-right text-sm tabular-nums text-[#c45c26]">
+                              <span className="text-right text-sm tabular-nums text-warning">
                                 {line.amount > 0
                                   ? `−${formatINR(line.amount)}`
                                   : "—"}
@@ -1164,7 +1164,7 @@ export function SalesmenInvoiceCreateClient({
                   </section>
 
                   {error && (
-                    <p className="text-sm text-[#c45c26]" role="alert">
+                    <p className="text-sm text-warning" role="alert">
                       {error}
                     </p>
                   )}
@@ -1355,7 +1355,7 @@ export function SalesmenInvoiceCreateClient({
             <dd
               className={`tabular-nums ${
                 previousBalance + invoiceTotal - amountPaid > 0
-                  ? "text-[#c45c26]"
+                  ? "text-warning"
                   : previousBalance + invoiceTotal - amountPaid < 0
                     ? "text-credit"
                     : ""

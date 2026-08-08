@@ -75,7 +75,7 @@ export function CustomersSummaryCounters({
         <SummaryKpi
           label="Total pending"
           amount={stats.pending}
-          amountClass={stats.pending > 0 ? "text-[#c45c26]" : undefined}
+          amountClass={stats.pending > 0 ? "text-warning" : undefined}
         />
         <SummaryKpi label="Total purchases" amount={stats.purchases} />
         <SummaryKpi label="Total payments" amount={stats.payments} />

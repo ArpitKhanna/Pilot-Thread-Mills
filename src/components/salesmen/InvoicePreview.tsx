@@ -653,7 +653,7 @@ function PageTotals({
           <span
             className={
               closingBalance > 0
-                ? "text-[#c45c26]"
+                ? "text-warning"
                 : closingBalance < 0
                   ? "text-credit"
                   : undefined

@@ -519,7 +519,7 @@ export function CustomerDetailClient({
               <p
                 className={`mt-0.5 text-xl font-medium tracking-tight sm:text-2xl ${
                   customer.pendingBalance > 0
-                    ? "text-[#c45c26]"
+                    ? "text-warning"
                     : "text-foreground"
                 }`}
               >

@@ -8,6 +8,7 @@ import {
   type CustomerDraftLine,
 } from "@/components/customers/CustomerInvoiceLineEntry";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import { formatINR } from "@/lib/salesmen/mock-data";
@@ -255,22 +256,16 @@ export function CustomerDirectInvoiceModal({
             ) : null}
 
             <div className="flex justify-end gap-2 pb-1">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onClose}
-                className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-              >
+              <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 disabled={busy}
                 onClick={() => void handleSubmit()}
-                className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
               >
                 {busy ? "Saving…" : "Generate invoice"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

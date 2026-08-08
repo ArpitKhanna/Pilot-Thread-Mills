@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
 import {
@@ -920,19 +921,18 @@ export function CustomerOrderInvoiceModal({
                     ) : null}
 
                       <div className="flex justify-end gap-2 pb-1">
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
                           disabled={actionBusy}
                           onClick={onClose}
-                          className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
                         >
                           Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           disabled={actionBusy || workingOrders.length === 0}
                           onClick={() => void handleSubmit()}
-                          className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                         >
                           {actionBusy
                             ? syncing
@@ -943,7 +943,7 @@ export function CustomerOrderInvoiceModal({
                             : workingOrders.length > 1
                               ? `Generate ${workingOrders.length} invoices`
                               : "Generate invoice"}
-                        </button>
+                        </Button>
                       </div>
                     </>
                   ) : null}
@@ -993,29 +993,25 @@ export function CustomerOrderInvoiceModal({
 
                   <div className="flex flex-wrap justify-end gap-2 pb-1">
                     {!allPrinted && created.length > 1 ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
                         onClick={selectNextUnprinted}
-                        className="mr-auto rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-sidebar"
+                        className="mr-auto"
                       >
                         Next unprinted
-                      </button>
+                      </Button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium"
-                    >
+                    <Button type="button" variant="outline" onClick={onClose}>
                       Done
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       disabled={!activeCreated}
                       onClick={handlePrint}
-                      className="rounded-lg bg-foreground px-3 py-2.5 text-sm font-medium text-surface disabled:opacity-50"
                     >
                       Print
-                    </button>
+                    </Button>
                   </div>
                 </>
               )}

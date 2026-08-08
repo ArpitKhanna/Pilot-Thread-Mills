@@ -4,7 +4,12 @@ import { useState } from "react";
 import type { ExpenseCategory } from "@/lib/ledger/types";
 import { toDateInputValue } from "@/lib/salesmen/record-window";
 import type { InvoicePaymentMethod } from "@/lib/salesmen/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
+import { Textarea } from "@/components/ui/textarea";
 
 type AddExpenseModalProps = {
   open: boolean;
@@ -100,24 +105,12 @@ export function AddExpenseModal({
       onClose={handleClose}
       title="Add expense"
       footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleClose}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
-          >
-            {busy ? "Saving…" : "Save expense"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={handleClose}
+          onSubmit={() => void submit()}
+          submitLabel="Save expense"
+          busy={busy}
+        />
       }
     >
       {error && (
@@ -128,106 +121,96 @@ export function AddExpenseModal({
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted">
-            Category
-          </label>
+          <Label className="mb-1.5 block text-xs text-muted">Category</Label>
           <div className="flex flex-wrap gap-2">
             {CATEGORY_OPTIONS.map((opt) => (
-              <button
+              <Button
                 key={opt.id}
                 type="button"
+                size="sm"
+                variant={category === opt.id ? "default" : "outline"}
                 disabled={busy}
                 onClick={() => setCategory(opt.id)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${
-                  category === opt.id
-                    ? "border-foreground bg-foreground/10 text-foreground"
-                    : "border-border bg-surface hover:bg-sidebar"
-                }`}
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="expense-payee" className="mb-1 block text-xs text-muted">
             Payee / vendor
-          </label>
-          <input
+          </Label>
+          <Input
+            id="expense-payee"
             type="text"
             value={payee}
             disabled={busy}
             onChange={(e) => setPayee(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             placeholder="Optional"
           />
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted">
-            Method
-          </label>
+          <Label className="mb-1.5 block text-xs text-muted">Method</Label>
           <div className="flex flex-wrap gap-2">
             {(["cash", "cheque", "upi", "imps"] as const).map((m) => (
-              <button
+              <Button
                 key={m}
                 type="button"
+                size="sm"
+                variant={method === m ? "default" : "outline"}
                 disabled={busy}
                 onClick={() => setMethod(m)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${
-                  method === m
-                    ? "border-foreground bg-foreground/10 text-foreground"
-                    : "border-border bg-surface hover:bg-sidebar"
-                }`}
               >
                 {METHOD_LABELS[m]}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="expense-amount" className="mb-1 block text-xs text-muted">
             Amount <span className="text-red-600">*</span>
-          </label>
-          <input
+          </Label>
+          <Input
+            id="expense-amount"
             type="number"
             min="0"
             step="0.01"
             value={amount}
             disabled={busy}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             placeholder="0.00"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="expense-date" className="mb-1 block text-xs text-muted">
             Date
-          </label>
-          <input
+          </Label>
+          <Input
+            id="expense-date"
             type="date"
             value={paidAt}
             max={toDateInputValue()}
             disabled={busy}
             onChange={(e) => setPaidAt(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="expense-notes" className="mb-1 block text-xs text-muted">
             Notes
-          </label>
-          <input
-            type="text"
+          </Label>
+          <Textarea
+            id="expense-notes"
             value={notes}
             disabled={busy}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             placeholder="Optional"
+            rows={2}
           />
         </div>
       </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 import { formatKg, getCountBalance } from "@/lib/raw-stock/balance";
 import type {
@@ -282,7 +284,7 @@ function MovementFormModal({
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="text-sm text-[#c45c26] hover:underline"
+                className="text-sm text-warning hover:underline"
               >
                 Remove entry
               </button>
@@ -293,7 +295,7 @@ function MovementFormModal({
                   type="button"
                   disabled={deleting}
                   onClick={() => void handleDelete()}
-                  className="rounded-lg bg-[#c45c26] px-3 py-1.5 text-background disabled:opacity-60"
+                  className="rounded-lg bg-warning px-3 py-1.5 text-background disabled:opacity-60"
                 >
                   {deleting ? "Removing…" : "Yes, remove"}
                 </button>
@@ -314,21 +316,16 @@ function MovementFormModal({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border px-3 py-2 text-sm"
-            >
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               disabled={saving || deleting}
               onClick={() => void handleSubmit()}
-              className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
             >
               {saving ? "Saving…" : isEditing ? "Save changes" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       }
@@ -536,23 +533,11 @@ function SupplierFormModal({
       onClose={onClose}
       title={editing ? "Edit supplier" : "Add supplier"}
       footer={
-        <div className="flex w-full justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-3 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void handleSave()}
-            className="rounded-lg bg-foreground px-3 py-2 text-sm text-background disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={onClose}
+          onSubmit={() => void handleSave()}
+          busy={saving}
+        />
       }
     >
       <div className="space-y-4">

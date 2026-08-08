@@ -29,7 +29,7 @@ const METHOD_LABELS: Record<InvoicePaymentMethod, string> = {
 
 const METHOD_COLORS: Record<InvoicePaymentMethod, string> = {
   cash: "#2f6f4e",
-  upi: "#e86f2a",
+  upi: "var(--warning)",
   imps: "#3b6ea5",
   cheque: "#8a6d3b",
 };
@@ -82,7 +82,7 @@ export function SalesmanOverview({ invoices }: SalesmanOverviewProps) {
           amount={insights.summary.netChange}
           amountClass={
             insights.summary.netChange > 0
-              ? "text-[#c45c26]"
+              ? "text-warning"
               : insights.summary.netChange < 0
                 ? "text-emerald-700"
                 : undefined
@@ -92,7 +92,7 @@ export function SalesmanOverview({ invoices }: SalesmanOverviewProps) {
           label="Period pending"
           amount={Math.max(0, insights.summary.pending)}
           amountClass={
-            insights.summary.pending > 0 ? "text-[#c45c26]" : undefined
+            insights.summary.pending > 0 ? "text-warning" : undefined
           }
         />
       </div>
@@ -130,7 +130,7 @@ export function SalesmanOverview({ invoices }: SalesmanOverviewProps) {
                       title={`Purchases ${formatINR(point.purchases)}`}
                     />
                     <div
-                      className="w-[42%] max-w-5 rounded-t-sm bg-[#e86f2a]"
+                      className="w-[42%] max-w-5 rounded-t-sm bg-warning"
                       style={{
                         height:
                           point.payments > 0
@@ -148,7 +148,7 @@ export function SalesmanOverview({ invoices }: SalesmanOverviewProps) {
             </div>
             <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted">
               <LegendDot className="bg-[#f8d4b8]" label="Purchases" />
-              <LegendDot className="bg-[#e86f2a]" label="Payments" />
+              <LegendDot className="bg-warning" label="Payments" />
             </div>
           </>
         )}
@@ -216,7 +216,7 @@ export function SalesmanOverview({ invoices }: SalesmanOverviewProps) {
                   <div className="mt-1.5 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f5f0eb]">
                       <div
-                        className="h-full rounded-full bg-[#c45c26]/80"
+                        className="h-full rounded-full bg-warning/80"
                         style={{ width: `${item.pct}%` }}
                       />
                     </div>

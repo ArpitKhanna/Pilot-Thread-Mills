@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AppPage } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ListStatusTabs } from "@/components/ui/list-status-tabs";
 import { Modal } from "@/components/ui/Modal";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
+import { NativeSelect } from "@/components/ui/native-select";
 import { CountCombobox } from "@/components/ui/CountCombobox";
 import type { AppContext } from "@/app/(app)/layout";
 import {
@@ -215,14 +221,10 @@ export function PriceListClient({
             </p>
           </div>
           <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
-            <button
+            <Button
               type="button"
+              variant={editMode ? "default" : "outline"}
               onClick={() => setEditMode((e) => !e)}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
-                editMode
-                  ? "border-foreground bg-foreground text-surface"
-                  : "border-border bg-surface hover:bg-sidebar"
-              }`}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
@@ -232,51 +234,37 @@ export function PriceListClient({
                 />
               </svg>
               Edit
-            </button>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-surface hover:bg-foreground/90"
-            >
+            </Button>
+            <Button type="button" onClick={openAddModal}>
               <span className="text-lg leading-none">+</span>
               Add New Item
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="inline-flex w-full rounded-lg border border-border bg-surface p-0.5 sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setTab("approved")}
-              className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none sm:px-4 sm:py-1.5 ${
-                tab === "approved"
-                  ? "bg-sidebar font-medium"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              Current Prices
-            </button>
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => setTab("pending")}
-                className={`flex-1 rounded-md px-3 py-2 text-sm sm:flex-none sm:px-4 sm:py-1.5 ${
-                  tab === "pending"
-                    ? "bg-sidebar font-medium"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                For Approval ({pendingTabCount || pendingCount})
-              </button>
-            )}
-          </div>
+          <ListStatusTabs
+            value={tab}
+            onValueChange={setTab}
+            tabs={[
+              { value: "approved", label: "Current Prices" },
+              ...(isAdmin
+                ? [
+                    {
+                      value: "pending" as const,
+                      label: "For Approval",
+                      count: pendingTabCount || pendingCount,
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
-            <select
+            <NativeSelect
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm sm:py-2"
+              className="w-full sm:w-auto"
             >
             <option value="all">Item Type</option>
             {ITEM_TYPES.map((t) => (
@@ -284,12 +272,12 @@ export function PriceListClient({
                 {ITEM_TYPE_LABELS[t]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
 
-            <select
+            <NativeSelect
               value={countFilter}
               onChange={(e) => setCountFilter(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm sm:py-2"
+              className="w-full sm:w-auto"
             >
               <option value="all">Count</option>
               {COUNT_OPTIONS.map((c) => (
@@ -297,7 +285,7 @@ export function PriceListClient({
                   {c}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 sm:ml-auto sm:max-w-xs sm:py-2 lg:min-w-[220px]">
@@ -311,12 +299,12 @@ export function PriceListClient({
               <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
               <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.2" />
             </svg>
-            <input
+            <Input
               type="search"
               placeholder="Search by Item Name"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+              className="border-0 shadow-none focus-visible:ring-0"
             />
           </div>
         </div>
@@ -366,38 +354,40 @@ export function PriceListClient({
                 {(editMode || (tab === "pending" && isAdmin)) && (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                     {tab === "pending" && isAdmin && (
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
                         disabled={busyId === item.id}
                         onClick={() => handleApprove(item.id)}
-                        className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-surface disabled:opacity-60"
                       >
                         {busyId === item.id && busyAction === "approve"
                           ? "Approving…"
                           : "Approve"}
-                      </button>
+                      </Button>
                     )}
                     {editMode && (
                       <>
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="outline"
                           disabled={busyId === item.id}
                           onClick={() => openEditModal(item)}
-                          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-sidebar disabled:opacity-60"
                         >
                           Edit
-                        </button>
+                        </Button>
                         {isAdmin && (
-                          <button
+                          <Button
                             type="button"
+                            size="sm"
+                            variant="destructive"
                             disabled={busyId === item.id}
                             onClick={() => handleDelete(item.id)}
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-60"
                           >
                             {busyId === item.id && busyAction === "delete"
                               ? "Deleting…"
                               : "Delete"}
-                          </button>
+                          </Button>
                         )}
                       </>
                     )}
@@ -476,38 +466,40 @@ export function PriceListClient({
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-2">
                           {tab === "pending" && isAdmin && (
-                            <button
+                            <Button
                               type="button"
+                              size="sm"
                               disabled={busyId === item.id}
                               onClick={() => handleApprove(item.id)}
-                              className="rounded-md bg-foreground px-3 py-1 text-xs font-medium text-surface disabled:opacity-60"
                             >
                               {busyId === item.id && busyAction === "approve"
                                 ? "Approving…"
                                 : "Approve"}
-                            </button>
+                            </Button>
                           )}
                           {editMode && (
                             <>
-                              <button
+                              <Button
                                 type="button"
+                                size="sm"
+                                variant="outline"
                                 disabled={busyId === item.id}
                                 onClick={() => openEditModal(item)}
-                                className="rounded-md border border-border px-3 py-1 text-xs hover:bg-sidebar disabled:opacity-60"
                               >
                                 Edit
-                              </button>
+                              </Button>
                               {isAdmin && (
-                                <button
+                                <Button
                                   type="button"
+                                  size="sm"
+                                  variant="destructive"
                                   disabled={busyId === item.id}
                                   onClick={() => handleDelete(item.id)}
-                                  className="rounded-md border border-red-200 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-50 disabled:opacity-60"
                                 >
                                   {busyId === item.id && busyAction === "delete"
                                     ? "Deleting…"
                                     : "Delete"}
-                                </button>
+                                </Button>
                               )}
                             </>
                           )}
@@ -527,37 +519,35 @@ export function PriceListClient({
         onClose={() => setModalOpen(false)}
         title={editingItem ? "Edit Item" : "Add New Item"}
         footer={
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSave}
-            className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-surface disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save Item"}
-          </button>
+          <ModalFooterActions
+            onCancel={() => setModalOpen(false)}
+            onSubmit={handleSave}
+            submitLabel="Save Item"
+            busy={saving}
+            busyLabel="Saving…"
+          />
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Item Name<span className="text-red-500">*</span>
-            </label>
-            <input
+            </Label>
+            <Input
               type="text"
               value={form.item_name}
               onChange={(e) =>
                 setForm((f) => ({ ...f, item_name: e.target.value }))
               }
               placeholder="Item Name"
-              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Item Type<span className="text-red-500">*</span>
-            </label>
-            <select
+            </Label>
+            <NativeSelect
               value={form.item_type}
               onChange={(e) => {
                 const item_type = e.target.value as ItemType | "";
@@ -571,7 +561,7 @@ export function PriceListClient({
                       : "",
                 }));
               }}
-              className="w-full rounded-lg border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
+              className="w-full sm:w-full sm:min-w-0"
             >
               <option value="">Select type</option>
               {ITEM_TYPES.map((t) => (
@@ -579,12 +569,12 @@ export function PriceListClient({
                   {ITEM_TYPE_LABELS[t]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {showCountField && (
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Count</label>
+              <Label className="mb-1.5 block">Count</Label>
               <CountCombobox
                 options={COUNT_OPTIONS}
                 value={form.count_label}
@@ -597,12 +587,12 @@ export function PriceListClient({
           )}
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Salesmen Price<span className="text-red-500">*</span>
-            </label>
+            </Label>
             <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
               <span className="mr-2 text-muted">₹</span>
-              <input
+              <Input
                 type="number"
                 min="0"
                 value={form.salesmen_price}
@@ -610,18 +600,18 @@ export function PriceListClient({
                   setForm((f) => ({ ...f, salesmen_price: e.target.value }))
                 }
                 placeholder="Salesmen Price"
-                className="w-full bg-transparent text-sm outline-none"
+                className="border-0 shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
+            <Label className="mb-1.5 block">
               Customer Price<span className="text-red-500">*</span>
-            </label>
+            </Label>
             <div className="flex w-full items-center rounded-lg border border-border px-3 py-2.5">
               <span className="mr-2 text-muted">₹</span>
-              <input
+              <Input
                 type="number"
                 min="0"
                 value={form.customer_price}
@@ -629,7 +619,7 @@ export function PriceListClient({
                   setForm((f) => ({ ...f, customer_price: e.target.value }))
                 }
                 placeholder="Customer Price"
-                className="w-full bg-transparent text-sm outline-none"
+                className="border-0 shadow-none focus-visible:ring-0"
               />
             </div>
           </div>

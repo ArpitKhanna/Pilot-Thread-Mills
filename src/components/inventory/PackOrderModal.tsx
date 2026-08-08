@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 import type { CustomerOrder, CustomerOrderLine } from "@/lib/customer-orders/types";
 import { ORDER_LINE_UNIT_LABELS } from "@/lib/customer-orders/types";
@@ -237,24 +238,14 @@ export function PackOrderModal({
           </p>
         ) : null}
 
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-sidebar disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmPack()}
-            disabled={busy || loading}
-            className="rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-surface disabled:opacity-50"
-          >
-            {busy ? "Packing…" : "Confirm & mark packed"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={onClose}
+          onSubmit={() => void confirmPack()}
+          submitLabel="Confirm & mark packed"
+          busy={busy}
+          busyLabel="Packing…"
+          submitDisabled={loading}
+        />
       </div>
     </Modal>
   );

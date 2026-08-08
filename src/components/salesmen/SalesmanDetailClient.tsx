@@ -322,7 +322,7 @@ export function SalesmanDetailClient({
             <p
               className={`mt-0.5 text-xl font-medium tracking-tight sm:text-2xl ${
                 salesman.pendingBalance > 0
-                  ? "text-[#c45c26]"
+                  ? "text-warning"
                   : salesman.pendingBalance < 0
                     ? "text-credit"
                     : "text-foreground"

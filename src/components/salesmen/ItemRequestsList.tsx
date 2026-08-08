@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 import type { ItemType, PriceListItem } from "@/lib/auth/types";
 import { ITEM_TYPE_LABELS } from "@/lib/auth/types";
@@ -56,7 +57,7 @@ function formatItemType(itemType: string | undefined): string | null {
 }
 
 function urgencyClass(urgency: ItemRequestUrgency): string {
-  if (urgency === "high") return "text-[#c45c26]";
+  if (urgency === "high") return "text-warning";
   if (urgency === "low") return "text-muted";
   return "text-foreground";
 }
@@ -332,24 +333,18 @@ export function ItemRequestsList({
         onClose={closeModal}
         title={editingId ? "Edit item request" : "Add item request"}
         footer={
-          <div className="flex w-full flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeModal}
-              disabled={saving}
-              className="rounded-lg border border-border bg-background px-4 py-2 text-sm hover:bg-sidebar disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="item-request-form"
-              disabled={saving}
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-60"
-            >
-              {saving ? "Saving…" : editingId ? "Save changes" : "Save request"}
-            </button>
-          </div>
+          <ModalFooterActions
+            onCancel={closeModal}
+            onSubmit={() =>
+              (
+                document.getElementById(
+                  "item-request-form",
+                ) as HTMLFormElement | null
+              )?.requestSubmit()
+            }
+            submitLabel={editingId ? "Save changes" : "Save request"}
+            busy={saving}
+          />
         }
       >
         <form id="item-request-form" onSubmit={handleSave} className="space-y-4">

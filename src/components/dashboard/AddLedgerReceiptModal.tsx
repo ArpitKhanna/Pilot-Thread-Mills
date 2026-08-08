@@ -6,7 +6,13 @@ import type { BankAccount } from "@/lib/bank-accounts/types";
 import type { LedgerReceiptSource } from "@/lib/ledger/types";
 import { toDateInputValue } from "@/lib/salesmen/record-window";
 import type { InvoicePaymentMethod } from "@/lib/salesmen/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Party = {
   id: string;
@@ -195,24 +201,12 @@ export function AddLedgerReceiptModal({
       onClose={handleClose}
       title="Add receipt"
       footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleClose}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
-          >
-            {busy ? "Saving…" : "Save receipt"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={handleClose}
+          onSubmit={() => void submit()}
+          submitLabel="Save receipt"
+          busy={busy}
+        />
       }
     >
       {error && (
@@ -223,24 +217,19 @@ export function AddLedgerReceiptModal({
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted">
-            Source
-          </label>
+          <Label className="mb-1.5 block text-xs text-muted">Source</Label>
           <div className="flex flex-wrap gap-2">
             {SOURCE_OPTIONS.map((opt) => (
-              <button
+              <Button
                 key={opt.id}
                 type="button"
+                size="sm"
+                variant={sourceCategory === opt.id ? "default" : "outline"}
                 disabled={busy}
                 onClick={() => setSourceCategory(opt.id)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${
-                  sourceCategory === opt.id
-                    ? "border-foreground bg-foreground/10 text-foreground"
-                    : "border-border bg-surface hover:bg-sidebar"
-                }`}
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -248,14 +237,15 @@ export function AddLedgerReceiptModal({
         {isPartySource && (
           <>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
+              <Label htmlFor="receipt-party" className="mb-1 block text-xs text-muted">
                 Party <span className="text-red-600">*</span>
-              </label>
-              <select
+              </Label>
+              <NativeSelect
+                id="receipt-party"
                 value={partyId}
                 disabled={busy}
                 onChange={(e) => setPartyId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                className="w-full sm:w-full"
               >
                 <option value="">Select customer or salesman</option>
                 {parties.map((p) => (
@@ -263,51 +253,44 @@ export function AddLedgerReceiptModal({
                     {p.name} ({p.entityType})
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted">
-                Apply as
-              </label>
+              <Label className="mb-1.5 block text-xs text-muted">Apply as</Label>
               <div className="flex flex-wrap gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant={mode === "advance" ? "default" : "outline"}
                   disabled={busy}
                   onClick={() => setMode("advance")}
-                  className={`rounded-lg border px-3 py-1.5 text-sm ${
-                    mode === "advance"
-                      ? "border-foreground bg-foreground/10 text-foreground"
-                      : "border-border bg-surface hover:bg-sidebar"
-                  }`}
                 >
                   Open balance (advance)
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
+                  variant={mode === "invoice" ? "default" : "outline"}
                   disabled={busy || !partyId}
                   onClick={() => setMode("invoice")}
-                  className={`rounded-lg border px-3 py-1.5 text-sm ${
-                    mode === "invoice"
-                      ? "border-foreground bg-foreground/10 text-foreground"
-                      : "border-border bg-surface hover:bg-sidebar"
-                  }`}
                 >
                   Specific invoice
-                </button>
+                </Button>
               </div>
             </div>
 
             {mode === "invoice" && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted">
+                <Label htmlFor="receipt-invoice" className="mb-1 block text-xs text-muted">
                   Invoice <span className="text-red-600">*</span>
-                </label>
-                <select
+                </Label>
+                <NativeSelect
+                  id="receipt-invoice"
                   value={invoiceId}
                   disabled={busy || invoices.length === 0}
                   onChange={(e) => setInvoiceId(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className="w-full sm:w-full"
                 >
                   {invoices.length === 0 ? (
                     <option value="">No open invoices</option>
@@ -318,62 +301,57 @@ export function AddLedgerReceiptModal({
                       </option>
                     ))
                   )}
-                </select>
+                </NativeSelect>
               </div>
             )}
           </>
         )}
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted">
-            Method
-          </label>
+          <Label className="mb-1.5 block text-xs text-muted">Method</Label>
           <div className="flex flex-wrap gap-2">
             {(["cash", "cheque", "upi", "imps"] as const).map((m) => (
-              <button
+              <Button
                 key={m}
                 type="button"
+                size="sm"
+                variant={method === m ? "default" : "outline"}
                 disabled={busy}
                 onClick={() => setMethod(m)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${
-                  method === m
-                    ? "border-foreground bg-foreground/10 text-foreground"
-                    : "border-border bg-surface hover:bg-sidebar"
-                }`}
               >
                 {METHOD_LABELS[m]}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="receipt-amount" className="mb-1 block text-xs text-muted">
             Amount <span className="text-red-600">*</span>
-          </label>
-          <input
+          </Label>
+          <Input
+            id="receipt-amount"
             type="number"
             min="0"
             step="0.01"
             value={amount}
             disabled={busy}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             placeholder="0.00"
           />
         </div>
 
         {method === "cheque" && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
+            <Label htmlFor="receipt-cheque" className="mb-1 block text-xs text-muted">
               Cheque number <span className="text-red-600">*</span>
-            </label>
-            <input
+            </Label>
+            <Input
+              id="receipt-cheque"
               type="text"
               value={chequeNumber}
               disabled={busy}
               onChange={(e) => setChequeNumber(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             />
           </div>
         )}
@@ -381,27 +359,28 @@ export function AddLedgerReceiptModal({
         {method !== "cash" && (
           <>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
+              <Label htmlFor="receipt-date" className="mb-1 block text-xs text-muted">
                 Payment date <span className="text-red-600">*</span>
-              </label>
-              <input
+              </Label>
+              <Input
+                id="receipt-date"
                 type="date"
                 value={receivedAt}
                 max={toDateInputValue()}
                 disabled={busy}
                 onChange={(e) => setReceivedAt(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
+              <Label htmlFor="receipt-account" className="mb-1 block text-xs text-muted">
                 Deposit account <span className="text-red-600">*</span>
-              </label>
-              <select
+              </Label>
+              <NativeSelect
+                id="receipt-account"
                 value={depositAccountId}
                 disabled={busy}
                 onChange={(e) => setDepositAccountId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                className="w-full sm:w-full"
               >
                 {accounts.length === 0 ? (
                   <option value="">No accounts</option>
@@ -412,38 +391,38 @@ export function AddLedgerReceiptModal({
                     </option>
                   ))
                 )}
-              </select>
+              </NativeSelect>
             </div>
           </>
         )}
 
         {(method === "upi" || method === "imps") && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
+            <Label htmlFor="receipt-sender" className="mb-1 block text-xs text-muted">
               Sender name
-            </label>
-            <input
+            </Label>
+            <Input
+              id="receipt-sender"
               type="text"
               value={senderName}
               disabled={busy}
               onChange={(e) => setSenderName(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
               placeholder="Optional"
             />
           </div>
         )}
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">
+          <Label htmlFor="receipt-notes" className="mb-1 block text-xs text-muted">
             Notes
-          </label>
-          <input
-            type="text"
+          </Label>
+          <Textarea
+            id="receipt-notes"
             value={notes}
             disabled={busy}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
             placeholder="Optional"
+            rows={2}
           />
         </div>
       </div>

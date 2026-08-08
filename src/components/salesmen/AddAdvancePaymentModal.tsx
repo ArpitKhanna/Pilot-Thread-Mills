@@ -8,6 +8,7 @@ import type {
   SalesmanAdvance,
 } from "@/lib/salesmen/types";
 import { toDateInputValue } from "@/lib/salesmen/record-window";
+import { ModalFooterActions } from "@/components/ui/modal-footer";
 import { Modal } from "@/components/ui/Modal";
 
 type AddAdvancePaymentModalProps = {
@@ -115,24 +116,12 @@ export function AddAdvancePaymentModal({
       onClose={handleClose}
       title="Record advance payment"
       footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleClose}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-sidebar disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-surface hover:bg-foreground/90 disabled:opacity-40"
-          >
-            {busy ? "Saving…" : "Save payment"}
-          </button>
-        </div>
+        <ModalFooterActions
+          onCancel={handleClose}
+          onSubmit={() => void submit()}
+          submitLabel="Save payment"
+          busy={busy}
+        />
       }
     >
       <p className="mb-4 text-sm text-muted">

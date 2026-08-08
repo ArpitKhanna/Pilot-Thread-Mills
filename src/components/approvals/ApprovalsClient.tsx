@@ -505,7 +505,7 @@ export function ApprovalsClient({
                           </p>
                         </div>
                         <div className="shrink-0 text-right">
-                          <p className="text-sm font-medium tabular-nums text-[#c45c26]">
+                          <p className="text-sm font-medium tabular-nums text-warning">
                             −{formatINR(returnRecord.totalAmount)}
                           </p>
                         </div>
@@ -809,7 +809,7 @@ function ApprovalInvoiceLineTable({
                 </td>
                 <td
                   className={`px-2.5 py-2 text-right tabular-nums ${
-                    isReturn ? "text-[#c45c26]" : ""
+                    isReturn ? "text-warning" : ""
                   }`}
                 >
                   {isReturn ? "−" : ""}
@@ -846,7 +846,7 @@ function ApprovalTotalRow({
       </span>
       <span
         className={`tabular-nums ${
-          emphasize ? "text-[#c45c26]" : credit ? "text-credit" : ""
+          emphasize ? "text-warning" : credit ? "text-credit" : ""
         }`}
       >
         {value}

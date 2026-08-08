@@ -79,7 +79,7 @@ export function InvoiceList({
                     onClick={() => onSelect(invoice)}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors sm:gap-4 sm:px-3.5 ${
                       selected
-                        ? "bg-[#fff7f0] ring-2 ring-[#e86f2a]"
+                        ? "bg-warning/10 ring-2 ring-warning"
                         : "hover:bg-sidebar/60"
                     }`}
                   >
@@ -89,7 +89,7 @@ export function InvoiceList({
                       </span>
                       <span
                         className={`text-xl font-semibold tracking-tight tabular-nums ${
-                          selected ? "text-[#e86f2a]" : "text-foreground"
+                          selected ? "text-warning" : "text-foreground"
                         }`}
                       >
                         {date.day}
@@ -127,7 +127,7 @@ export function InvoiceList({
                       </p>
                       <p
                         className={`mt-0.5 text-xs tabular-nums ${
-                          balance > 0 ? "text-[#c45c26]" : "text-muted"
+                          balance > 0 ? "text-warning" : "text-muted"
                         }`}
                       >
                         {balance > 0
