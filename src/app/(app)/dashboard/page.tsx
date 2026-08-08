@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { TopBar } from "@/components/layout/AppShell";
-import { DashboardClient } from "@/components/dashboard/DashboardClient";
+import { AppPage } from "@/components/layout/AppShell";import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import { getAppContext } from "@/app/(app)/layout";
 import type { PriceListItem } from "@/lib/auth/types";
 import { listBankAccounts } from "@/lib/bank-accounts/queries";
@@ -75,14 +74,12 @@ export default async function DashboardPage() {
   );
 
   return (
-    <>
-      <TopBar
-        context={context}
-        breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Dashboard" }]}
-      />
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <DashboardClient
-          context={context}
+    <AppPage
+      context={context}
+      animate={false}
+      breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Dashboard" }]}
+    >
+      <DashboardClient          context={context}
           ledger={ledger}
           orderStats={orderStats}
           dyeingStats={dyeingStats}
@@ -91,8 +88,7 @@ export default async function DashboardPage() {
           pendingPriceItems={pendingPriceItems}
           canAddReceipt={canAddReceipt}
           canAddExpense={canAddExpense}
-        />
-      </main>
-    </>
+      />
+    </AppPage>
   );
 }

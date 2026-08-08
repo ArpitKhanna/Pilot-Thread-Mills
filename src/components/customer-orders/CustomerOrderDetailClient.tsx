@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
 import { Modal } from "@/components/ui/Modal";
@@ -567,7 +567,7 @@ export function CustomerOrderDetailClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
@@ -575,9 +575,7 @@ export function CustomerOrderDetailClient({
           { label: "Customers", href: "/orders/customers" },
           { label: order.customerName ?? "Order" },
         ]}
-      />
-
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      >
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -951,7 +949,7 @@ export function CustomerOrderDetailClient({
             </div>
           </section>
         </div>
-      </main>
+      </AppPage>
 
       <Modal
         open={deliveryOpen}

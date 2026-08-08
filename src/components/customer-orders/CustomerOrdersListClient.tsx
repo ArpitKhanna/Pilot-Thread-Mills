@@ -11,7 +11,7 @@ import {
 import { NewCustomerOrderModal } from "@/components/customer-orders/NewCustomerOrderModal";
 import { CustomerDirectInvoiceModal } from "@/components/customers/CustomerDirectInvoiceModal";
 import { CustomerOrderSidebar } from "@/components/customer-orders/CustomerOrderSidebar";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { ItemNameCombobox } from "@/components/salesmen/ItemNameCombobox";
 import { Modal } from "@/components/ui/Modal";
 import type { PriceListItem } from "@/lib/auth/types";
@@ -741,16 +741,15 @@ export function CustomerOrdersListClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Orders" },
           { label: "Customers" },
         ]}
-      />
-
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        className="flex min-h-0 flex-col overflow-hidden px-4 py-5 sm:px-6 sm:py-6 lg:px-8"
+      >
         <div className="mb-5 flex shrink-0 flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -1140,7 +1139,7 @@ export function CustomerOrdersListClient({
         </div>
           </>
         )}
-      </main>
+      </AppPage>
 
       <CustomerOrderSidebar
         orderId={detailOrderId}

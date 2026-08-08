@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import {
   DYEING_JOB_STATUS_LABELS,
   ORDER_LINE_UNIT_LABELS,
@@ -86,15 +86,14 @@ export function DyeingJobsClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Orders" },
           { label: "Dyeing Jobs" },
         ]}
-      />
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      >
         <div className="mb-5">
           <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
             Dyeing Jobs
@@ -214,7 +213,7 @@ export function DyeingJobsClient({
             </table>
           </div>
         )}
-      </main>
+      </AppPage>
     </>
   );
 }

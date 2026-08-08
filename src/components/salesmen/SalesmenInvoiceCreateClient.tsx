@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { InvoicePaymentsStep } from "@/components/salesmen/InvoicePaymentsStep";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import {
@@ -843,16 +843,15 @@ export function SalesmenInvoiceCreateClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Orders" },
           { label: "Salesmen" },
         ]}
-      />
-
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden print:hidden">
+        className="flex min-h-0 flex-col overflow-hidden print:hidden px-0 py-0"
+      >
         <div className="flex shrink-0 flex-col gap-3 border-b border-border px-4 py-4 sm:px-6 lg:px-8">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -1246,7 +1245,7 @@ export function SalesmenInvoiceCreateClient({
             />
           </div>
         </div>
-      </main>
+      </AppPage>
 
       <div className="hidden print:block">
         <InvoicePreview

@@ -29,4 +29,5 @@ export function AppShell({ context, children }: AppShellProps) {
   );
 }
 
-export { TopBar } from "./TopBar";
+export { AppPage, TopBar } from "./AppPage";
+export type { AppBreadcrumb } from "./AppPage";

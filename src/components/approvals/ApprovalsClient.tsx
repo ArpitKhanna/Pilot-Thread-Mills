@@ -191,7 +191,7 @@ export function ApprovalsClient({
     priceListItems.length === 0;
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+    <div>
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
           Approvals
@@ -745,7 +745,7 @@ export function ApprovalsClient({
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

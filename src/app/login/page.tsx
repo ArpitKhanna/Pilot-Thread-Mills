@@ -2,6 +2,18 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState, Suspense } from "react";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { pageFade } from "@/components/ui/motion";
 
 function LoginForm() {
   const router = useRouter();
@@ -35,7 +47,6 @@ function LoginForm() {
 
       router.push(redirect);
       router.refresh();
-      // Keep loading until navigation completes.
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
@@ -44,7 +55,12 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col justify-center bg-background px-4 py-8 sm:px-6">
-      <div className="mx-auto w-full max-w-sm">
+      <motion.div
+        className="mx-auto w-full max-w-sm"
+        initial="hidden"
+        animate="visible"
+        variants={pageFade}
+      >
         <div className="mb-8 text-center">
           <p className="font-logo-serif text-4xl tracking-tight text-foreground">
             Pilot
@@ -52,74 +68,64 @@ function LoginForm() {
           <p className="mt-1 font-mono text-[10px] font-medium tracking-[0.35em] text-muted uppercase">
             Thread Mills
           </p>
-          <h1 className="mt-6 text-xl font-medium tracking-tight text-foreground">
-            Employee sign in
-          </h1>
-          <p className="mt-2 text-sm text-muted">
-            Use your mobile number and PIN. No OTP required.
-          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label
-              htmlFor="phone"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Mobile number
-            </label>
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              inputMode="numeric"
-              autoComplete="tel"
-              placeholder="10-digit mobile number"
-              required
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground shadow-sm outline-none placeholder:text-muted focus:border-foreground"
-            />
-          </div>
+        <Card className="border-border bg-surface shadow-sm">
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl font-medium tracking-tight">
+              Employee sign in
+            </CardTitle>
+            <CardDescription>
+              Use your mobile number and PIN. No OTP required.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Mobile number</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  placeholder="10-digit mobile number"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
 
-          <div>
-            <label
-              htmlFor="pin"
-              className="block text-sm font-medium text-slate-700"
-            >
-              PIN
-            </label>
-            <input
-              id="pin"
-              name="pin"
-              type="password"
-              inputMode="numeric"
-              autoComplete="current-password"
-              placeholder="4–6 digit PIN"
-              required
-              minLength={4}
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-foreground shadow-sm outline-none placeholder:text-muted focus:border-foreground"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="pin">PIN</Label>
+                <Input
+                  id="pin"
+                  name="pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  placeholder="4–6 digit PIN"
+                  required
+                  minLength={4}
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                />
+              </div>
 
-          {error ? (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          ) : null}
+              {error ? (
+                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </p>
+              ) : null}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full justify-center rounded-lg bg-foreground px-4 py-3 text-sm font-semibold text-surface shadow-sm transition hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60 sm:py-2.5"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
+              <Button type="submit" disabled={loading} className="w-full" size="lg">
+                {loading ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }

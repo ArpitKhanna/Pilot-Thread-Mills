@@ -20,7 +20,7 @@ import { CustomerPastOrdersTab } from "@/components/customers/CustomerPastOrders
 import { CustomerPendingPatchesTab } from "@/components/customers/CustomerPendingPatchesTab";
 import { CustomerPersonalDetailsForm } from "@/components/customers/CustomerPersonalDetailsForm";
 import { CustomerTimelineTab } from "@/components/customers/CustomerTimelineTab";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { InvoiceList } from "@/components/salesmen/InvoiceList";
 import { InvoicePreview } from "@/components/salesmen/InvoicePreview";
 import { InvoicePrintChoiceModal } from "@/components/salesmen/InvoicePrintChoiceModal";
@@ -460,40 +460,40 @@ export function CustomerDetailClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Customers", href: "/entities/customers" },
           { label: customer.name },
         ]}
-      />
-
-      {isDefaulter && (
-        <div
-          role="alert"
-          className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950 sm:px-6 lg:px-8 print:hidden"
-        >
-          <div className="mx-auto flex max-w-6xl items-start gap-3">
-            <span
-              className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-500"
-              aria-hidden
-            />
-            <div>
-              <p className="font-medium">Defaulter — collect payment ASAP</p>
-              <p className="mt-0.5 text-red-900/80">
-                This customer&apos;s pending balance of{" "}
-                {formatINR(customer.pendingBalance)} has crossed the threshold
-                of {formatINR(customer.balanceThreshold!)}. Collect payment as
-                soon as possible.
-              </p>
+        className="flex min-h-0 flex-col print:hidden px-0 py-0"
+        beforeMain={
+          isDefaulter ? (
+            <div
+              role="alert"
+              className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950 sm:px-6 lg:px-8 print:hidden"
+            >
+              <div className="mx-auto flex max-w-6xl items-start gap-3">
+                <span
+                  className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-500"
+                  aria-hidden
+                />
+                <div>
+                  <p className="font-medium">Defaulter — collect payment ASAP</p>
+                  <p className="mt-0.5 text-red-900/80">
+                    This customer&apos;s pending balance of{" "}
+                    {formatINR(customer.pendingBalance)} has crossed the threshold
+                    of {formatINR(customer.balanceThreshold!)}. Collect payment as
+                    soon as possible.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col print:hidden">
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+          ) : undefined
+        }
+      >
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
           <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -696,8 +696,8 @@ export function CustomerDetailClient({
               onSaved={setCustomer}
             />
           )}
-        </main>
-      </div>
+        </div>
+      </AppPage>
 
       {selectedInvoice && mobilePreviewOpen && tab === "invoices" && (
         <div className="lg:hidden print:hidden">

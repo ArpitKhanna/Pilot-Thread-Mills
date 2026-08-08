@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { DyeingSuggestionsPanel } from "@/components/inventory/DyeingSuggestionsPanel";
 import { ShadeGrid } from "@/components/inventory/ShadeGrid";
 import { ELLFA_270_ITEM_NAME } from "@/lib/inventory/ellfa-shades";
@@ -178,8 +178,11 @@ export function InventoryClient({
 
   return (
     <>
-      <TopBar context={context} breadcrumbs={[{ label: "Inventory" }]} />
-      <main className="flex-1 overflow-y-auto">
+      <AppPage
+        context={context}
+        breadcrumbs={[{ label: "Inventory" }]}
+        className="px-0 py-0"
+      >
         <div className="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -401,7 +404,7 @@ export function InventoryClient({
             />
           ) : null}
         </div>
-      </main>
+      </AppPage>
     </>
   );
 }

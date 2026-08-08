@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import { PendingLink } from "@/components/ui/PendingLink";
 import { SalesmenSummaryCounters } from "@/components/salesmen/SalesmenSummaryCounters";
@@ -160,15 +160,13 @@ export function SalesmenListClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Salesmen" },
         ]}
-      />
-
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      >
         <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -340,7 +338,7 @@ export function SalesmenListClient({
             ))}
           </div>
         )}
-      </main>
+      </AppPage>
 
       <Modal
         open={modalOpen}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { AddExpenseModal } from "@/components/dashboard/AddExpenseModal";
 import { AddLedgerReceiptModal } from "@/components/dashboard/AddLedgerReceiptModal";
 import { WidgetKpi, WidgetSection } from "@/components/dashboard/WidgetKpi";
@@ -87,14 +87,13 @@ export function PaymentsLedgerClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[
           { label: "Home", href: "/dashboard" },
           { label: "Payments" },
         ]}
-      />
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      >
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-medium tracking-tight sm:text-2xl">
@@ -231,7 +230,7 @@ export function PaymentsLedgerClient({
             </WidgetSection>
           ))}
         </div>
-      </main>
+      </AppPage>
 
       {canAddReceipt && (
         <AddLedgerReceiptModal

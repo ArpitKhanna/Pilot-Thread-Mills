@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { AppContext } from "@/app/(app)/layout";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import {
   RawStockModals,
   type MovementModalKind,
@@ -185,11 +185,11 @@ export function RawStockStatusClient({
 
   return (
     <>
-      <TopBar
+      <AppPage
         context={context}
         breadcrumbs={[{ label: "Raw Stock Status" }]}
-      />
-      <main className="flex-1 overflow-y-auto">
+        className="px-0 py-0"
+      >
         <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -497,7 +497,7 @@ export function RawStockStatusClient({
             </div>
           )}
         </div>
-      </main>
+      </AppPage>
 
       <RawStockModals
         movementKind={modalKind}

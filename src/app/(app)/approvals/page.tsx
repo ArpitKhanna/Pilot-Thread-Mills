@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { TopBar } from "@/components/layout/AppShell";
+import { AppPage } from "@/components/layout/AppShell";
 import { ApprovalsClient } from "@/components/approvals/ApprovalsClient";
 import { getAppContext } from "@/app/(app)/layout";
 import { listPendingPriceListApprovals } from "@/lib/approvals/price-list";
@@ -27,14 +27,13 @@ export default async function ApprovalsPage() {
   ]);
 
   return (
-    <>
-      <TopBar
-        context={context}
-        breadcrumbs={[
-          { label: "Home", href: "/dashboard" },
-          { label: "Approvals" },
-        ]}
-      />
+    <AppPage
+      context={context}
+      breadcrumbs={[
+        { label: "Home", href: "/dashboard" },
+        { label: "Approvals" },
+      ]}
+    >
       <ApprovalsClient
         context={context}
         initialPending={pending}
@@ -42,6 +41,6 @@ export default async function ApprovalsPage() {
         initialPendingReturns={pendingReturns}
         initialPendingPriceList={pendingPriceList}
       />
-    </>
+    </AppPage>
   );
 }
