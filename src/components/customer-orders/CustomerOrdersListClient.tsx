@@ -119,6 +119,8 @@ function emptyMissingLine(customerId = ""): MissingDraft {
 
 type SortBy = "order_time_desc" | "order_time_asc";
 
+type OrdersPageTab = "orders" | "market_calls";
+
 function sortOrders(a: CustomerOrder, b: CustomerOrder, sortBy: SortBy): number {
   if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
   const timeA = a.createdAt || a.orderDate;
@@ -182,6 +184,7 @@ export function CustomerOrdersListClient({
     Array<{ customerName: string; url: string }>
   >([]);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<OrdersPageTab>("orders");
 
   const pauseOrdersSync =
     Boolean(draggingId) ||
@@ -778,8 +781,34 @@ export function CustomerOrdersListClient({
           </div>
         </div>
 
-        {marketCustomers.length > 0 ? (
-          <section className="mb-5 shrink-0 rounded-xl border border-border bg-surface p-4">
+        <div className="mb-4 flex shrink-0 flex-wrap gap-1 border-b border-border pb-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("orders")}
+            className={`rounded-md px-3 py-1.5 text-sm ${
+              activeTab === "orders"
+                ? "bg-foreground text-background"
+                : "text-muted hover:bg-sidebar"
+            }`}
+          >
+            Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("market_calls")}
+            className={`rounded-md px-3 py-1.5 text-sm ${
+              activeTab === "market_calls"
+                ? "bg-foreground text-background"
+                : "text-muted hover:bg-sidebar"
+            }`}
+          >
+            Market call list
+            {marketCustomers.length > 0 ? ` (${marketCustomers.length})` : ""}
+          </button>
+        </div>
+
+        {activeTab === "market_calls" ? (
+          <section className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-medium">
                 Daily market call list · {MARKET_DAY_LABELS[todayMarket]}
@@ -788,24 +817,30 @@ export function CustomerOrdersListClient({
                 {marketCustomers.length} customers
               </span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {marketCustomers.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => openNewOrder(c.id)}
-                  className="rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-sidebar"
-                >
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-xs text-muted">
-                    {c.phone || "No phone"} · New order
-                  </div>
-                </button>
-              ))}
-            </div>
+            {marketCustomers.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {marketCustomers.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => openNewOrder(c.id)}
+                    className="rounded-lg border border-border px-3 py-2 text-left text-sm hover:bg-sidebar"
+                  >
+                    <div className="font-medium">{c.name}</div>
+                    <div className="text-xs text-muted">
+                      {c.phone || "No phone"} · New order
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                No customers scheduled for {MARKET_DAY_LABELS[todayMarket]} today.
+              </p>
+            )}
           </section>
-        ) : null}
-
+        ) : (
+          <>
         <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <label className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:w-auto">
             <span className="shrink-0 text-xs font-medium text-muted">Date</span>
@@ -1103,6 +1138,8 @@ export function CustomerOrdersListClient({
             )}
           </div>
         </div>
+          </>
+        )}
       </main>
 
       <CustomerOrderSidebar
